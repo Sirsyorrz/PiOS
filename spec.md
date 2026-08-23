@@ -284,10 +284,13 @@ mode regardless of what PiOS does.
 
 ## 9. Client platform
 
-- **Avoid Xcode where possible.** React Native / Expo + EAS Build (cloud)
-  means never opening Xcode locally. T3's mobile app is React Native, shipping
-  on both stores.
-- With pairing instead of SSH bootstrap, v0 needs no native modules.
+- **Avoid Xcode, avoid the cloud.** React Native / Expo. T3's mobile app is
+  React Native, shipping on both stores. Cloud EAS Build is deliberately not a
+  dependency: device iteration happens through Expo Go / a dev client over LAN,
+  and native builds run locally on a Mac through the `xcodebuild` CLI
+  (`eas build --local`, `npx expo run:ios`, `xcrun simctl`), never the GUI.
+- With pairing instead of SSH bootstrap, v0 needs no native modules, so the
+  dev-client path holds until APNs, Live Activity, or Secure Enclave keys land.
 - **Terminal tab: defer.** T3 abandoned xterm.js: web runs a WebAssembly build
   of `libghostty-vt`, Android links the native library
   ([`docs/architecture/terminal-renderers.md`][t3-term]). PTYs stay

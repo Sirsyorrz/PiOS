@@ -188,9 +188,15 @@ Exit: full v0 scope usable from a phone browser.
 
 1. Expo app reusing `client-core` verbatim; RN storage adapter for the outbox.
 2. `AppState` wiring to the Phase 4 background policy.
-3. EAS Build cloud pipeline, no local Xcode. TestFlight distribution.
-4. APNs push.
-5. Live Activity as a status surface driven by push only (not a liveness
+3. Iterate on device through Expo Go / dev client over LAN, Metro served from
+   the dev machine. No Mac, no build pipeline, real RN runtime and real
+   backgrounding. Valid until the first custom native module.
+4. Native builds run locally on a Mac (`eas build --local` or
+   `npx expo run:ios`), both `xcodebuild` CLI, no Xcode GUI. Simulator via
+   `xcrun simctl`. Cloud EAS is a fallback, not a dependency.
+5. Distribution: sideload, then TestFlight via `eas submit` / `xcrun altool`.
+6. APNs push.
+7. Live Activity as a status surface driven by push only (not a liveness
    mechanism).
 
 ---
