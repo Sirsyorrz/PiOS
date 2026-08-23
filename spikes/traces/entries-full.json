@@ -1,0 +1,145 @@
+{
+  "entries": [
+    {
+      "type": "model_change",
+      "id": "6663af13",
+      "parentId": null,
+      "timestamp": "2026-08-23T01:10:33.261Z",
+      "provider": "anthropic",
+      "modelId": "claude-haiku-4-5"
+    },
+    {
+      "type": "thinking_level_change",
+      "id": "d23c713a",
+      "parentId": "6663af13",
+      "timestamp": "2026-08-23T01:10:33.261Z",
+      "thinkingLevel": "low"
+    },
+    {
+      "type": "message",
+      "id": "6ff389e8",
+      "parentId": "d23c713a",
+      "timestamp": "2026-08-23T01:10:33.267Z",
+      "message": {
+        "role": "user",
+        "content": [
+          {
+            "type": "text",
+            "text": "Read hello.txt with the read tool and reply with its contents verbatim."
+          }
+        ],
+        "timestamp": 1787447433266
+      }
+    },
+    {
+      "type": "message",
+      "id": "d4a3dd8b",
+      "parentId": "6ff389e8",
+      "timestamp": "2026-08-23T01:10:34.774Z",
+      "message": {
+        "role": "assistant",
+        "content": [
+          {
+            "type": "thinking",
+            "thinking": "The user wants me to read a file called hello.txt using the read tool and reply with its contents exactly as they are. Let me do that.",
+            "thinkingSignature": "EoQDCpoBCBEYAipAADcHkDHqEL8KK6qCfGk4fEBMU9c0AlgjRqEKNht6BRitF2NR2bm20DONt3T6DEmBPrBm0DzSbzJOUOZK6E5l4DIZY2xhdWRlLWhhaWt1LTQtNS0yMDI1MTAwMTgAQgh0aGlua2luZ1okMGMzYzk4NWYtM2YyOS00NWUwLWJlZDEtNDk1M2FiNzllM2ZmqAGKkanUBhIMYEIKYukcY1qQtbkdGgzs67Ddypfd1JNelEIiMKSWFfVKXiHXjXq6C0EOvpclVP3W8zvwY9T69iM0QUUnu0apQ7johlCAk8ylGwtmsSqWAcrdF5rtulc1JiI4dTZ7Tfo9cXxxIKk/aXzHtLXNRq5SwEIHNpWxAhJZbXInPfZGBT/zqjfGcfHhANFnZZQYaqwFvyIEW54qb3ko8OOCYl63xyNGPFnIuGs7qcToLTcxwVh0Sd3eneK42y79fOylSNSj9qpQQawuYZUlZuvmtbY0WMND4+5thU6CxX/S1EIvSg2AWy+LPRgB"
+          },
+          {
+            "type": "toolCall",
+            "id": "toolu_01UJocM62CXWZMrubEFsKvtT",
+            "name": "read",
+            "arguments": {
+              "path": "hello.txt"
+            }
+          }
+        ],
+        "api": "anthropic-messages",
+        "provider": "anthropic",
+        "model": "claude-haiku-4-5",
+        "usage": {
+          "input": 2275,
+          "output": 92,
+          "cacheRead": 0,
+          "cacheWrite": 0,
+          "totalTokens": 2367,
+          "cost": {
+            "input": 0.002275,
+            "output": 0.00046,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "total": 0.002735
+          },
+          "cacheWrite1h": 0,
+          "reasoning": 36
+        },
+        "stopReason": "toolUse",
+        "timestamp": 1787447433284,
+        "responseId": "msg_011CeJniWg3cj4VhrtW8DRs7",
+        "rawStopReason": "tool_use"
+      }
+    },
+    {
+      "type": "message",
+      "id": "55bbddf6",
+      "parentId": "d4a3dd8b",
+      "timestamp": "2026-08-23T01:10:34.777Z",
+      "message": {
+        "role": "toolResult",
+        "toolCallId": "toolu_01UJocM62CXWZMrubEFsKvtT",
+        "toolName": "read",
+        "content": [
+          {
+            "type": "text",
+            "text": "PiOS spike marker: sator arepo tenet\n"
+          }
+        ],
+        "isError": false,
+        "timestamp": 1787447434777
+      }
+    },
+    {
+      "type": "message",
+      "id": "5a39f947",
+      "parentId": "55bbddf6",
+      "timestamp": "2026-08-23T01:10:36.147Z",
+      "message": {
+        "role": "assistant",
+        "content": [
+          {
+            "type": "thinking",
+            "thinking": "The file contains: \"PiOS spike marker: sator arepo tenet\"\n\nI should reply with this content verbatim as requested.",
+            "thinkingSignature": "EvACCpoBCBEYAipAs0WFYdrQbPoFm+Sqy6EypJ8BPwF5TQd7EMUA8f8ef3LielF99Ch8cVY4SMB110ZpYVhB0dV1AGgErV+1zjx49jIZY2xhdWRlLWhhaWt1LTQtNS0yMDI1MTAwMTgAQgh0aGlua2luZ1okMGMzYzk4NWYtM2YyOS00NWUwLWJlZDEtNDk1M2FiNzllM2ZmqAGMkanUBhIMyJg0TMH7Iiv/a+GEGgyxRNBNnUkNzl7VhCkiMCmNsXB9vWacgMU0XswHPqlyC+jwQghAoB6eO27S889cafSbM8F7eQB6E/KZj09vUSqCARi9OOGj4HSTpOmE5dYum7NVq/xrDpE+NOXJTd7u5SmjNL23ttrjwfz4Y0Pu+6CV2reLbc+FZIY0JMo2UsqGqrJfbmC+PMN92bCax7k8qDbuugFKMb4oQ2WxcZS7vC3MI3NCjgr+TM8r94jlGs+RwF5anaqDaDjzb0NH12SjrJ00hhwYAQ=="
+          },
+          {
+            "type": "text",
+            "text": "PiOS spike marker: sator arepo tenet"
+          }
+        ],
+        "api": "anthropic-messages",
+        "provider": "anthropic",
+        "model": "claude-haiku-4-5",
+        "usage": {
+          "input": 2399,
+          "output": 54,
+          "cacheRead": 0,
+          "cacheWrite": 0,
+          "totalTokens": 2453,
+          "cost": {
+            "input": 0.002399,
+            "output": 0.00027,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "total": 0.002669
+          },
+          "cacheWrite1h": 0,
+          "reasoning": 36
+        },
+        "stopReason": "stop",
+        "timestamp": 1787447434778,
+        "responseId": "msg_011CeJnicrcPzsrpeZEe91ur",
+        "rawStopReason": "end_turn"
+      }
+    }
+  ],
+  "leafId": "5a39f947"
+}

@@ -20,7 +20,10 @@ spikes/          throwaway validation scripts
 
 ---
 
-## Phase 0 - Premise validation (spec 12)
+## Phase 0 - Premise validation (spec 12) - DONE
+
+Results: `docs/protocol-findings.md`. Fixtures: `spikes/traces/`.
+Host decision: in-process `AgentSession` for v0, subprocess kept as fallback.
 
 Goal: prove the RPC contract before writing anything reusable.
 
