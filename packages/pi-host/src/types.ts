@@ -1,0 +1,95 @@
+import type {
+  AgentEvent,
+  ExtensionUiRequest,
+  ImageContent,
+  SessionEntry,
+  StreamingBehavior,
+} from "@pios/protocol";
+
+export type SessionStatus = "starting" | "idle" | "running" | "crashed" | "disposed";
+
+/**
+ * Everything the daemon publishes for one session.
+ *
+ * Status changes and recovery notices ride the same stream as agent events so
+ * that a reconnecting client replays them in the order they happened, instead
+ * of reconstructing ordering from two sources.
+ */
+export type HostEvent =
+  | { type: "agent_event"; event: AgentEvent }
+  | { type: "extension_ui_request"; request: ExtensionUiRequest }
+  | { type: "status"; status: SessionStatus }
+  | { type: "session_recovered"; leafId: string | null; reason: string };
+
+export interface BufferedEvent {
+  seq: number;
+  at: number;
+  event: HostEvent;
+}
+
+export interface EntriesPage {
+  entries: SessionEntry[];
+  leafId: string | null;
+  /**
+   * The cursor was not recognised, so `entries` is the whole session and the
+   * client must discard what it had. pi fails an unknown `since` outright; the
+   * host turns that into a reset rather than surfacing it as an error.
+   */
+  reset: boolean;
+}
+
+export interface PromptOptions {
+  images?: ImageContent[];
+  /** Required while the agent streams. Ignored when it is idle. */
+  streamingBehavior?: StreamingBehavior;
+}
+
+export interface PromptResult {
+  accepted: boolean;
+  error?: string;
+}
+
+export interface SessionInfo {
+  id: string;
+  cwd: string;
+  name?: string;
+  /** Whether project-local extensions, settings, and packages were loaded. */
+  trusted: boolean;
+  status: SessionStatus;
+  sessionFile?: string;
+  leafId: string | null;
+  updatedAt: number;
+}
+
+export interface PiSession {
+  readonly id: string;
+  readonly info: SessionInfo;
+
+  prompt(text: string, options?: PromptOptions): Promise<PromptResult>;
+  steer(text: string, images?: ImageContent[]): Promise<PromptResult>;
+  followUp(text: string, images?: ImageContent[]): Promise<PromptResult>;
+
+  /** Delta since a durable entry id, or the whole session when omitted. */
+  getEntries(since?: string): Promise<EntriesPage>;
+
+  interrupt(): Promise<void>;
+  dispose(): Promise<void>;
+
+  subscribe(listener: (event: BufferedEvent) => void): () => void;
+  /** Buffered events after `sinceSeq`, for a client that was away. */
+  replay(sinceSeq?: number): { events: BufferedEvent[]; gap: boolean };
+}
+
+export interface CreateSessionOptions {
+  id?: string;
+  cwd: string;
+  name?: string;
+  /**
+   * Explicit, never inherited. pi's headless trust behaviour depends on
+   * machine state, so the daemon decides per session and reports what it did.
+   */
+  trustProject?: boolean;
+  model?: string;
+  /** Resume an existing session file instead of starting a new one. */
+  resumeFrom?: string;
+}

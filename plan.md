@@ -67,7 +67,20 @@ final transcript exactly.
 
 ---
 
-## Phase 2 - `packages/pi-host`
+## Phase 2 - `packages/pi-host` - DONE
+
+Shipped: `PiSession` plus `InProcessSession` and `SubprocessSession` behind one
+contract suite, `EventRingBuffer`, `SessionRegistry` with the crash policy,
+and `test/driver.ts` for two concurrent sessions.
+
+Two behaviours worth carrying forward:
+
+- `AgentSession.prompt()` resolves when the **run** finishes, not when the
+  prompt is accepted. The in-process host resolves on the `preflightResult`
+  hook instead, so both hosts answer on delivery. Never await a prompt to
+  completion on a request path.
+- An unknown `since` becomes a reset page, not an error. Only the host knows
+  the difference between a bad cursor and a broken session.
 
 1. `PiSession` interface: `prompt`, `steer`, `followUp`, `getEntries(since)`,
    `interrupt`, `dispose`, plus an event emitter.
@@ -205,7 +218,7 @@ Exit: full v0 scope usable from a phone browser.
 
 | Q | Resolve in |
 |---|---|
-| Two clients on one session simultaneously | Phase 2/3 (ring buffer is per-session, so likely yes) |
+| Two clients on one session simultaneously | **Yes.** Subscriptions fan out per session and every subscriber sees the same seq for the same event, so a late client replays and then tails. |
 | pi process crash recovery | Phase 2 step 4 |
 | Offline transcript caching on device | Phase 4 session store |
 | Two agents writing one file | Document in Phase 3, no code |

@@ -22,6 +22,12 @@ importers:
         specifier: ^5.7.2
         version: 5.9.3
 
+  packages/pi-host:
+    dependencies:
+      '@pios/protocol':
+        specifier: workspace:*
+        version: link:../protocol
+
   packages/protocol:
     dependencies:
       zod:

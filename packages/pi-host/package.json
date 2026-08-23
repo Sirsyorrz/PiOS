@@ -1,0 +1,16 @@
+{
+  "name": "@pios/pi-host",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "node --test 'test/*.test.ts'",
+    "demo": "node test/driver.ts"
+  },
+  "dependencies": {
+    "@pios/protocol": "workspace:*"
+  }
+}
