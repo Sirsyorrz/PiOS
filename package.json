@@ -3,11 +3,11 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "tsc --noEmit",
+    "test": "pnpm typecheck && pnpm -r test",
+    "typecheck": "tsc --noEmit",
     "spike:rpc": "tsx spikes/rpc-probe.ts",
     "spike:gotchas": "tsx spikes/gotcha-probe.ts",
-    "spike:inproc": "tsx spikes/inproc-probe.ts",
-    "typecheck": "tsc --noEmit"
+    "spike:inproc": "tsx spikes/inproc-probe.ts"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",

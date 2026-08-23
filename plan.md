@@ -44,7 +44,13 @@ fixtures checked in.
 
 ---
 
-## Phase 1 - `packages/protocol`
+## Phase 1 - `packages/protocol` - DONE
+
+Shipped: `jsonl.ts`, `messages.ts`, `events.ts`, `commands.ts`, `assembler.ts`,
+`wire.ts`, `parse.ts`, 42 tests replaying the Phase 0 fixtures.
+Correction to step 3 below: `toolcall_delta` carries no `toolCallId`, only
+`contentIndex`, so argument buffers are keyed by index. See
+`docs/protocol-findings.md`.
 
 1. TypeScript types for every RPC request/response and event in scope
    (spec 8 table). Generate or hand-write, validated with zod.
@@ -52,7 +58,7 @@ fixtures checked in.
    Unit tests including U+2028/U+2029 inside strings.
 3. `MessageAssembler`: `message_start` + `contentIndex` deltas ->
    partial message; `message_end.message` overrides. `toolcall_delta` buffer
-   keyed by `toolCallId`. Tested against Phase 0 fixtures.
+   keyed by `contentIndex`. Tested against Phase 0 fixtures.
 4. PiOS-level wire protocol (client <-> server): envelope with `sessionId`,
    `commandId`, `messageId`; schema version field from day one.
 

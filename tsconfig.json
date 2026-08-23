@@ -11,6 +11,9 @@
     "resolveJsonModule": true,
     "allowImportingTsExtensions": true,
     "verbatimModuleSyntax": true,
+    "exactOptionalPropertyTypes": false,
+    // Sources run under Node's type stripping, which erases but never emits.
+    "erasableSyntaxOnly": true,
     "types": ["node"],
     "noEmit": true
   },

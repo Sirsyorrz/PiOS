@@ -1,7 +1,7 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { appendFileSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
-import { JsonlFramer } from "./jsonl.ts";
+import { JsonlFramer } from "../packages/protocol/src/jsonl.ts";
 
 export type Json = Record<string, any>;
 
@@ -15,14 +15,12 @@ export class RpcProbe {
   private readonly waiters = new Map<string, (r: Json) => void>();
   private readonly listeners = new Set<(e: Json) => void>();
   private seq = 0;
+  private readonly tracePath: string | undefined;
   exited: Promise<number | null>;
   stderr = "";
 
-  constructor(
-    args: string[],
-    private readonly tracePath?: string,
-    opts: { cwd?: string } = {},
-  ) {
+  constructor(args: string[], tracePath?: string, opts: { cwd?: string } = {}) {
+    this.tracePath = tracePath;
     if (tracePath) mkdirSync(dirname(tracePath), { recursive: true });
     this.proc = spawn("pi", ["--mode", "rpc", ...args], {
       cwd: opts.cwd ?? process.cwd(),

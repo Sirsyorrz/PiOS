@@ -1,0 +1,131 @@
+import { z } from "zod";
+
+/**
+ * Message and content shapes as they appear on the RPC wire.
+ *
+ * Every object schema is loose: pi adds fields between minor versions and a
+ * client that rejects unknown keys would break on upgrade. Validation here is
+ * for "can I safely read the fields I care about", not for exhaustiveness.
+ */
+
+export const UsageCostSchema = z.looseObject({
+  input: z.number(),
+  output: z.number(),
+  cacheRead: z.number(),
+  cacheWrite: z.number(),
+  total: z.number(),
+});
+
+export const UsageSchema = z.looseObject({
+  input: z.number(),
+  output: z.number(),
+  cacheRead: z.number(),
+  cacheWrite: z.number(),
+  totalTokens: z.number().optional(),
+  cost: UsageCostSchema.optional(),
+});
+export type Usage = z.infer<typeof UsageSchema>;
+
+export const TextContentSchema = z.looseObject({
+  type: z.literal("text"),
+  text: z.string(),
+});
+
+export const ThinkingContentSchema = z.looseObject({
+  type: z.literal("thinking"),
+  thinking: z.string(),
+});
+
+export const ImageContentSchema = z.looseObject({
+  type: z.literal("image"),
+  data: z.string(),
+  mimeType: z.string(),
+});
+export type ImageContent = z.infer<typeof ImageContentSchema>;
+
+export const ToolCallSchema = z.looseObject({
+  type: z.literal("toolCall").optional(),
+  id: z.string(),
+  name: z.string(),
+  arguments: z.unknown(),
+});
+export type ToolCall = z.infer<typeof ToolCallSchema>;
+
+export const AssistantContentSchema = z.union([
+  TextContentSchema,
+  ThinkingContentSchema,
+  ImageContentSchema,
+  ToolCallSchema.extend({ type: z.literal("toolCall") }),
+]);
+export type AssistantContent = z.infer<typeof AssistantContentSchema>;
+
+export const UserContentSchema = z.union([TextContentSchema, ImageContentSchema]);
+
+export const UserMessageSchema = z.looseObject({
+  role: z.literal("user"),
+  content: z.union([z.string(), z.array(UserContentSchema)]),
+  timestamp: z.number().optional(),
+});
+
+export const AssistantMessageSchema = z.looseObject({
+  role: z.literal("assistant"),
+  content: z.array(AssistantContentSchema),
+  api: z.string().optional(),
+  provider: z.string().optional(),
+  model: z.string().optional(),
+  usage: UsageSchema.optional(),
+  stopReason: z.string().optional(),
+  timestamp: z.number().optional(),
+});
+export type AssistantMessage = z.infer<typeof AssistantMessageSchema>;
+
+export const ToolResultMessageSchema = z.looseObject({
+  role: z.literal("toolResult"),
+  toolCallId: z.string(),
+  toolName: z.string(),
+  content: z.array(z.union([TextContentSchema, ImageContentSchema])),
+  isError: z.boolean().optional(),
+  usage: UsageSchema.optional(),
+  timestamp: z.number().optional(),
+});
+
+export const BashExecutionMessageSchema = z.looseObject({
+  role: z.literal("bashExecution"),
+  command: z.string(),
+  output: z.string(),
+  exitCode: z.number().nullable(),
+  cancelled: z.boolean().optional(),
+  truncated: z.boolean().optional(),
+  fullOutputPath: z.string().nullable().optional(),
+  timestamp: z.number().optional(),
+});
+
+export const AgentMessageSchema = z.discriminatedUnion("role", [
+  UserMessageSchema,
+  AssistantMessageSchema,
+  ToolResultMessageSchema,
+  BashExecutionMessageSchema,
+]);
+export type AgentMessage = z.infer<typeof AgentMessageSchema>;
+
+/**
+ * A session entry: the append-only tree node whose `id` is the resume cursor.
+ */
+export const SessionEntrySchema = z.looseObject({
+  id: z.string(),
+  parentId: z.string().nullable().optional(),
+  type: z.string(),
+  timestamp: z.union([z.string(), z.number()]).optional(),
+  message: AgentMessageSchema.optional(),
+});
+export type SessionEntry = z.infer<typeof SessionEntrySchema>;
+
+/** Text of a message, ignoring thinking and tool calls. */
+export function messageText(message: AgentMessage): string {
+  if (message.role === "bashExecution") return message.output;
+  if (typeof message.content === "string") return message.content;
+  return message.content
+    .filter((c): c is z.infer<typeof TextContentSchema> => c.type === "text")
+    .map((c) => c.text)
+    .join("");
+}

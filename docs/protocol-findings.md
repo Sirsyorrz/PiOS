@@ -95,8 +95,19 @@ compose time.
 **Delta assembly.** Accumulating `text_delta`/`thinking_delta` by
 `contentIndex` from `message_start` reproduced `message_end.message` content
 **exactly** (byte-identical). `message_start` fires once per assistant message,
-so the accumulator must reset on it. `toolcall_delta` must be buffered
-separately keyed by `toolCallId`; `toolcall_end.toolCall` is the complete call.
+so the accumulator must reset on it.
+
+`toolcall_delta` carries **no `toolCallId`**. The only fields on
+`toolcall_start` / `toolcall_delta` are `type` and `contentIndex`; the id first
+appears on `toolcall_end.toolCall`. Argument buffers are therefore keyed by
+`contentIndex`, and a streaming tool-call card has no id to correlate against
+`tool_execution_start` until the call completes. The `partial` field present in
+the `AssistantMessageEvent` type upstream is stripped in RPC mode, which is why
+the client has to hold this state at all.
+
+`message_start` and `message_end` both fire for user and toolResult messages
+with identical content, so a transcript must record non-assistant messages on
+exactly one of the two or it doubles them.
 
 **agent_end vs agent_settled.** `agent_settled` was always last, after the
 final `agent_end`, in every trace. Push fires on `agent_settled` only.
