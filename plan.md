@@ -96,7 +96,16 @@ Exit: unit tests plus a manual driver that runs 2 concurrent sessions.
 
 ---
 
-## Phase 3 - `packages/server` (v0 daemon)
+## Phase 3 - `packages/server` (v0 daemon) - DONE
+
+Shipped: `node:http` + `ws` daemon, pairing CLI, auth on every route, endpoint
+advertisement, `CommandLedger` dedupe, file/upload routes with containment,
+systemd user unit, and `test/smoke.sh` driving real pi end to end.
+
+Correction to step 5: entries never come from the ring buffer. The buffer
+holds *events*, including partials that were never persisted; entries come
+from pi. Two cursors, two purposes: `leafId` to resync, `lastSeq` to tail.
+Both now ride on `SessionSummary`.
 
 1. HTTP + WS server (fastify or plain node:http + `ws`). Single WS multiplexes
    all sessions; subscribe/unsubscribe per session.
@@ -107,7 +116,8 @@ Exit: unit tests plus a manual driver that runs 2 concurrent sessions.
 4. Endpoint advertisement by **stable key** (`loopback:`, `lan:`, `tailscale-ip:`,
    `tailscale-magicdns:`), no unconditional loopback fallback.
 5. Resume RPC: `get_entries(sessionId, since)` -> delta + `leafId`, served from
-   ring buffer, falling back to session JSONL.
+   pi (which owns the session JSONL); `subscribe(sinceSeq)` tails the ring
+   buffer and reports a `gap` when the cursor was evicted.
 6. Idempotent delivery: dedupe inbound prompts by `commandId`.
 7. File/image HTTP: `GET /file?session=..&path=..` with cwd containment checks,
    `POST /upload` for phone-to-agent images.

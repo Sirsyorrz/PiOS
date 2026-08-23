@@ -1,0 +1,26 @@
+[Unit]
+Description=PiOS daemon (owns pi coding-agent sessions)
+Documentation=https://github.com/earendil-works/pi
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/pios-server serve
+Restart=always
+RestartSec=2
+Environment=NODE_ENV=production
+# Sessions must outlive the SSH login or terminal that started them.
+KillMode=mixed
+TimeoutStopSec=10
+
+# The daemon runs the user's agent, so it deliberately has the user's access to
+# their own files. These only block privilege escalation beyond that.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+
+[Install]
+WantedBy=default.target

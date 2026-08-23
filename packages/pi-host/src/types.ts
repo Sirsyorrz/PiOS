@@ -57,7 +57,10 @@ export interface SessionInfo {
   trusted: boolean;
   status: SessionStatus;
   sessionFile?: string;
+  /** Durable cursor: the last entry pi persisted. */
   leafId: string | null;
+  /** Live cursor: the newest buffered event, including in-flight partials. */
+  lastSeq: number;
   updatedAt: number;
 }
 

@@ -50,6 +50,7 @@ export abstract class BaseSession {
       status: this.status,
       sessionFile: this.sessionFile,
       leafId: this.leafId,
+      lastSeq: this.buffer.lastSeq,
       updatedAt: this.updatedAt,
     };
   }
