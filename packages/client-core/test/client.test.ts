@@ -1,0 +1,243 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { WIRE_VERSION } from "@pios/protocol";
+import { PiosClient } from "../src/client.ts";
+import { FakeScheduler, flush } from "../src/scheduler.ts";
+import { MemoryStorage } from "../src/storage.ts";
+import { TransportFactoryStub, summary, entry } from "./fake-transport.ts";
+
+/** Skips the backoff wait when the test is not about timing. */
+function supervisorWake(client: PiosClient) {
+  client.supervisor.wake("test");
+}
+
+function setup(storage = new MemoryStorage()) {
+  const scheduler = new FakeScheduler();
+  const transports = new TransportFactoryStub();
+  let counter = 0;
+  const client = new PiosClient({
+    createTransport: transports.create,
+    scheduler,
+    storage,
+    backoff: { baseMs: 1000, capMs: 16_000, factor: 2 },
+    generateId: () => `id-${++counter}`,
+    generateCommandId: () => `hello-${++counter}`,
+  });
+  client.start({ url: "ws://test", deviceToken: "token" });
+  return { scheduler, transports, client, storage };
+}
+
+test("watching a session resyncs from its cursor and subscribes from its seq", async () => {
+  const { transports, client } = setup();
+  await flush();
+  transports.last.acceptHello([summary({ sessionId: "s1", leafId: null })]);
+  client.watch("s1");
+
+  const [entries] = transports.last.sentOfType("get_entries");
+  assert.equal(entries?.since, undefined, "no cursor yet, so ask for everything");
+  const [subscribe] = transports.last.sentOfType("subscribe");
+  assert.equal(subscribe?.sinceSeq, 0);
+
+  transports.last.emit({
+    v: WIRE_VERSION,
+    type: "entries",
+    sessionId: "s1",
+    entries: [entry("e1"), entry("e2", "e1")],
+    leafId: "e2",
+    reset: false,
+  });
+  assert.equal(client.sessions.cursor("s1"), "e2");
+  assert.equal(client.supervisor.getState().sync, "synced");
+});
+
+test("a drop mid-stream reconnects and resumes from the cursor", async () => {
+  const { scheduler, transports, client } = setup();
+  await flush();
+  transports.last.acceptHello([summary({ sessionId: "s1" })]);
+  client.watch("s1");
+
+  transports.last.emit({
+    v: WIRE_VERSION,
+    type: "entries",
+    sessionId: "s1",
+    entries: [entry("e1")],
+    leafId: "e1",
+    reset: false,
+  });
+  transports.last.emit({
+    v: WIRE_VERSION,
+    type: "agent_event",
+    sessionId: "s1",
+    seq: 7,
+    event: {
+      type: "message_update",
+      assistantMessageEvent: { type: "text_delta", contentIndex: 0, delta: "half a th" },
+    },
+  });
+
+  transports.last.drop();
+  await scheduler.runNext();
+  transports.last.acceptHello([summary({ sessionId: "s1", leafId: "e1" })]);
+
+  const [entries] = transports.last.sentOfType("get_entries");
+  assert.equal(entries?.since, "e1", "resumed from the durable cursor");
+  const [subscribe] = transports.last.sentOfType("subscribe");
+  assert.equal(subscribe?.sinceSeq, 7, "tailed from the live cursor");
+});
+
+test("a moved branch triggers a full refetch, not a patch", async () => {
+  const { transports, client } = setup();
+  await flush();
+  transports.last.acceptHello([summary({ sessionId: "s1" })]);
+  client.watch("s1");
+  transports.last.emit({
+    v: WIRE_VERSION,
+    type: "entries",
+    sessionId: "s1",
+    entries: [entry("e1"), entry("e2", "e1")],
+    leafId: "e2",
+    reset: false,
+  });
+
+  // Someone forked the session from another client while we were away.
+  transports.last.drop();
+  await flush();
+  supervisorWake(client);
+  await flush();
+  transports.last.acceptHello([summary({ sessionId: "s1", leafId: "forked-9" })]);
+
+  const entriesFrames = transports.last.sentOfType("get_entries");
+  assert.equal(entriesFrames.at(-1)?.since, undefined, "asked for the whole session");
+  assert.equal(client.sessions.get("s1").entries.length, 0, "the stale cache was dropped");
+});
+
+test("a reported gap rebuilds the live transcript", async () => {
+  const { transports, client } = setup();
+  await flush();
+  transports.last.acceptHello([summary({ sessionId: "s1" })]);
+  client.watch("s1");
+
+  client.sessions.applyEvent("s1", 4, {
+    type: "message_update",
+    assistantMessageEvent: { type: "text_delta", contentIndex: 0, delta: "stale" },
+  });
+  transports.last.emit({
+    v: WIRE_VERSION,
+    type: "subscribed",
+    sessionId: "s1",
+    seq: 99,
+    gap: true,
+  });
+
+  assert.equal(client.sessions.transcript("s1").streaming, null);
+  assert.equal(client.sessions.lastSeq("s1"), 0);
+});
+
+test("prompts queue while disconnected and drain on reconnect", async () => {
+  const { scheduler, transports, client } = setup();
+  await flush();
+  transports.last.acceptHello([summary({ sessionId: "s1" })]);
+  transports.last.drop();
+
+  // Composed with no connection at all: the whole point of the outbox.
+  const queued = client.prompt({ sessionId: "s1", text: "written offline" });
+  assert.equal(client.outbox.pendingCount, 1);
+
+  // The supervisor and the outbox each hold their own timer, so step until
+  // the reconnect attempt is the one that fires.
+  while (transports.created.length < 2) await scheduler.runNext();
+  transports.last.acceptHello([summary({ sessionId: "s1" })]);
+
+  const [prompt] = transports.last.sentOfType("prompt");
+  assert.equal(prompt?.text, "written offline");
+  assert.equal(prompt?.commandId, queued.commandId);
+
+  transports.last.emit({
+    v: WIRE_VERSION,
+    type: "ack",
+    commandId: queued.commandId,
+    duplicate: false,
+  });
+  assert.equal(client.outbox.pendingCount, 0);
+});
+
+test("a prompt survives the app being killed and is redelivered once", async () => {
+  const storage = new MemoryStorage();
+  const first = setup(storage);
+  await flush();
+  first.transports.last.acceptHello([summary({ sessionId: "s1" })]);
+  first.transports.last.drop();
+  const queued = first.client.prompt({ sessionId: "s1", text: "survive me" });
+
+  // App killed. Only storage carries over.
+  const second = setup(storage.clone());
+  await flush();
+  second.transports.last.acceptHello([summary({ sessionId: "s1" })]);
+
+  const prompts = second.transports.last.sentOfType("prompt");
+  assert.equal(prompts.length, 1);
+  assert.equal(prompts[0]!.text, "survive me");
+  assert.equal(prompts[0]!.commandId, queued.commandId, "same idempotency key as before");
+});
+
+test("a duplicate ack still clears the entry", async () => {
+  const { transports, client } = setup();
+  await flush();
+  transports.last.acceptHello([summary({ sessionId: "s1" })]);
+  const queued = client.prompt({ sessionId: "s1", text: "once" });
+
+  transports.last.emit({
+    v: WIRE_VERSION,
+    type: "ack",
+    commandId: queued.commandId,
+    duplicate: true,
+  });
+  assert.equal(client.outbox.list().length, 0);
+});
+
+test("a rejected prompt is kept for the user and marks sync, not transport", async () => {
+  const { transports, client } = setup();
+  await flush();
+  transports.last.acceptHello([summary({ sessionId: "s1" })]);
+  const queued = client.prompt({ sessionId: "s1", text: "while busy" });
+
+  transports.last.emit({
+    v: WIRE_VERSION,
+    type: "error",
+    commandId: queued.commandId,
+    code: "agent_busy",
+    message: "Specify streamingBehavior",
+  });
+
+  const entryAfter = client.outbox.list()[0]!;
+  assert.equal(entryAfter.status, "failed");
+  assert.equal(client.supervisor.getState().transport, "connected", "still a healthy socket");
+  assert.equal(client.supervisor.getState().sync, "error");
+});
+
+test("recovery from a daemon crash refetches when the leaf rewound", async () => {
+  const { transports, client } = setup();
+  await flush();
+  transports.last.acceptHello([summary({ sessionId: "s1" })]);
+  client.watch("s1");
+  transports.last.emit({
+    v: WIRE_VERSION,
+    type: "entries",
+    sessionId: "s1",
+    entries: [entry("e1"), entry("e2", "e1")],
+    leafId: "e2",
+    reset: false,
+  });
+
+  // The daemon restarted pi; the half-streamed turn was never persisted.
+  transports.last.emit({
+    v: WIRE_VERSION,
+    type: "session_recovered",
+    sessionId: "s1",
+    leafId: "rewound-1",
+    reason: "pi exited (code 9)",
+  });
+
+  assert.equal(client.sessions.get("s1").entries.length, 0);
+  assert.equal(transports.last.sentOfType("get_entries").at(-1)?.since, undefined);
+});

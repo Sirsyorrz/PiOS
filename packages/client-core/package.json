@@ -1,0 +1,15 @@
+{
+  "name": "@pios/client-core",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "node --test 'test/*.test.ts'"
+  },
+  "dependencies": {
+    "@pios/protocol": "workspace:*"
+  }
+}

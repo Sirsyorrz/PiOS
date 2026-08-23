@@ -129,7 +129,15 @@ reconnect, and resync.
 
 ---
 
-## Phase 4 - `packages/client-core`
+## Phase 4 - `packages/client-core` - DONE
+
+Shipped: `ConnectionSupervisor`, `ThreadOutbox`, `SessionStore`,
+`AppStatePolicy`, `webSocketTransport`, and `PiosClient` wiring them together.
+47 fake-transport tests on an injected clock.
+
+The outbox keeps a ladder separate from the supervisor's, so a client with a
+healthy socket and a failing send retries without a reconnect. Both are capped
+at 16s.
 
 Platform-free, tested in Node.
 
@@ -230,6 +238,6 @@ Exit: full v0 scope usable from a phone browser.
 |---|---|
 | Two clients on one session simultaneously | **Yes.** Subscriptions fan out per session and every subscriber sees the same seq for the same event, so a late client replays and then tails. |
 | pi process crash recovery | Phase 2 step 4 |
-| Offline transcript caching on device | Phase 4 session store |
+| Offline transcript caching on device | **Cached.** `SessionStore` persists entries per session, schema-versioned. Cached data renders while offline but never decides freshness: that is always `leafId` from the daemon. |
 | Two agents writing one file | Document in Phase 3, no code |
 | Terminal renderer cost | Phase 9 |
