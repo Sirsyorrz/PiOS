@@ -17,29 +17,34 @@ export function SessionList({ sessions, activeId, onSelect, onCreate, onDispose 
           New
         </button>
       </div>
-      <ul>
-        {ordered.map((session) => (
-          <li key={session.sessionId} className={session.sessionId === activeId ? "active" : ""}>
-            <button type="button" onClick={() => onSelect(session.sessionId)}>
-              <span className="name">{session.name ?? basename(session.cwd)}</span>
-              <span className="muted">{shortenPath(session.cwd)}</span>
-              <span className="tags">
-                <span className={`status ${session.status}`}>{session.status}</span>
-                {session.trusted ? null : <span className="status untrusted">untrusted</span>}
-              </span>
-            </button>
-            <button
-              type="button"
-              className="icon danger"
-              aria-label={`dispose ${session.name ?? session.cwd}`}
-              onClick={() => onDispose(session.sessionId)}
-            >
-              &times;
-            </button>
-          </li>
-        ))}
-      </ul>
-      {ordered.length === 0 ? <p className="muted">No sessions yet.</p> : null}
+      {/* No empty list element: it would still take a gap and push the empty
+          state away from its heading. */}
+      {ordered.length === 0 ? (
+        <p className="muted">No sessions yet.</p>
+      ) : (
+        <ul>
+          {ordered.map((session) => (
+            <li key={session.sessionId} className={session.sessionId === activeId ? "active" : ""}>
+              <button type="button" onClick={() => onSelect(session.sessionId)}>
+                <span className="name">{session.name ?? basename(session.cwd)}</span>
+                <span className="muted">{shortenPath(session.cwd)}</span>
+                <span className="tags">
+                  <span className={`status ${session.status}`}>{session.status}</span>
+                  {session.trusted ? null : <span className="status untrusted">untrusted</span>}
+                </span>
+              </button>
+              <button
+                type="button"
+                className="icon danger"
+                aria-label={`dispose ${session.name ?? session.cwd}`}
+                onClick={() => onDispose(session.sessionId)}
+              >
+                &times;
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
     </nav>
   );
 }

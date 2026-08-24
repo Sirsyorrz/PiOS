@@ -41,21 +41,27 @@ export function EndpointPicker({ machine, onChange, onForget }: {
       <ul>
         {machine.endpoints.map((endpoint) => (
           <li key={endpoint.key} className={machine.preferredKey === endpoint.key ? "active" : ""}>
-            <button type="button" onClick={() => onChange({ ...machine, preferredKey: endpoint.key })}>
+            <button
+              type="button"
+              className="endpoint"
+              onClick={() => onChange({ ...machine, preferredKey: endpoint.key })}
+            >
               <span className="key">{endpoint.key}</span>
               <span className="muted">{endpoint.url}</span>
             </button>
-            <span className={`probe ${probes[endpoint.key] ?? "unknown"}`}>
-              {probes[endpoint.key] ?? "?"}
-            </span>
-            <button type="button" onClick={() => void probe(endpoint.key, endpoint.url)}>
-              test
-            </button>
+            <div className="row spread">
+              <span className={`probe ${probes[endpoint.key] ?? "unknown"}`}>
+                {probeLabel(probes[endpoint.key])}
+              </span>
+              <button type="button" onClick={() => void probe(endpoint.key, endpoint.url)}>
+                Test
+              </button>
+            </div>
           </li>
         ))}
       </ul>
 
-      <form onSubmit={add}>
+      <form className="row" onSubmit={add}>
         <input
           value={draft}
           placeholder="http://host:4111"
@@ -70,4 +76,17 @@ export function EndpointPicker({ machine, onChange, onForget }: {
       </button>
     </div>
   );
+}
+
+function probeLabel(state: Probe[string] | undefined): string {
+  switch (state) {
+    case "checking":
+      return "testing...";
+    case "up":
+      return "reachable";
+    case "down":
+      return "unreachable";
+    default:
+      return "untested";
+  }
 }
