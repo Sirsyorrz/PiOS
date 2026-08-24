@@ -181,6 +181,12 @@ button.danger {
   font-size: 15px;
 }
 
+.endpoints {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
 .chat-header {
   display: flex;
   align-items: center;
@@ -230,9 +236,31 @@ button.danger {
 }
 
 .sessions li {
-  display: flex;
-  gap: 6px;
-  align-items: center;
+  position: relative;
+}
+
+/* Sits on the card rather than beside it, so the row keeps its full width. */
+.sessions .dispose {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 30px;
+  height: 30px;
+  border-color: transparent;
+  background: none;
+  font-size: 16px;
+  opacity: 0.65;
+}
+
+.sessions .dispose:hover,
+.sessions .dispose:focus-visible {
+  opacity: 1;
+  border-color: var(--error);
+}
+
+.sessions .session {
+  /* Room for the dispose button in the corner. */
+  padding-right: 42px;
 }
 
 /* Key, URL and its test control are one unit, stacked: a 280px sidebar has no
@@ -274,7 +302,7 @@ button.danger {
   color: var(--muted);
 }
 
-.sessions li > button:first-child,
+.sessions .session,
 .endpoints .endpoint,
 .dirlist button {
   flex: 1;
@@ -303,7 +331,7 @@ button.danger {
   gap: 6px;
 }
 
-.sessions li.active > button:first-child {
+.sessions li.active .session {
   border-color: var(--accent);
 }
 
@@ -353,8 +381,15 @@ button.danger {
   display: flex;
   flex-direction: column;
   min-height: 0;
+  height: 100%;
   padding: 12px;
   gap: 8px;
+}
+
+/* Status lives at the bottom of the pane, beside the composer, whether or not
+   there is a transcript above it. */
+.empty .banners {
+  margin-top: auto;
 }
 
 .transcript {

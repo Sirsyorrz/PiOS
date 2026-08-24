@@ -41,6 +41,8 @@ export class PiosClient {
   private readonly generateId: () => string;
   /** Sessions the UI wants live, re-subscribed on every reconnect. */
   private readonly subscribed = new Set<string>();
+  /** Create commands still waiting for the daemon to name their session. */
+  private readonly pendingCreates = new Map<string, (sessionId: string) => void>();
   private lastTransport: SupervisorState["transport"] = "idle";
 
   constructor(options: PiosClientOptions) {
@@ -104,21 +106,29 @@ export class PiosClient {
    * queued: replaying a stale "start a session here" minutes later is not
    * obviously what the user still wants, so the caller is told instead.
    */
-  createSession(args: {
-    cwd: string;
-    name?: string;
-    trustProject?: boolean;
-    model?: string;
-  }): boolean {
-    return this.supervisor.send({
+  createSession(
+    args: {
+      cwd: string;
+      name?: string;
+      trustProject?: boolean;
+      model?: string;
+    },
+    /** Called once the daemon names the session, so the UI can open it. */
+    onCreated?: (sessionId: string) => void,
+  ): boolean {
+    const commandId = this.generateId();
+    if (onCreated) this.pendingCreates.set(commandId, onCreated);
+    const sent = this.supervisor.send({
       v: WIRE_VERSION,
       type: "create_session",
-      commandId: this.generateId(),
+      commandId,
       cwd: args.cwd,
       name: args.name,
       trustProject: args.trustProject ?? false,
       model: args.model,
     });
+    if (!sent) this.pendingCreates.delete(commandId);
+    return sent;
   }
 
   disposeSession(sessionId: string): boolean {
@@ -232,6 +242,12 @@ export class PiosClient {
       case "agent_event":
         this.sessions.applyEvent(frame.sessionId, frame.seq, frame.event);
         break;
+      case "session_state": {
+        const onCreated = frame.commandId ? this.pendingCreates.get(frame.commandId) : undefined;
+        if (frame.commandId) this.pendingCreates.delete(frame.commandId);
+        onCreated?.(frame.sessionId);
+        break;
+      }
       case "session_recovered":
         if (this.sessions.needsFullRefetch(frame.sessionId, frame.leafId)) {
           this.sessions.clear(frame.sessionId);

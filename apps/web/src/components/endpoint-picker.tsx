@@ -1,7 +1,7 @@
 import { useState } from "react";
-import { probeEndpoint, type Machine } from "../machine.ts";
+import { probeEndpoint, type Endpoint, type Machine } from "../machine.ts";
 
-type Probe = Record<string, "unknown" | "checking" | "up" | "down">;
+type ProbeState = "unknown" | "checking" | "up" | "down";
 
 /**
  * Chooses which route to the machine to dial.
@@ -15,14 +15,22 @@ export function EndpointPicker({ machine, onChange, onForget }: {
   onChange: (machine: Machine) => void;
   onForget: () => void;
 }) {
-  const [probes, setProbes] = useState<Probe>({});
+  const [checking, setChecking] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
 
-  async function probe(key: string, url: string) {
-    setProbes((p) => ({ ...p, [key]: "checking" }));
-    const ok = await probeEndpoint(url);
-    setProbes((p) => ({ ...p, [key]: ok ? "up" : "down" }));
-    if (ok) onChange({ ...machine, preferredKey: key });
+  function patchEndpoint(key: string, patch: Partial<Endpoint>): Endpoint[] {
+    return machine.endpoints.map((e) => (e.key === key ? { ...e, ...patch } : e));
+  }
+
+  async function probe(endpoint: Endpoint) {
+    setChecking(endpoint.key);
+    const ok = await probeEndpoint(endpoint.url);
+    setChecking(null);
+    onChange({
+      ...machine,
+      endpoints: patchEndpoint(endpoint.key, { lastProbe: { ok, at: Date.now() } }),
+      preferredKey: ok ? endpoint.key : machine.preferredKey,
+    });
   }
 
   function add(event: React.FormEvent) {
@@ -39,26 +47,27 @@ export function EndpointPicker({ machine, onChange, onForget }: {
     <div className="endpoints">
       <h2>Endpoints</h2>
       <ul>
-        {machine.endpoints.map((endpoint) => (
-          <li key={endpoint.key} className={machine.preferredKey === endpoint.key ? "active" : ""}>
-            <button
-              type="button"
-              className="endpoint"
-              onClick={() => onChange({ ...machine, preferredKey: endpoint.key })}
-            >
-              <span className="key">{endpoint.key}</span>
-              <span className="muted">{endpoint.url}</span>
-            </button>
-            <div className="row spread">
-              <span className={`probe ${probes[endpoint.key] ?? "unknown"}`}>
-                {probeLabel(probes[endpoint.key])}
-              </span>
-              <button type="button" onClick={() => void probe(endpoint.key, endpoint.url)}>
-                Test
+        {machine.endpoints.map((endpoint) => {
+          const state = probeState(endpoint, checking === endpoint.key);
+          return (
+            <li key={endpoint.key} className={machine.preferredKey === endpoint.key ? "active" : ""}>
+              <button
+                type="button"
+                className="endpoint"
+                onClick={() => onChange({ ...machine, preferredKey: endpoint.key })}
+              >
+                <span className="key">{endpoint.key}</span>
+                <span className="muted">{endpoint.url}</span>
               </button>
-            </div>
-          </li>
-        ))}
+              <div className="row spread">
+                <span className={`probe ${state}`}>{probeLabel(state, endpoint)}</span>
+                <button type="button" onClick={() => void probe(endpoint)}>
+                  Test
+                </button>
+              </div>
+            </li>
+          );
+        })}
       </ul>
 
       <form className="row" onSubmit={add}>
@@ -78,15 +87,17 @@ export function EndpointPicker({ machine, onChange, onForget }: {
   );
 }
 
-function probeLabel(state: Probe[string] | undefined): string {
-  switch (state) {
-    case "checking":
-      return "testing...";
-    case "up":
-      return "reachable";
-    case "down":
-      return "unreachable";
-    default:
-      return "untested";
-  }
+function probeState(endpoint: Endpoint, checking: boolean): ProbeState {
+  if (checking) return "checking";
+  if (!endpoint.lastProbe) return "unknown";
+  return endpoint.lastProbe.ok ? "up" : "down";
+}
+
+function probeLabel(state: ProbeState, endpoint: Endpoint): string {
+  if (state === "checking") return "testing...";
+  if (state === "unknown") return "untested";
+  const when = new Date(endpoint.lastProbe?.at ?? 0).toLocaleTimeString();
+  // The time is part of the answer: reachable an hour ago on another network
+  // is not reachable.
+  return `${state === "up" ? "reachable" : "unreachable"} at ${when}`;
 }

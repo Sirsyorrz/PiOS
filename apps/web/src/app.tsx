@@ -82,7 +82,9 @@ function Workspace({ machine, onMachineChange, onForget }: {
         token={machine.deviceToken}
         onCancel={() => setPicking(false)}
         onPick={(cwd, trustProject) => {
-          const sent = client.createSession({ cwd, trustProject });
+          // Opened as soon as the daemon names it: starting a session and
+          // being left on the list is not what the tap asked for.
+          const sent = client.createSession({ cwd, trustProject }, setActiveId);
           setNotice(sent ? null : "Not connected: the session was not started.");
           setPicking(false);
         }}
@@ -128,12 +130,14 @@ function Workspace({ machine, onMachineChange, onForget }: {
           session={session}
           state={state}
           onBack={() => setActiveId(null)}
-            // Trust is decided when a session starts, so granting it means
-            // starting a new session in the same directory rather than
-            // mutating the running one.
+          // Trust is decided when a session starts, so this starts a trusted
+          // one in the same directory and switches to it.
           onTrust={() => {
             if (!session) return;
-            const sent = client.createSession({ cwd: session.cwd, trustProject: true });
+            const sent = client.createSession(
+              { cwd: session.cwd, trustProject: true },
+              setActiveId,
+            );
             setNotice(sent ? null : "Not connected: the session was not started.");
           }}
         />

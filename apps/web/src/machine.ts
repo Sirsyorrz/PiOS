@@ -11,6 +11,12 @@ export interface Endpoint {
    */
   key: string;
   url: string;
+  /**
+   * Result of the last probe. Remembered so reopening the picker does not
+   * pretend nothing was ever tested; it is a record of what happened, never
+   * evidence that the endpoint is reachable now.
+   */
+  lastProbe?: { ok: boolean; at: number };
 }
 
 export interface Machine {

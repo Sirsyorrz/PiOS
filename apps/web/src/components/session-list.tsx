@@ -25,7 +25,11 @@ export function SessionList({ sessions, activeId, onSelect, onCreate, onDispose 
         <ul>
           {ordered.map((session) => (
             <li key={session.sessionId} className={session.sessionId === activeId ? "active" : ""}>
-              <button type="button" onClick={() => onSelect(session.sessionId)}>
+              <button
+                type="button"
+                className="session"
+                onClick={() => onSelect(session.sessionId)}
+              >
                 <span className="name">{session.name ?? basename(session.cwd)}</span>
                 <span className="muted">{shortenPath(session.cwd)}</span>
                 <span className="tags">
@@ -33,9 +37,11 @@ export function SessionList({ sessions, activeId, onSelect, onCreate, onDispose 
                   {session.trusted ? null : <span className="status untrusted">untrusted</span>}
                 </span>
               </button>
+              {/* Inside the card, over its top corner: a sibling column made
+                  every row wider than the sidebar could afford. */}
               <button
                 type="button"
-                className="icon danger"
+                className="icon danger dispose"
                 aria-label={`dispose ${session.name ?? session.cwd}`}
                 onClick={() => onDispose(session.sessionId)}
               >

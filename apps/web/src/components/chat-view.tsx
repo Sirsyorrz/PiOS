@@ -37,8 +37,6 @@ export function ChatView({ sessionId, session, state, onTrust, onBack }: {
         </span>
       </header>
 
-      <Banners state={state} view={view} session={session} onTrust={onTrust} />
-
       <div className="transcript">
         {view?.items.map((item) => {
           if (item.kind === "message") {
@@ -85,6 +83,10 @@ export function ChatView({ sessionId, session, state, onTrust, onBack }: {
           ))}
         </div>
       ) : null}
+
+      {/* Above the composer, not above the transcript: status belongs where
+          the eye already is, next to what you are about to type. */}
+      <Banners state={state} view={view} session={session} onTrust={onTrust} />
 
       <Composer
         sessionId={sessionId}
