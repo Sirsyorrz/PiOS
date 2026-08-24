@@ -265,6 +265,17 @@ export class ConnectionSupervisor {
     for (const listener of [...this.frameListeners]) listener(frame);
   }
 
+  /**
+   * Drops a session from the list without waiting for the daemon.
+   *
+   * The daemon's own `sessions` broadcast is authoritative and will arrive;
+   * this is so a disposed session leaves the screen when it was tapped, not a
+   * round trip later.
+   */
+  forgetSession(sessionId: string): void {
+    this.patch({ sessions: this.state.sessions.filter((s) => s.sessionId !== sessionId) });
+  }
+
   private mergeSummary(summary: SessionSummary): void {
     const sessions = this.state.sessions.filter((s) => s.sessionId !== summary.sessionId);
     this.patch({ sessions: [...sessions, summary] });

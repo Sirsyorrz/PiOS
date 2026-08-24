@@ -6,11 +6,12 @@ import { Banners } from "./banners.tsx";
 import { Composer } from "./composer.tsx";
 import { MessageBubble, StreamingBubble } from "./message.tsx";
 
-export function ChatView({ sessionId, session, state, onTrust }: {
+export function ChatView({ sessionId, session, state, onTrust, onBack }: {
   sessionId: string;
   session: SessionSummary | null;
   state: SupervisorState;
   onTrust: () => void;
+  onBack: () => void;
 }) {
   const client = useClient();
   const view = useSessionView(sessionId);
@@ -26,6 +27,16 @@ export function ChatView({ sessionId, session, state, onTrust }: {
 
   return (
     <section className="chat">
+      <header className="chat-header">
+        <button type="button" className="back icon" onClick={onBack} aria-label="back to sessions">
+          &lsaquo;
+        </button>
+        <span className="title">{session?.name ?? session?.cwd ?? sessionId}</span>
+        <span className={`status ${view?.running ? "running" : (session?.status ?? "idle")}`}>
+          {view?.running ? "running" : (session?.status ?? "")}
+        </span>
+      </header>
+
       <Banners state={state} view={view} session={session} onTrust={onTrust} />
 
       <div className="transcript">

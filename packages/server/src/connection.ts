@@ -17,6 +17,8 @@ export interface ConnectionDeps {
   ledger: CommandLedger;
   piVersion: string;
   helloTimeoutMs: number;
+  /** Tells every authenticated socket the session list changed. */
+  announceSessions?: () => void;
 }
 
 /**
@@ -116,6 +118,9 @@ export class Connection {
           trustProject: frame.trustProject,
           model: frame.model,
         });
+        // Sessions are shared, so a second device must not have to guess that
+        // one appeared.
+        this.deps.announceSessions?.();
         return this.send({
           v: WIRE_VERSION,
           type: "session_state",
@@ -128,6 +133,7 @@ export class Connection {
       case "dispose_session": {
         this.unsubscribe(frame.sessionId);
         await this.deps.registry.dispose(frame.sessionId);
+        this.deps.announceSessions?.();
         return this.ack(frame.commandId);
       }
 
@@ -228,6 +234,16 @@ export class Connection {
       return undefined;
     }
     return session;
+  }
+
+  /** Pushes the current session list, unprompted. Ignored before `hello`. */
+  sendSessions(): void {
+    if (!this.device) return;
+    this.send({
+      v: WIRE_VERSION,
+      type: "sessions",
+      sessions: this.deps.registry.list().map(toSummary),
+    });
   }
 
   private ack(commandId: string, duplicate = false): void {

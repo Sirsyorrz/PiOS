@@ -123,28 +123,23 @@ function Workspace({ machine, onMachineChange, onForget }: {
       </aside>
 
       {activeId ? (
-        <>
-          <button type="button" className="back" onClick={() => setActiveId(null)}>
-            Back
-          </button>
-          <ChatView
-            sessionId={activeId}
-            session={session}
-            state={state}
+        <ChatView
+          sessionId={activeId}
+          session={session}
+          state={state}
+          onBack={() => setActiveId(null)}
             // Trust is decided when a session starts, so granting it means
             // starting a new session in the same directory rather than
             // mutating the running one.
-            onTrust={() => {
-              if (!session) return;
-              const sent = client.createSession({ cwd: session.cwd, trustProject: true });
-              setNotice(sent ? null : "Not connected: the session was not started.");
-            }}
-          />
-        </>
+          onTrust={() => {
+            if (!session) return;
+            const sent = client.createSession({ cwd: session.cwd, trustProject: true });
+            setNotice(sent ? null : "Not connected: the session was not started.");
+          }}
+        />
       ) : (
         <section className="empty">
           <Banners state={state} view={null} session={null} onTrust={() => {}} />
-          <p className="muted">Pick a session, or start one.</p>
         </section>
       )}
     </div>

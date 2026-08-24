@@ -17,7 +17,9 @@ export function DirectoryPicker({ baseUrl, token, onPick, onCancel }: {
 }) {
   const [listing, setListing] = useState<Listing | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [trust, setTrust] = useState(false);
+  // Checked by default: a session without project extensions and settings is
+  // not what someone picking their own project directory expects.
+  const [trust, setTrust] = useState(true);
   const [path, setPath] = useState<string | null>(null);
 
   const load = useCallback(
@@ -44,10 +46,25 @@ export function DirectoryPicker({ baseUrl, token, onPick, onCancel }: {
 
   return (
     <div className="screen centered">
-      <div className="card">
-        <h1>New session</h1>
-        <p className="muted">{path ?? "loading..."}</p>
+      <div className="card picker">
+        <div className="row spread">
+          <button type="button" onClick={onCancel}>
+            Cancel
+          </button>
+          <h1>New session</h1>
+          <button type="button" disabled={!path} onClick={() => path && onPick(path, trust)}>
+            Start here
+          </button>
+        </div>
+        <p className="muted path">{path ?? "loading..."}</p>
         {error ? <p className="error">{error}</p> : null}
+
+        <label className="row inline">
+          <input type="checkbox" checked={trust} onChange={(e) => setTrust(e.target.checked)} />
+          {/* Trust loads project-local extensions and settings, which is code
+              execution the user has to be able to decline. */}
+          <span>Trust this directory (loads project extensions and settings)</span>
+        </label>
 
         <ul className="dirlist">
           {listing?.parent ? (
@@ -65,22 +82,6 @@ export function DirectoryPicker({ baseUrl, token, onPick, onCancel }: {
             </li>
           ))}
         </ul>
-
-        <label className="row">
-          <input type="checkbox" checked={trust} onChange={(e) => setTrust(e.target.checked)} />
-          {/* Trust loads project-local extensions and settings, which is code
-              execution the user has to opt into per session. */}
-          Trust this directory (loads project extensions and settings)
-        </label>
-
-        <div className="row">
-          <button type="button" onClick={onCancel}>
-            Cancel
-          </button>
-          <button type="button" disabled={!path} onClick={() => path && onPick(path, trust)}>
-            Start here
-          </button>
-        </div>
       </div>
     </div>
   );

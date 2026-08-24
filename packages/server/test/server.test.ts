@@ -314,3 +314,25 @@ test("a cross-origin preflight is answered without credentials", async () => {
   });
   assert.equal(listing.headers.get("access-control-allow-origin"), "http://phone.local:5173");
 });
+
+test("disposing a session is announced to every connected client", async () => {
+  const watcher = await hello(harness);
+  const actor = await hello(harness);
+  const cwd = join(harness.dir, "shared");
+  mkdirSync(cwd, { recursive: true });
+
+  const sessionId = await createSession(actor, cwd);
+  const created = await watcher.waitFor((f) => f.type === "sessions");
+  assert.ok(
+    created.type === "sessions" && created.sessions.some((s) => s.sessionId === sessionId),
+    "the other client learns about a session it did not create",
+  );
+
+  await actor.waitForCommand(actor.send({ type: "dispose_session", sessionId }));
+  const removed = await watcher.waitFor(
+    (f) => f.type === "sessions" && !f.sessions.some((s) => s.sessionId === sessionId),
+  );
+  assert.equal(removed.type, "sessions");
+  watcher.close();
+  actor.close();
+});

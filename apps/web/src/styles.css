@@ -7,6 +7,7 @@
   --accent: #7ee787;
   --warn: #e3b341;
   --error: #f85149;
+  --control: 40px;
   color-scheme: dark;
 }
 
@@ -33,11 +34,32 @@ select {
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: 8px;
-  padding: 8px 10px;
+  padding: 0 12px;
+  /* One control height everywhere, and a target a thumb can actually hit. */
+  min-height: var(--control);
+}
+
+textarea {
+  padding: 10px 12px;
 }
 
 button {
   cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+/* Square, so a one-glyph button is not narrower than a worded one. */
+button.icon {
+  width: var(--control);
+  height: var(--control);
+  padding: 0;
+  flex: 0 0 auto;
+  font-size: 18px;
+  line-height: 1;
 }
 
 button.danger {
@@ -93,6 +115,40 @@ button.danger {
   color: var(--muted);
 }
 
+/* A checkbox belongs beside its text, not above it. */
+.card label.inline {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  min-height: var(--control);
+}
+
+.card label.inline input {
+  min-height: 0;
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+  accent-color: var(--accent);
+}
+
+.picker h1 {
+  margin: 0;
+  font-size: 17px;
+}
+
+.picker .path {
+  /* Sits directly under the title: it is the title's subject, not a section. */
+  margin: -6px 0 0;
+  overflow-wrap: anywhere;
+}
+
+.picker .dirlist {
+  max-height: 50dvh;
+  overflow-y: auto;
+  /* Room for the scrollbar, so it does not sit on top of the rows. */
+  padding-right: 6px;
+}
+
 .workspace {
   display: grid;
   grid-template-columns: 280px 1fr;
@@ -103,6 +159,33 @@ button.danger {
   border-right: 1px solid var(--line);
   padding: 12px;
   overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.sidebar > header {
+  min-height: var(--control);
+}
+
+.section-head h2,
+.endpoints h2 {
+  margin: 0;
+  font-size: 15px;
+}
+
+.chat-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: var(--control);
+}
+
+.chat-header .title {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .back {
@@ -118,9 +201,14 @@ button.danger {
     display: none;
   }
   .back {
-    display: block;
-    margin: 8px;
+    display: inline-flex;
   }
+}
+
+.sessions {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 
 .sessions ul,
@@ -145,10 +233,29 @@ button.danger {
 .endpoints li > button:first-child,
 .dirlist button {
   flex: 1;
+  min-width: 0;
+  /* Full-width rows: a directory name is a tap target, not a chip. */
+  width: 100%;
   text-align: left;
   display: flex;
   flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
   gap: 2px;
+  padding: 8px 12px;
+}
+
+.sessions .name,
+.sessions .muted {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tags {
+  display: flex;
+  gap: 6px;
 }
 
 .sessions li.active > button:first-child {
@@ -339,6 +446,11 @@ button.danger {
 .composer textarea {
   width: 100%;
   resize: vertical;
+  min-height: 76px;
+}
+
+.composer .row {
+  flex-wrap: wrap;
 }
 
 .attachments img {
@@ -351,10 +463,14 @@ button.danger {
   display: none;
 }
 
+/* A label, but it has to look and measure like the buttons beside it. */
 .attach {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--control);
   border: 1px solid var(--line);
   border-radius: 8px;
-  padding: 8px 10px;
+  padding: 0 12px;
   cursor: pointer;
 }
 

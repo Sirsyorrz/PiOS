@@ -124,6 +124,7 @@ export class PiosClient {
   disposeSession(sessionId: string): boolean {
     this.subscribed.delete(sessionId);
     this.sessions.clear(sessionId);
+    this.supervisor.forgetSession(sessionId);
     return this.supervisor.send({
       v: WIRE_VERSION,
       type: "dispose_session",

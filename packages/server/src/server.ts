@@ -23,6 +23,7 @@ export class PiosServer {
   private readonly http: Server;
   private readonly wss: WebSocketServer;
   private readonly ledger = new CommandLedger();
+  private readonly connections = new Set<Connection>();
 
   constructor(options: PiosServerOptions = {}) {
     this.config = defaultConfig(options);
@@ -42,13 +43,16 @@ export class PiosServer {
     // it can do anything, and that check lives in Connection.
     this.wss = new WebSocketServer({ server: this.http, path: "/ws" });
     this.wss.on("connection", (socket) => {
-      new Connection(socket, {
+      const connection = new Connection(socket, {
         auth: this.auth,
         registry: this.registry,
         ledger: this.ledger,
         piVersion: options.piVersion ?? "unknown",
         helloTimeoutMs: this.config.helloTimeoutMs,
+        announceSessions: () => this.announceSessions(),
       });
+      this.connections.add(connection);
+      socket.on("close", () => this.connections.delete(connection));
     });
   }
 
@@ -60,6 +64,10 @@ export class PiosServer {
   get port(): number {
     const address = this.http.address();
     return typeof address === "object" && address ? address.port : this.config.port;
+  }
+
+  private announceSessions(): void {
+    for (const connection of this.connections) connection.sendSessions();
   }
 
   endpoints(hostname?: string): Endpoint[] {

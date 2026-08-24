@@ -11,7 +11,7 @@ export function SessionList({ sessions, activeId, onSelect, onCreate, onDispose 
 
   return (
     <nav className="sessions">
-      <div className="row spread">
+      <div className="row spread section-head">
         <h2>Sessions</h2>
         <button type="button" onClick={onCreate}>
           New
@@ -21,18 +21,20 @@ export function SessionList({ sessions, activeId, onSelect, onCreate, onDispose 
         {ordered.map((session) => (
           <li key={session.sessionId} className={session.sessionId === activeId ? "active" : ""}>
             <button type="button" onClick={() => onSelect(session.sessionId)}>
-              <span className="name">{session.name ?? shortenPath(session.cwd)}</span>
+              <span className="name">{session.name ?? basename(session.cwd)}</span>
               <span className="muted">{shortenPath(session.cwd)}</span>
-              <span className={`status ${session.status}`}>{session.status}</span>
-              {session.trusted ? null : <span className="status untrusted">untrusted</span>}
+              <span className="tags">
+                <span className={`status ${session.status}`}>{session.status}</span>
+                {session.trusted ? null : <span className="status untrusted">untrusted</span>}
+              </span>
             </button>
             <button
               type="button"
-              className="danger"
-              aria-label="dispose session"
+              className="icon danger"
+              aria-label={`dispose ${session.name ?? session.cwd}`}
               onClick={() => onDispose(session.sessionId)}
             >
-              x
+              &times;
             </button>
           </li>
         ))}
@@ -40,6 +42,11 @@ export function SessionList({ sessions, activeId, onSelect, onCreate, onDispose 
       {ordered.length === 0 ? <p className="muted">No sessions yet.</p> : null}
     </nav>
   );
+}
+
+/** The directory name alone; the full path is shown under it. */
+function basename(path: string): string {
+  return path.split("/").filter(Boolean).at(-1) ?? path;
 }
 
 function shortenPath(path: string): string {
