@@ -8,7 +8,7 @@
  * Behaviour is pinned to what the Phase 0 traces actually showed.
  */
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { JsonlFramer, encodeJsonl } from "@pios/protocol";
+import { JsonlFramer, encodeJsonl } from "@pios/protocol/jsonl";
 
 const argv = process.argv.slice(2);
 const arg = (name: string) => {

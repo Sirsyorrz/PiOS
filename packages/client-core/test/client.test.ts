@@ -241,3 +241,15 @@ test("recovery from a daemon crash refetches when the leaf rewound", async () =>
   assert.equal(client.sessions.get("s1").entries.length, 0);
   assert.equal(transports.last.sentOfType("get_entries").at(-1)?.since, undefined);
 });
+
+test("a session command with no live socket is reported, not silently dropped", async () => {
+  const { transports, client } = setup();
+  await flush();
+  transports.last.acceptHello([]);
+  assert.equal(client.createSession({ cwd: "/tmp" }), true);
+
+  transports.last.drop(1006, "gone");
+  await flush();
+  assert.equal(client.createSession({ cwd: "/tmp" }), false);
+  assert.equal(client.interrupt("s1"), false);
+});

@@ -143,3 +143,35 @@ test("tool_execution_end with no preceding start still creates a card", () => {
   assert.equal(tool!.status, "done");
   assert.equal(tool!.isError, true);
 });
+
+test("compaction and retry banners are raised and cleared", () => {
+  const transcript = new TranscriptAssembler();
+  transcript.apply({ type: "compaction_start", reason: "threshold" });
+  assert.equal(transcript.snapshot().status.compaction?.reason, "threshold");
+  transcript.apply({ type: "compaction_end", result: null });
+  assert.equal(transcript.snapshot().status.compaction, null);
+
+  transcript.apply({ type: "auto_retry_start", attempt: 2, maxAttempts: 5 });
+  assert.equal(transcript.snapshot().status.retry?.attempt, 2);
+  transcript.apply({ type: "auto_retry_end", success: true });
+  assert.equal(transcript.snapshot().status.retry, null);
+});
+
+test("a settled run clears a retry banner even without auto_retry_end", () => {
+  const transcript = new TranscriptAssembler();
+  transcript.apply({ type: "agent_start" });
+  transcript.apply({ type: "auto_retry_start", attempt: 1 });
+  transcript.apply({ type: "agent_settled" });
+  assert.equal(transcript.snapshot().status.retry, null);
+  assert.equal(transcript.snapshot().running, false);
+});
+
+test("extension errors accumulate instead of being swallowed", () => {
+  const transcript = new TranscriptAssembler();
+  transcript.apply({ type: "extension_error", extensionPath: "/a.ts", error: "one" });
+  transcript.apply({ type: "extension_error", error: "two" });
+  assert.deepEqual(
+    transcript.snapshot().status.extensionErrors.map((e) => e.error),
+    ["one", "two"],
+  );
+});

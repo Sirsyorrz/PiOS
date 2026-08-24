@@ -141,3 +141,16 @@ for (const harness of harnesses) {
     });
   });
 }
+
+test("a child that cannot be spawned fails the create instead of the daemon", async () => {
+  // No `error` listener would make this an unhandled event, which is fatal to
+  // the process, not to the session.
+  await assert.rejects(
+    () =>
+      SubprocessSession.start(
+        { cwd: process.cwd() },
+        { command: "definitely-not-a-real-binary-xyz", requestTimeoutMs: 2000 },
+      ),
+    /not found on PATH/,
+  );
+});

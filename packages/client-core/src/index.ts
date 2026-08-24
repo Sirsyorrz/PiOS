@@ -7,3 +7,4 @@ export * from "./outbox.ts";
 export * from "./session-store.ts";
 export * from "./app-state.ts";
 export * from "./client.ts";
+export * from "./view.ts";

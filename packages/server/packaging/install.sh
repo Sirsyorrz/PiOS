@@ -12,10 +12,19 @@ unit_dir="${XDG_CONFIG_HOME:-${HOME}/.config}/systemd/user"
 command -v node >/dev/null || { echo "node is required" >&2; exit 1; }
 command -v pi >/dev/null || echo "warning: pi is not on PATH; sessions will fail to start" >&2
 
+# systemd --user starts with a minimal PATH (/usr/local/bin:/usr/bin), and the
+# daemon spawns `pi`. Version managers like nvm put both node and pi somewhere
+# else entirely, so the paths are resolved now and baked into the shim.
+tool_path="$(dirname "$(command -v node)")"
+if command -v pi >/dev/null; then
+  tool_path="${tool_path}:$(dirname "$(command -v pi)")"
+fi
+
 mkdir -p "${bin_dir}" "${unit_dir}"
 
 cat > "${bin_dir}/pios-server" <<EOF
 #!/usr/bin/env bash
+export PATH="${tool_path}:\${PATH}"
 exec node "${repo_root}/packages/server/src/cli.ts" "\$@"
 EOF
 chmod +x "${bin_dir}/pios-server"

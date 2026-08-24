@@ -159,7 +159,23 @@ outbox survival across restart, `leafId` divergence.
 
 ---
 
-## Phase 5 - `apps/web` PWA (v0 UI)
+## Phase 5 - `apps/web` PWA (v0 UI) - DONE
+
+Shipped: React + Vite PWA, pairing from the URL hash, endpoint picker probed
+by `/health`, daemon-backed directory picker (new `GET /dirs`, rooted at the
+home directory), chat view with streaming, thinking, tool cards, diffs, the
+composer on the outbox, and the status banners.
+
+Three corrections to the steps below:
+
+- Trust is decided when a session starts, so the "trust this directory" action
+  starts a new trusted session in the same cwd instead of mutating the running
+  one.
+- Cached entries and live events overlap after a resync, so `sessionView` in
+  `client-core` collapses them on content and folds `toolResult` messages onto
+  their tool card. The UI renders one list, not three sources.
+- `@pios/protocol` no longer exports the JSONL framer from its index: it is
+  Node-only and broke the browser bundle. It lives at `@pios/protocol/jsonl`.
 
 1. Pairing screen (token from URL hash), machine list, endpoint picker.
 2. Session list sidebar + create session (directory picker via daemon listing).
@@ -223,6 +239,8 @@ Exit: full v0 scope usable from a phone browser.
 - macOS / Windows daemon (path-handling pass + launchd unit).
 - Forking and branch browsing (`fork`, `clone`, `get_fork_messages`, `get_tree`).
 - Model switching, thinking level, compaction UI.
+- Text editor
+- Lazygit
 
 ---
 

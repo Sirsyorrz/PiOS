@@ -45,7 +45,7 @@ test("health is public and says nothing about sessions", async () => {
 });
 
 test("every other route rejects an unauthenticated caller", async () => {
-  for (const path of ["/sessions", "/file?session=x&path=y", "/upload?session=x"]) {
+  for (const path of ["/sessions", "/dirs", "/file?session=x&path=y", "/upload?session=x"]) {
     const res = await fetch(`${harness.baseUrl}${path}`, {
       method: path.startsWith("/upload") ? "POST" : "GET",
       body: path.startsWith("/upload") ? "x" : undefined,
@@ -263,6 +263,23 @@ test("uploads land inside the session cwd", async () => {
   client.close();
 });
 
+test("directory listing stays inside the home directory", async () => {
+  const auth = { authorization: `Bearer ${harness.deviceToken}` };
+  const home = await fetch(`${harness.baseUrl}/dirs`, { headers: auth });
+  assert.equal(home.status, 200);
+  const listing = (await home.json()) as {
+    root: string;
+    parent: string | null;
+    entries: { name: string; path: string }[];
+  };
+  assert.equal(listing.parent, null, "the root has nowhere further up");
+  assert.ok(listing.entries.every((e) => e.path.startsWith(listing.root)));
+  assert.ok(listing.entries.every((e) => !e.name.startsWith(".")));
+
+  const escape = await fetch(`${harness.baseUrl}/dirs?path=/etc`, { headers: auth });
+  assert.equal(escape.status, 404);
+});
+
 test("an unknown session is refused rather than crashing the socket", async () => {
   const client = await hello(harness);
   const frame = await client.waitForCommand(
@@ -274,4 +291,26 @@ test("an unknown session is refused rather than crashing the socket", async () =
   const list = await client.waitForCommand(client.send({ type: "list_sessions" }));
   assert.equal(list.type, "sessions");
   client.close();
+});
+
+test("a cross-origin preflight is answered without credentials", async () => {
+  const res = await fetch(`${harness.baseUrl}/pair`, {
+    method: "OPTIONS",
+    headers: {
+      origin: "http://phone.local:5173",
+      "access-control-request-method": "POST",
+      "access-control-request-headers": "content-type",
+    },
+  });
+  assert.equal(res.status, 204);
+  assert.equal(res.headers.get("access-control-allow-origin"), "http://phone.local:5173");
+  assert.ok(res.headers.get("access-control-allow-headers")?.includes("authorization"));
+  // Never set: a bearer token is not a cookie, and allowing credentials would
+  // let a hostile page ride an ambient session.
+  assert.equal(res.headers.get("access-control-allow-credentials"), null);
+
+  const listing = await fetch(`${harness.baseUrl}/dirs`, {
+    headers: { authorization: `Bearer ${harness.deviceToken}`, origin: "http://phone.local:5173" },
+  });
+  assert.equal(listing.headers.get("access-control-allow-origin"), "http://phone.local:5173");
 });

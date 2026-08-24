@@ -1,7 +1,8 @@
 import { createReadStream, statSync } from "node:fs";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readdir, writeFile } from "node:fs/promises";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { extname, join } from "node:path";
+import { homedir } from "node:os";
+import { basename, dirname, extname, join } from "node:path";
 import type { SessionRegistry } from "@pios/pi-host";
 import { WIRE_VERSION } from "@pios/protocol";
 import { AuthStore, bearerToken } from "./auth.ts";
@@ -33,8 +34,15 @@ export async function handleRequest(
   res: ServerResponse,
 ): Promise<void> {
   const url = new URL(req.url ?? "/", "http://localhost");
+  cors(req, res);
 
   try {
+    // The preflight carries no credentials, so it cannot be authenticated and
+    // must be answered before the auth check.
+    if (req.method === "OPTIONS") {
+      res.writeHead(204).end();
+      return;
+    }
     // Unauthenticated by necessity: this is how a device gets its first token.
     if (req.method === "POST" && url.pathname === "/pair") return await pair(ctx, req, res);
     // Deliberately says nothing about sessions, paths, or devices.
@@ -48,6 +56,7 @@ export async function handleRequest(
     if (req.method === "GET" && url.pathname === "/sessions") {
       return json(res, 200, { sessions: ctx.registry.list() });
     }
+    if (req.method === "GET" && url.pathname === "/dirs") return await listDirs(url, res);
     if (req.method === "GET" && url.pathname === "/file") return serveFile(ctx, url, res);
     if (req.method === "POST" && url.pathname === "/upload") {
       return await upload(ctx, url, req, res);
@@ -75,6 +84,40 @@ async function pair(ctx: RouteContext, req: IncomingMessage, res: ServerResponse
     deviceId: result.device.id,
     serverVersion: SERVER_VERSION,
     wireVersion: WIRE_VERSION,
+  });
+}
+
+/**
+ * Directory listing for the session-creation picker.
+ *
+ * Rooted at the home directory: the daemon already runs arbitrary code as the
+ * user, but browsing the whole filesystem from a phone is a bigger surface
+ * than the feature needs, and `/` is never where a project lives.
+ */
+async function listDirs(url: URL, res: ServerResponse): Promise<void> {
+  const root = homedir();
+  const requested = url.searchParams.get("path") ?? root;
+  const path = containedPath(root, requested);
+  if (!path) return json(res, 404, { error: "not_found" });
+
+  let dirents;
+  try {
+    dirents = await readdir(path, { withFileTypes: true });
+  } catch {
+    return json(res, 404, { error: "not_found" });
+  }
+
+  const entries = dirents
+    .filter((d) => d.isDirectory() && !d.name.startsWith("."))
+    .map((d) => ({ name: d.name, path: join(path, d.name) }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+
+  json(res, 200, {
+    root,
+    path,
+    name: basename(path) || path,
+    parent: path === root ? null : dirname(path),
+    entries,
   });
 }
 
@@ -132,6 +175,24 @@ async function upload(
   await mkdir(dir, { recursive: true });
   await writeFile(target, body);
   json(res, 200, { path: target, bytes: body.length });
+}
+
+/**
+ * Cross-origin access for the PWA.
+ *
+ * The app is served from a different port (a dev server now, a static host
+ * later), so every call here is cross-origin. Authorisation is a bearer token
+ * the browser never sends on its own, and credentials are never allowed, so a
+ * hostile page gains nothing from being able to make the request.
+ */
+function cors(req: IncomingMessage, res: ServerResponse): void {
+  const origin = req.headers.origin;
+  if (!origin) return;
+  res.setHeader("access-control-allow-origin", origin);
+  res.setHeader("vary", "origin");
+  res.setHeader("access-control-allow-methods", "GET, POST, OPTIONS");
+  res.setHeader("access-control-allow-headers", "authorization, content-type");
+  res.setHeader("access-control-max-age", "600");
 }
 
 function json(res: ServerResponse, status: number, body: unknown): void {

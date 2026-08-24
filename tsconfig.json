@@ -17,5 +17,6 @@
     "types": ["node"],
     "noEmit": true
   },
-  "include": ["spikes/**/*.ts", "packages/**/*.ts", "apps/**/*.ts"]
+  // apps/web needs DOM lib and JSX, so it typechecks under its own config.
+  "include": ["spikes/**/*.ts", "packages/**/*.ts"]
 }

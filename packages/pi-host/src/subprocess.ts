@@ -4,12 +4,11 @@ import {
   AgentEventSchema,
   ExtensionUiRequestSchema,
   GetEntriesDataSchema,
-  JsonlFramer,
   RpcResponseSchema,
-  encodeJsonl,
   isUnknownCursorError,
   type RpcResponse,
 } from "@pios/protocol";
+import { JsonlFramer, encodeJsonl } from "@pios/protocol/jsonl";
 import { BaseSession } from "./base-session.ts";
 import type {
   CreateSessionOptions,
@@ -48,6 +47,8 @@ export class SubprocessSession extends BaseSession implements PiSession {
   >();
   private seq = 0;
   private disposed = false;
+  /** Set when the child could not be spawned at all, e.g. pi is not on PATH. */
+  private spawnError: Error | null = null;
   private readonly options: SubprocessOptions;
   private readonly createOptions: CreateSessionOptions;
   private onExit: ((info: { code: number | null; signal: string | null }) => void) | null = null;
@@ -99,7 +100,9 @@ export class SubprocessSession extends BaseSession implements PiSession {
 
   private async spawnChild(): Promise<void> {
     this.framer = new JsonlFramer();
-    const proc = spawn(this.options.command ?? "pi", this.buildArgs(), {
+    this.spawnError = null;
+    const command = this.options.command ?? "pi";
+    const proc = spawn(command, this.buildArgs(), {
       cwd: this.createOptions.cwd,
       env: this.options.env ?? process.env,
       stdio: ["pipe", "pipe", "pipe"],
@@ -113,9 +116,21 @@ export class SubprocessSession extends BaseSession implements PiSession {
       console.warn(`[pi-host] session ${this.id} stderr: ${String(chunk).trimEnd()}`);
     });
     proc.on("exit", (code, signal) => this.handleExit(code, signal));
+    // Without this listener a failed spawn is an unhandled `error` event,
+    // which takes down the whole daemon and every other session with it.
+    proc.on("error", (error) => {
+      this.spawnError =
+        (error as NodeJS.ErrnoException).code === "ENOENT"
+          ? new Error(`cannot run "${command}": not found on PATH`)
+          : error;
+      this.handleExit(null, null);
+    });
 
     this.setStatus("idle");
     const state = await this.request({ type: "get_state" });
+    // Surfaced as a failed create rather than a session that exists and can
+    // never answer anything.
+    if (this.spawnError) throw this.spawnError;
     if (state.success) {
       const data = state.data as { sessionFile?: string; isStreaming?: boolean } | undefined;
       this.sessionFile = data?.sessionFile;

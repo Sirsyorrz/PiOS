@@ -93,6 +93,62 @@ export class PiosClient {
     });
   }
 
+  /**
+   * Asks the daemon to start a session.
+   *
+   * The daemon answers with `session_state`, which the supervisor merges into
+   * its session list, so the UI learns about the new session the same way it
+   * learns about one another device created.
+   *
+   * Returns false when there was no live socket. Unlike a prompt, this is not
+   * queued: replaying a stale "start a session here" minutes later is not
+   * obviously what the user still wants, so the caller is told instead.
+   */
+  createSession(args: {
+    cwd: string;
+    name?: string;
+    trustProject?: boolean;
+    model?: string;
+  }): boolean {
+    return this.supervisor.send({
+      v: WIRE_VERSION,
+      type: "create_session",
+      commandId: this.generateId(),
+      cwd: args.cwd,
+      name: args.name,
+      trustProject: args.trustProject ?? false,
+      model: args.model,
+    });
+  }
+
+  disposeSession(sessionId: string): boolean {
+    this.subscribed.delete(sessionId);
+    this.sessions.clear(sessionId);
+    return this.supervisor.send({
+      v: WIRE_VERSION,
+      type: "dispose_session",
+      commandId: this.generateId(),
+      sessionId,
+    });
+  }
+
+  refreshSessions(): boolean {
+    return this.supervisor.send({
+      v: WIRE_VERSION,
+      type: "list_sessions",
+      commandId: this.generateId(),
+    });
+  }
+
+  interrupt(sessionId: string): boolean {
+    return this.supervisor.send({
+      v: WIRE_VERSION,
+      type: "interrupt",
+      commandId: this.generateId(),
+      sessionId,
+    });
+  }
+
   /** Marks a session live: subscribed now and after every reconnect. */
   watch(sessionId: string): void {
     this.subscribed.add(sessionId);

@@ -1,4 +1,5 @@
-export * from "./jsonl.ts";
+// jsonl lives behind its own entry point: it is Node-only (Buffer,
+// StringDecoder) and only the daemon side frames a stdio stream.
 export * from "./messages.ts";
 export * from "./events.ts";
 export * from "./commands.ts";

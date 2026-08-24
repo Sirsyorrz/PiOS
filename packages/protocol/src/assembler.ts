@@ -170,6 +170,14 @@ export interface ToolExecution {
   status: ToolExecutionStatus;
 }
 
+/** Long-running conditions the user has to be told about, not just logged. */
+export interface TranscriptStatus {
+  compaction: { reason: string } | null;
+  retry: { attempt: number; maxAttempts?: number; delayMs?: number; error?: string } | null;
+  /** Never cleared automatically: a broken extension stays visible. */
+  extensionErrors: { extensionPath?: string; event?: string; error: string }[];
+}
+
 export interface Transcript {
   messages: AgentMessage[];
   streaming: PartialMessage | null;
@@ -177,6 +185,7 @@ export interface Transcript {
   queue: { steering: string[]; followUp: string[] };
   /** True between `agent_start` and `agent_settled`. `agent_end` does not clear it. */
   running: boolean;
+  status: TranscriptStatus;
 }
 
 /**
@@ -192,6 +201,7 @@ export class TranscriptAssembler {
   private streamingActive = false;
   private queue = { steering: [] as string[], followUp: [] as string[] };
   private running = false;
+  private status: TranscriptStatus = { compaction: null, retry: null, extensionErrors: [] };
 
   apply(event: AgentEvent): void {
     switch (event.type) {
@@ -200,6 +210,9 @@ export class TranscriptAssembler {
         break;
       case "agent_settled":
         this.running = false;
+        // A settled run cannot still be retrying; a missed `auto_retry_end`
+        // would otherwise leave the banner up forever.
+        this.status.retry = null;
         break;
       case "message_start":
         if (event.message.role === "assistant") {
@@ -249,6 +262,33 @@ export class TranscriptAssembler {
       case "queue_update":
         this.queue = { steering: event.steering, followUp: event.followUp };
         break;
+      case "compaction_start":
+        this.status.compaction = { reason: event.reason };
+        break;
+      case "compaction_end":
+        this.status.compaction = null;
+        if (event.errorMessage) {
+          this.status.extensionErrors.push({ event: "compaction", error: event.errorMessage });
+        }
+        break;
+      case "auto_retry_start":
+        this.status.retry = {
+          attempt: event.attempt,
+          maxAttempts: event.maxAttempts,
+          delayMs: event.delayMs,
+          error: event.errorMessage,
+        };
+        break;
+      case "auto_retry_end":
+        this.status.retry = null;
+        break;
+      case "extension_error":
+        this.status.extensionErrors.push({
+          extensionPath: event.extensionPath,
+          event: event.event,
+          error: event.error,
+        });
+        break;
       default:
         break;
     }
@@ -261,6 +301,11 @@ export class TranscriptAssembler {
       toolExecutions: [...this.tools.values()],
       queue: { steering: [...this.queue.steering], followUp: [...this.queue.followUp] },
       running: this.running,
+      status: {
+        compaction: this.status.compaction,
+        retry: this.status.retry,
+        extensionErrors: [...this.status.extensionErrors],
+      },
     };
   }
 
