@@ -245,6 +245,9 @@ button.danger {
   gap: 2px;
   padding: 8px 12px;
   background: none;
+  /* Column flex items size to their content on the cross axis, so a long
+     nowrap line would stretch the row rather than ellipsize inside it. */
+  overflow: hidden;
   border-color: transparent;
   border-radius: 10px;
 }
@@ -261,6 +264,10 @@ button.danger {
 
 .centered {
   display: grid;
+  /* minmax(0,1fr), not the default auto: an auto track is floored at the
+     content's min-content width, so one long unbreakable path in a row would
+     widen the card past the viewport instead of being clipped by it. */
+  grid-template-columns: minmax(0, 1fr);
   place-items: center;
 }
 
@@ -270,7 +277,8 @@ button.danger {
   flex-direction: column;
   gap: 12px;
   width: min(440px, 100%);
-  padding: 24px;
+  max-width: 100%;
+  padding: clamp(16px, 4vw, 24px);
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: 16px;
@@ -312,9 +320,11 @@ button.danger {
 }
 
 /* Fixed size: the card must not resize as you walk into directories with
-   fewer children, or the buttons move out from under your thumb. */
+   fewer children, or the buttons move out from under your thumb. Also fixed
+   while a list loads, so arriving rows do not jump the card under a thumb. */
 .picker {
   height: min(80dvh, 620px);
+  max-height: 100%;
 }
 
 .workspace {
@@ -978,6 +988,10 @@ button.danger {
   margin-top: 4px;
 }
 
+.resumable > li {
+  min-width: 0;
+}
+
 .resumable .preview {
   font-size: 12px;
   color: var(--muted);
@@ -985,6 +999,8 @@ button.danger {
 
 .tags {
   display: flex;
+  flex-wrap: wrap;
+  max-width: 100%;
   gap: 10px;
   align-items: center;
 }

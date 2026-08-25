@@ -50,9 +50,9 @@ export function ResumePicker({
     // line, not a single directory name.
     <ModalCard className="picker resume">
       <header className="row spread">
-          <h2>Resume a session</h2>
-          <button type="button" onClick={onCancel}>
-            Cancel
+        <h2 className="line">Resume a session</h2>
+        <button type="button" onClick={onCancel}>
+          Cancel
         </button>
       </header>
 
@@ -74,14 +74,19 @@ export function ResumePicker({
         <ul className="resumable scroll-y">
           {shown.map((session) => (
             <li key={session.path}>
-              <ListRowButton className="session" onClick={() => onResume(session)}>
+              <ListRowButton
+                className="session"
+                onClick={() => onResume(session)}
+              >
                 <span className="name line">
                   {session.name ?? basename(session.cwd)}
                 </span>
                 <span className="muted line">{session.cwd}</span>
                 <span className="preview line">{session.preview}</span>
                 <span className="tags">
-                  <span className="muted">{relativeTime(session.modifiedAt)}</span>
+                  <span className="muted">
+                    {relativeTime(session.modifiedAt)}
+                  </span>
                   <span className="muted">{session.messageCount} msgs</span>
                   {/* Already open here: resuming attaches rather than forking. */}
                   {session.live ? (
