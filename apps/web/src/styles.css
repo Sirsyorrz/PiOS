@@ -136,6 +136,38 @@ button.danger {
   justify-content: space-between;
 }
 
+/* One line, clipped with an ellipsis. The default for any list-row text. */
+.line {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The one scroll container: fills its flex parent and reserves gutter room
+   so content does not sit under the scrollbar or reflow when it appears. */
+.scroll-y {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+  padding-right: 8px;
+}
+
+/* Full-width rows with stacked content: a row is a tap target, not a chip. */
+.list-row {
+  flex: 1;
+  min-width: 0;
+  width: 100%;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 2px;
+  padding: 8px 12px;
+}
+
 .screen {
   min-height: 100dvh;
   padding: 16px;
@@ -198,15 +230,6 @@ button.danger {
   height: min(80dvh, 620px);
 }
 
-.picker .dirlist {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  /* Room for the scrollbar, so it does not sit on top of the rows. */
-  scrollbar-gutter: stable;
-  padding-right: 8px;
-}
-
 .workspace {
   display: grid;
   grid-template-columns: 280px 1fr;
@@ -247,9 +270,6 @@ button.danger {
 
 .chat-header .title {
   flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .back {
@@ -277,6 +297,7 @@ button.danger {
 
 .sessions ul,
 .dirlist,
+.resumable,
 .endpoints ul {
   list-style: none;
   margin: 0;
@@ -330,7 +351,6 @@ button.danger {
 }
 
 .endpoints .endpoint {
-  width: 100%;
   border: none;
   background: none;
   padding: 0;
@@ -351,30 +371,6 @@ button.danger {
 .probe {
   font-size: 12px;
   color: var(--muted);
-}
-
-.sessions .session,
-.endpoints .endpoint,
-.dirlist button {
-  flex: 1;
-  min-width: 0;
-  /* Full-width rows: a directory name is a tap target, not a chip. */
-  width: 100%;
-  text-align: left;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  justify-content: center;
-  gap: 2px;
-  padding: 8px 12px;
-}
-
-.sessions .name,
-.sessions .muted {
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .tags {
@@ -447,16 +443,9 @@ button.danger {
 }
 
 .transcript {
-  flex: 1;
-  overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 10px;
-  /* Bubbles must not butt up against the scrollbar. The gutter is reserved
-     rather than conditional, so the transcript does not reflow the moment it
-     grows past one screen. */
-  scrollbar-gutter: stable;
-  padding-right: 8px;
 }
 
 .bubble {
@@ -534,9 +523,6 @@ button.danger {
 .tool-head .muted {
   flex: 1;
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .tool-name {
@@ -661,41 +647,7 @@ button.danger {
   margin-top: 4px;
 }
 
-/* The resume list is a full-screen picker, not a sidebar: rows can afford a
-   preview line, and there can be hundreds of them. */
-.picker .resumable {
-  list-style: none;
-  margin: 0;
-  padding: 0 8px 0 0;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  overflow-y: auto;
-  scrollbar-gutter: stable;
-  flex: 1;
-  min-height: 0;
-}
-
-.picker .resumable .session {
-  width: 100%;
-  text-align: left;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 2px;
-  padding: 8px 12px;
-}
-
-.picker .resumable .name,
-.picker .resumable .muted,
-.picker .resumable .preview {
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.picker .resumable .preview {
+.resumable .preview {
   font-size: 12px;
   color: var(--muted);
 }

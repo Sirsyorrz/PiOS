@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { ListRowButton, ModalCard } from "./ui.tsx";
 
 interface Listing {
   root: string;
@@ -45,44 +46,38 @@ export function DirectoryPicker({ baseUrl, token, onPick, onCancel }: {
   }, [load]);
 
   return (
-    <div className="screen centered">
-      <div className="card picker">
-        <div className="row spread">
-          <button type="button" onClick={onCancel}>
-            Cancel
-          </button>
-          <h1>New session</h1>
-          <button type="button" disabled={!path} onClick={() => path && onPick(path, trust)}>
-            Start here
-          </button>
-        </div>
-        <p className="muted path">{path ?? "loading..."}</p>
-        {error ? <p className="error">{error}</p> : null}
-
-        <label className="row inline">
-          <input type="checkbox" checked={trust} onChange={(e) => setTrust(e.target.checked)} />
-          {/* Trust loads project-local extensions and settings, which is code
-              execution the user has to be able to decline. */}
-          <span>Trust this directory (loads project extensions and settings)</span>
-        </label>
-
-        <ul className="dirlist">
-          {listing?.parent ? (
-            <li>
-              <button type="button" onClick={() => void load(listing.parent)}>
-                ../
-              </button>
-            </li>
-          ) : null}
-          {listing?.entries.map((entry) => (
-            <li key={entry.path}>
-              <button type="button" onClick={() => void load(entry.path)}>
-                {entry.name}/
-              </button>
-            </li>
-          ))}
-        </ul>
+    <ModalCard className="picker">
+      <div className="row spread">
+        <button type="button" onClick={onCancel}>
+          Cancel
+        </button>
+        <h1>New session</h1>
+        <button type="button" disabled={!path} onClick={() => path && onPick(path, trust)}>
+          Start here
+        </button>
       </div>
-    </div>
+      <p className="muted path">{path ?? "loading..."}</p>
+      {error ? <p className="error">{error}</p> : null}
+
+      <label className="row inline">
+        <input type="checkbox" checked={trust} onChange={(e) => setTrust(e.target.checked)} />
+        {/* Trust loads project-local extensions and settings, which is code
+            execution the user has to be able to decline. */}
+        <span>Trust this directory (loads project extensions and settings)</span>
+      </label>
+
+      <ul className="dirlist scroll-y">
+        {listing?.parent ? (
+          <li>
+            <ListRowButton onClick={() => void load(listing.parent)}>../</ListRowButton>
+          </li>
+        ) : null}
+        {listing?.entries.map((entry) => (
+          <li key={entry.path}>
+            <ListRowButton onClick={() => void load(entry.path)}>{entry.name}/</ListRowButton>
+          </li>
+        ))}
+      </ul>
+    </ModalCard>
   );
 }

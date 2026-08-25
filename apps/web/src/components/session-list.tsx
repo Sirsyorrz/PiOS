@@ -1,4 +1,6 @@
 import type { SessionSummary } from "@pios/protocol";
+import { basename, shortenPath } from "../format.ts";
+import { ListRowButton } from "./ui.tsx";
 
 export function SessionList({ sessions, activeId, onSelect, onCreate, onResume, onDispose }: {
   sessions: SessionSummary[];
@@ -33,18 +35,17 @@ export function SessionList({ sessions, activeId, onSelect, onCreate, onResume, 
         <ul>
           {ordered.map((session) => (
             <li key={session.sessionId} className={session.sessionId === activeId ? "active" : ""}>
-              <button
-                type="button"
+              <ListRowButton
                 className="session"
                 onClick={() => onSelect(session.sessionId)}
               >
-                <span className="name">{session.name ?? basename(session.cwd)}</span>
-                <span className="muted">{shortenPath(session.cwd)}</span>
+                <span className="name line">{session.name ?? basename(session.cwd)}</span>
+                <span className="muted line">{shortenPath(session.cwd)}</span>
                 <span className="tags">
                   <span className={`status ${session.status}`}>{session.status}</span>
                   {session.trusted ? null : <span className="status untrusted">untrusted</span>}
                 </span>
-              </button>
+              </ListRowButton>
               {/* Inside the card, over its top corner: a sibling column made
                   every row wider than the sidebar could afford. */}
               <button
@@ -61,14 +62,4 @@ export function SessionList({ sessions, activeId, onSelect, onCreate, onResume, 
       )}
     </nav>
   );
-}
-
-/** The directory name alone; the full path is shown under it. */
-function basename(path: string): string {
-  return path.split("/").filter(Boolean).at(-1) ?? path;
-}
-
-function shortenPath(path: string): string {
-  const parts = path.split("/").filter(Boolean);
-  return parts.length <= 2 ? path : `.../${parts.slice(-2).join("/")}`;
 }

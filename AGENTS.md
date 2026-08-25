@@ -42,6 +42,9 @@ No pi reimplementation, no permission/approval layer, no network management.
 - TypeScript, pnpm workspace. Shared logic is platform-free so web and native
   reuse it unchanged.
 - Protocol changes ship with a fixture-replay test.
+- The web UI composes the primitives in `apps/web/src/components/ui.tsx` and
+  the `.line`/`.scroll-y`/`.list-row` CSS utilities; no ad-hoc row, card, or
+  scroll-container styling.
 - Comments are short and explain *why*. No restating the code, no changelogs,
   no section numbers, no references to `spec.md` or `plan.md` from source.
   Code must read standalone; docs move, code stays.

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { probeEndpoint, type Endpoint, type Machine } from "../machine.ts";
+import { ListRowButton } from "./ui.tsx";
 
 type ProbeState = "unknown" | "checking" | "up" | "down";
 
@@ -51,14 +52,13 @@ export function EndpointPicker({ machine, onChange, onForget }: {
           const state = probeState(endpoint, checking === endpoint.key);
           return (
             <li key={endpoint.key} className={machine.preferredKey === endpoint.key ? "active" : ""}>
-              <button
-                type="button"
+              <ListRowButton
                 className="endpoint"
                 onClick={() => onChange({ ...machine, preferredKey: endpoint.key })}
               >
                 <span className="key">{endpoint.key}</span>
                 <span className="muted">{endpoint.url}</span>
-              </button>
+              </ListRowButton>
               <div className="row spread">
                 <span className={`probe ${state}`}>{probeLabel(state, endpoint)}</span>
                 <button type="button" onClick={() => void probe(endpoint)}>

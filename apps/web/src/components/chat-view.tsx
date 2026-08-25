@@ -31,13 +31,13 @@ export function ChatView({ sessionId, session, state, onTrust, onBack }: {
         <button type="button" className="back icon" onClick={onBack} aria-label="back to sessions">
           &lsaquo;
         </button>
-        <span className="title">{session?.name ?? session?.cwd ?? sessionId}</span>
+        <span className="title line">{session?.name ?? session?.cwd ?? sessionId}</span>
         <span className={`status ${view?.running ? "running" : (session?.status ?? "idle")}`}>
           {view?.interrupting ? "stopping" : view?.running ? "running" : (session?.status ?? "")}
         </span>
       </header>
 
-      <div className="transcript">
+      <div className="transcript scroll-y">
         {view?.items.map((item) => {
           if (item.kind === "message") {
             return <MessageBubble key={item.key} message={item.message} tools={view.tools} />;

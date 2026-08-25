@@ -1,6 +1,8 @@
 import type { ResumableSessionWire } from "@pios/protocol";
 import { useEffect, useState } from "react";
 import { useClient } from "../client-provider.tsx";
+import { basename, relativeTime } from "../format.ts";
+import { ListRowButton, ModalCard } from "./ui.tsx";
 
 /**
  * Sessions that exist on disk, including ones started in the pi TUI.
@@ -44,74 +46,53 @@ export function ResumePicker({
     : sessions;
 
   return (
-    <div className="screen centered">
-      {/* A card like every other full-screen step, but wider: these rows carry
-          a path and a preview line, not a single directory name. */}
-      <section className="card picker resume">
-        <header className="row spread">
+    // Wider than the other steps: these rows carry a path and a preview
+    // line, not a single directory name.
+    <ModalCard className="picker resume">
+      <header className="row spread">
           <h2>Resume a session</h2>
           <button type="button" onClick={onCancel}>
             Cancel
-          </button>
-        </header>
+        </button>
+      </header>
 
-        <input
-          value={filter}
-          placeholder="Filter by path or text"
-          onChange={(e) => setFilter(e.target.value)}
-        />
+      <input
+        value={filter}
+        placeholder="Filter by path or text"
+        onChange={(e) => setFilter(e.target.value)}
+      />
 
-        {!asked ? (
-          <p className="banner error">Not connected: the list may be stale.</p>
-        ) : null}
+      {!asked ? (
+        <p className="banner error">Not connected: the list may be stale.</p>
+      ) : null}
 
-        {loading ? (
-          <p className="muted loading">Reading sessions…</p>
-        ) : shown.length === 0 ? (
-          <p className="muted">Nothing to resume.</p>
-        ) : (
-          <ul className="resumable">
-            {shown.map((session) => (
-              <li key={session.path}>
-                <button
-                  type="button"
-                  className="session"
-                  onClick={() => onResume(session)}
-                >
-                  <span className="name">
-                    {session.name ?? basename(session.cwd)}
-                  </span>
-                  <span className="muted">{session.cwd}</span>
-                  <span className="preview">{session.preview}</span>
-                  <span className="tags">
-                    <span className="muted">{when(session.modifiedAt)}</span>
-                    <span className="muted">{session.messageCount} msgs</span>
-                    {/* Already open here: resuming attaches rather than forking. */}
-                    {session.live ? (
-                      <span className="status running">open</span>
-                    ) : null}
-                  </span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
-    </div>
+      {loading ? (
+        <p className="muted loading">Reading sessions…</p>
+      ) : shown.length === 0 ? (
+        <p className="muted">Nothing to resume.</p>
+      ) : (
+        <ul className="resumable scroll-y">
+          {shown.map((session) => (
+            <li key={session.path}>
+              <ListRowButton className="session" onClick={() => onResume(session)}>
+                <span className="name line">
+                  {session.name ?? basename(session.cwd)}
+                </span>
+                <span className="muted line">{session.cwd}</span>
+                <span className="preview line">{session.preview}</span>
+                <span className="tags">
+                  <span className="muted">{relativeTime(session.modifiedAt)}</span>
+                  <span className="muted">{session.messageCount} msgs</span>
+                  {/* Already open here: resuming attaches rather than forking. */}
+                  {session.live ? (
+                    <span className="status running">open</span>
+                  ) : null}
+                </span>
+              </ListRowButton>
+            </li>
+          ))}
+        </ul>
+      )}
+    </ModalCard>
   );
-}
-
-function basename(path: string): string {
-  return path.split("/").filter(Boolean).at(-1) ?? path;
-}
-
-function when(at: number): string {
-  const days = Math.floor((Date.now() - at) / 86_400_000);
-  if (days === 0)
-    return new Date(at).toLocaleTimeString([], {
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-  if (days === 1) return "yesterday";
-  return `${days}d ago`;
 }

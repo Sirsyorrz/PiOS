@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { pairWithMachine, type Machine } from "../machine.ts";
+import { ModalCard } from "./ui.tsx";
 
 const DEFAULT_PORT = 4111;
 
@@ -53,9 +54,8 @@ export function PairingScreen({ onPaired }: { onPaired: (machine: Machine) => vo
   }
 
   return (
-    <div className="screen centered">
-      <form className="card" onSubmit={submit}>
-        <h1>Pair with a machine</h1>
+    <ModalCard onSubmit={submit}>
+      <h1>Pair with a machine</h1>
         <p className="muted">
           Run <code>pios-server pair</code> on the machine and open the printed link, or paste the
           token below.
@@ -75,10 +75,9 @@ export function PairingScreen({ onPaired }: { onPaired: (machine: Machine) => vo
         </label>
 
         {error ? <p className="error">{error}</p> : null}
-        <button type="submit" disabled={busy || !token.trim()}>
-          {busy ? "Pairing..." : "Pair"}
-        </button>
-      </form>
-    </div>
+      <button type="submit" disabled={busy || !token.trim()}>
+        {busy ? "Pairing..." : "Pair"}
+      </button>
+    </ModalCard>
   );
 }

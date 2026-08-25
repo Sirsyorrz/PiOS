@@ -17,7 +17,7 @@ export function ToolCard({ tool }: { tool: ToolExecution }) {
     <div className={`tool ${tool.status} ${tool.isError ? "error" : ""}`}>
       <button type="button" className="tool-head" onClick={() => setOpen(!open)}>
         <span className="tool-name">{tool.toolName}</span>
-        <span className="muted">{summarise(tool)}</span>
+        <span className="muted line">{summarise(tool)}</span>
         <span className="tool-status">{tool.isError ? "failed" : tool.status}</span>
       </button>
 
