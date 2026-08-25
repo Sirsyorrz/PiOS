@@ -1,0 +1,6 @@
+- webapp reusable components
+- easy dev one command setup/run/pair
+- compare implementation with paseo, what can we learn/improve
+- are we still using tmux?
+- redesign styles
+- can we startup in chat view, and choose dir from there instead of being session picking first?
