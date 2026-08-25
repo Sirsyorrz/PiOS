@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ClientProvider, useClient, useSupervisorState } from "./client-provider.tsx";
 import {
   activeMachine,
@@ -73,6 +73,13 @@ function Workspace({ machine, onMachineChange, onForget }: {
     () => state.sessions.find((s) => s.sessionId === activeId) ?? null,
     [state.sessions, activeId],
   );
+
+  // A rejected session command has no other place to appear: it is not queued
+  // and it does not make the transcript stale.
+  useEffect(
+    () => client.onCommandError((error) => setNotice(`Rejected by the daemon: ${error.message}`)),
+    [client],
+  );
   const base = httpBase(machine);
 
   if (picking && base) {
@@ -130,15 +137,12 @@ function Workspace({ machine, onMachineChange, onForget }: {
           session={session}
           state={state}
           onBack={() => setActiveId(null)}
-          // Trust is decided when a session starts, so this starts a trusted
-          // one in the same directory and switches to it.
+          // pi reads trust at launch, so the daemon relaunches this session in
+          // place. Same id, same transcript, nothing to switch to.
           onTrust={() => {
             if (!session) return;
-            const sent = client.createSession(
-              { cwd: session.cwd, trustProject: true },
-              setActiveId,
-            );
-            setNotice(sent ? null : "Not connected: the session was not started.");
+            const sent = client.setSessionTrust(session.sessionId, true);
+            setNotice(sent ? null : "Not connected: the directory was not trusted.");
           }}
         />
       ) : (

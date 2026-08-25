@@ -118,6 +118,35 @@ test("a dead child is restarted and resumes from the persisted session", async (
   rmSync(dir, { recursive: true, force: true });
 });
 
+test("trusting a session relaunches it in place, keeping id and transcript", async () => {
+  const dir = tempDir();
+  const registry = subprocessRegistry(dir);
+  const session = await registry.create({ id: "trust-1", cwd: dir, trustProject: false });
+
+  const settled = waitFor(
+    session,
+    (e) => e.event.type === "agent_event" && e.event.event.type === "agent_settled",
+  );
+  await session.prompt("first");
+  await settled;
+  const before = await session.getEntries();
+
+  const recovered = waitFor(session, (e) => e.event.type === "session_recovered");
+  await registry.setProjectTrust("trust-1", true);
+  await recovered;
+
+  assert.equal(registry.list().length, 1, "trusting must not fork a second session");
+  assert.equal(session.info.trusted, true);
+  assert.equal(session.info.status, "idle");
+
+  const after = await session.getEntries();
+  assert.equal(after.leafId, before.leafId);
+  assert.equal(after.entries.length, before.entries.length);
+
+  await registry.disposeAll();
+  rmSync(dir, { recursive: true, force: true });
+});
+
 test("a crash mid-stream rewinds to the last durable entry", async () => {
   const dir = tempDir();
   const registry = subprocessRegistry(dir);

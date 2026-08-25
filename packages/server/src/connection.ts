@@ -137,6 +137,22 @@ export class Connection {
         return this.ack(frame.commandId);
       }
 
+      case "set_session_trust": {
+        const session = this.require(frame.sessionId, frame.commandId);
+        if (!session) return;
+        // Idempotent by nature: asking for the trust it already has is a no-op
+        // in the registry, so a redelivered frame needs no ledger claim.
+        await this.deps.registry.setProjectTrust(frame.sessionId, frame.trustProject);
+        this.deps.announceSessions?.();
+        return this.send({
+          v: WIRE_VERSION,
+          type: "session_state",
+          commandId: frame.commandId,
+          sessionId: frame.sessionId,
+          summary: toSummary(session.info),
+        });
+      }
+
       case "subscribe":
         return this.subscribe(frame);
 

@@ -81,6 +81,19 @@ export class SessionRegistry {
     return [...this.sessions.values()].map((session) => session.info);
   }
 
+  /**
+   * Trust change on a live session. Counted as a fresh start, so an intended
+   * relaunch does not eat into the crash budget.
+   */
+  async setProjectTrust(id: string, trustProject: boolean): Promise<boolean> {
+    const session = this.sessions.get(id);
+    if (!session || session.info.status === "disposed") return false;
+    await session.setProjectTrust(trustProject);
+    this.startedAt.set(id, this.options.now());
+    this.restarts.set(id, 0);
+    return true;
+  }
+
   async dispose(id: string): Promise<void> {
     const session = this.sessions.get(id);
     if (!session) return;

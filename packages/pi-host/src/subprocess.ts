@@ -287,6 +287,33 @@ export class SubprocessSession extends BaseSession implements PiSession {
   async restart(reason: string): Promise<void> {
     if (this.disposed) return;
     this.setStatus("crashed");
+    await this.relaunch(reason);
+  }
+
+  /**
+   * Reloads project trust without forking the conversation.
+   *
+   * pi decides trust from its launch flags, so the child has to be replaced.
+   * It is replaced on the same session id, so the transcript is the same file
+   * and clients keep their cursor instead of being moved to a new session.
+   */
+  async setProjectTrust(trustProject: boolean): Promise<void> {
+    if (this.disposed || this.trusted === trustProject) return;
+    this.createOptions.trustProject = trustProject;
+    this.setTrusted(trustProject);
+    const proc = this.proc;
+    this.proc = null;
+    if (proc) {
+      // Detached from recovery first: this exit is intended, not a crash.
+      proc.removeAllListeners("exit");
+      proc.stdin.end();
+      proc.kill("SIGTERM");
+    }
+    this.setStatus("starting");
+    await this.relaunch(trustProject ? "directory trusted" : "trust revoked");
+  }
+
+  private async relaunch(reason: string): Promise<void> {
     await this.spawnChild();
     this.publish({ type: "session_recovered", leafId: this.leafId, reason });
   }

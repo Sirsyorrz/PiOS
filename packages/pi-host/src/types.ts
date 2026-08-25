@@ -78,6 +78,14 @@ export interface PiSession {
   interrupt(): Promise<void>;
   dispose(): Promise<void>;
 
+  /**
+   * Reloads the session under a different project trust, in place.
+   *
+   * pi takes trust from its launch flags, so this replaces the agent; the
+   * session id, transcript, and subscribers survive it.
+   */
+  setProjectTrust(trustProject: boolean): Promise<void>;
+
   subscribe(listener: (event: BufferedEvent) => void): () => void;
   /** Buffered events after `sinceSeq`, for a client that was away. */
   replay(sinceSeq?: number): { events: BufferedEvent[]; gap: boolean };

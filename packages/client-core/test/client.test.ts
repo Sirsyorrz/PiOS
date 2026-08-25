@@ -195,7 +195,7 @@ test("a duplicate ack still clears the entry", async () => {
   assert.equal(client.outbox.list().length, 0);
 });
 
-test("a rejected prompt is kept for the user and marks sync, not transport", async () => {
+test("a rejected prompt is kept for the user without faking a stale transcript", async () => {
   const { transports, client } = setup();
   await flush();
   transports.last.acceptHello([summary({ sessionId: "s1" })]);
@@ -212,6 +212,46 @@ test("a rejected prompt is kept for the user and marks sync, not transport", asy
   const entryAfter = client.outbox.list()[0]!;
   assert.equal(entryAfter.status, "failed");
   assert.equal(client.supervisor.getState().transport, "connected", "still a healthy socket");
+  // The rejection says nothing about the transcript, so sync is untouched;
+  // the failure is visible on the outbox entry itself.
+  assert.notEqual(client.supervisor.getState().sync, "error");
+});
+
+test("a rejected one-off command is reported, not turned into a sync error", async () => {
+  const { transports, client } = setup();
+  await flush();
+  transports.last.acceptHello([summary({ sessionId: "s1" })]);
+
+  const seen: string[] = [];
+  client.onCommandError((error) => seen.push(error.message));
+  client.setSessionTrust("s1", true);
+  const sent = transports.last.sentOfType("set_session_trust")[0]!;
+  transports.last.emit({
+    v: WIRE_VERSION,
+    type: "error",
+    commandId: sent.commandId,
+    code: "bad_request",
+    message: "unknown frame",
+  });
+
+  assert.deepEqual(seen, ["unknown frame"]);
+  assert.notEqual(client.supervisor.getState().sync, "error");
+});
+
+test("a failed resync is still a sync error", async () => {
+  const { transports, client } = setup();
+  await flush();
+  transports.last.acceptHello([summary({ sessionId: "s1" })]);
+  client.watch("s1");
+  const sent = transports.last.sentOfType("get_entries")[0]!;
+  transports.last.emit({
+    v: WIRE_VERSION,
+    type: "error",
+    commandId: sent.commandId,
+    code: "unknown_session",
+    message: "gone",
+  });
+
   assert.equal(client.supervisor.getState().sync, "error");
 });
 

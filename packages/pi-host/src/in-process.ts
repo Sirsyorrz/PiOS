@@ -181,6 +181,19 @@ export class InProcessSession extends BaseSession implements PiSession {
    */
   async restart(reason: string): Promise<void> {
     this.setStatus("crashed");
+    await this.relaunch(reason);
+  }
+
+  /** Same contract as the subprocess host: same session id, new trust. */
+  async setProjectTrust(trustProject: boolean): Promise<void> {
+    if (this.disposed || this.trusted === trustProject) return;
+    this.createOptions.trustProject = trustProject;
+    this.setTrusted(trustProject);
+    this.setStatus("starting");
+    await this.relaunch(trustProject ? "directory trusted" : "trust revoked");
+  }
+
+  private async relaunch(reason: string): Promise<void> {
     this.unsubscribe?.();
     try {
       this.agent?.dispose();

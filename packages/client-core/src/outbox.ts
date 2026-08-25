@@ -120,12 +120,14 @@ export class ThreadOutbox {
    * Kept and marked failed rather than dropped: the user wrote it, and the
    * usual cause is a fixable one like a missing `streamingBehavior`.
    */
-  reject(commandId: string, error: string): void {
+  /** True when the failure belonged to a queued prompt, which now shows it. */
+  reject(commandId: string, error: string): boolean {
     const entry = this.entries.find((e) => e.commandId === commandId);
-    if (!entry) return;
+    if (!entry) return false;
     entry.status = "failed";
     entry.lastError = error;
     this.persist();
+    return true;
   }
 
   discard(commandId: string): void {

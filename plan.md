@@ -168,9 +168,10 @@ composer on the outbox, and the status banners.
 
 Three corrections to the steps below:
 
-- Trust is decided when a session starts, so the "trust this directory" action
-  starts a new trusted session in the same cwd instead of mutating the running
-  one.
+- Trust is fixed at pi's launch flags, so the "trust this directory" action
+  relaunches the child on the same session id (`set_session_trust`) instead of
+  creating a second session. The transcript, subscribers, and cursors survive;
+  clients see `session_recovered`.
 - Cached entries and live events overlap after a resync, so `sessionView` in
   `client-core` collapses them on content and folds `toolResult` messages onto
   their tool card. The UI renders one list, not three sources.

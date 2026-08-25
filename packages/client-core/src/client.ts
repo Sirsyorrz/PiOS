@@ -43,6 +43,17 @@ export class PiosClient {
   private readonly subscribed = new Set<string>();
   /** Create commands still waiting for the daemon to name their session. */
   private readonly pendingCreates = new Map<string, (sessionId: string) => void>();
+  /**
+   * Commands whose failure means the transcript is stale.
+   *
+   * Only these turn into a sync error. A rejected one-off command (an old
+   * daemon that does not know the frame, a busy agent) says nothing about
+   * whether the cached transcript is current, and reporting it as "out of
+   * sync" sends the user looking for a problem that is not there.
+   */
+  private readonly syncCommands = new Set<string>();
+  /** Failures of one-off commands, for the UI to say out loud. */
+  private readonly commandErrorHandlers = new Set<(error: { commandId?: string; message: string }) => void>();
   private lastTransport: SupervisorState["transport"] = "idle";
 
   constructor(options: PiosClientOptions) {
@@ -131,6 +142,29 @@ export class PiosClient {
     return sent;
   }
 
+  /**
+   * Relaunches a session with project trust enabled.
+   *
+   * The session id does not change, so the open transcript stays open; the
+   * daemon answers with `session_state` and pushes a `session_recovered`
+   * event once pi is back.
+   */
+  setSessionTrust(sessionId: string, trustProject: boolean): boolean {
+    return this.supervisor.send({
+      v: WIRE_VERSION,
+      type: "set_session_trust",
+      commandId: this.generateId(),
+      sessionId,
+      trustProject,
+    });
+  }
+
+  /** Notifies on a rejected one-off command. Returns an unsubscribe. */
+  onCommandError(handler: (error: { commandId?: string; message: string }) => void): () => void {
+    this.commandErrorHandlers.add(handler);
+    return () => this.commandErrorHandlers.delete(handler);
+  }
+
   disposeSession(sessionId: string): boolean {
     this.subscribed.delete(sessionId);
     this.sessions.clear(sessionId);
@@ -203,17 +237,21 @@ export class PiosClient {
     if (diverged) this.sessions.clear(sessionId);
 
     this.supervisor.setSyncStatus("syncing");
+    const entriesId = this.generateId();
+    const subscribeId = this.generateId();
+    this.syncCommands.add(entriesId);
+    this.syncCommands.add(subscribeId);
     this.supervisor.send({
       v: WIRE_VERSION,
       type: "get_entries",
-      commandId: this.generateId(),
+      commandId: entriesId,
       sessionId,
       since: cursor ?? undefined,
     });
     this.supervisor.send({
       v: WIRE_VERSION,
       type: "subscribe",
-      commandId: this.generateId(),
+      commandId: subscribeId,
       sessionId,
       sinceSeq: this.sessions.lastSeq(sessionId),
     });
@@ -224,17 +262,28 @@ export class PiosClient {
       case "ack":
         this.outbox.acknowledge(frame.commandId);
         break;
-      case "error":
-        if (frame.commandId) this.outbox.reject(frame.commandId, frame.message);
-        // A failed subscription on a healthy socket is a sync problem, not a
+      case "error": {
+        const queued = frame.commandId ? this.outbox.reject(frame.commandId, frame.message) : false;
+        const isSync = !!frame.commandId && this.syncCommands.delete(frame.commandId);
+        if (frame.code === "unauthorized") break;
+        // A failed resync on a healthy socket is a sync problem, not a
         // transport one, and must not trigger a reconnect.
-        if (frame.code !== "unauthorized") this.supervisor.setSyncStatus("error");
+        if (isSync) this.supervisor.setSyncStatus("error");
+        // A queued prompt already carries its own error in the outbox.
+        else if (!queued) {
+          for (const handler of [...this.commandErrorHandlers]) {
+            handler({ commandId: frame.commandId, message: frame.message });
+          }
+        }
         break;
+      }
       case "entries":
+        if (frame.commandId) this.syncCommands.delete(frame.commandId);
         this.sessions.applyEntries(frame.sessionId, frame.entries, frame.leafId, frame.reset);
         this.supervisor.setSyncStatus("synced");
         break;
       case "subscribed":
+        if (frame.commandId) this.syncCommands.delete(frame.commandId);
         // Buffered events were evicted, so the live transcript is missing a
         // middle. Rebuild it from entries instead of pretending it is whole.
         if (frame.gap) this.sessions.resetLiveTranscript(frame.sessionId);

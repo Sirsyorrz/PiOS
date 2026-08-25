@@ -17,7 +17,8 @@ export abstract class BaseSession {
   readonly id: string;
   readonly cwd: string;
   readonly name: string | undefined;
-  readonly trusted: boolean;
+
+  private trustedState: boolean;
 
   protected status: SessionStatus = "starting";
   protected leafId: string | null = null;
@@ -37,8 +38,17 @@ export abstract class BaseSession {
     this.id = args.id;
     this.cwd = args.cwd;
     this.name = args.name;
-    this.trusted = args.trusted;
+    this.trustedState = args.trusted;
     this.buffer = new EventRingBuffer(args.bufferCapacity);
+  }
+
+  /** Mutable: trusting a directory relaunches pi in place, it does not fork. */
+  get trusted(): boolean {
+    return this.trustedState;
+  }
+
+  protected setTrusted(trusted: boolean): void {
+    this.trustedState = trusted;
   }
 
   get info(): SessionInfo {

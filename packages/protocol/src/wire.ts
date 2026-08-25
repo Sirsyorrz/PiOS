@@ -42,6 +42,12 @@ export const ClientFrameSchema = z.discriminatedUnion("type", [
     model: z.string().optional(),
   }),
   Envelope({ type: z.literal("dispose_session"), sessionId: z.string() }),
+  // Relaunches the same session under new trust; it never forks a new one.
+  Envelope({
+    type: z.literal("set_session_trust"),
+    sessionId: z.string(),
+    trustProject: z.boolean(),
+  }),
   Envelope({
     type: z.literal("subscribe"),
     sessionId: z.string(),
