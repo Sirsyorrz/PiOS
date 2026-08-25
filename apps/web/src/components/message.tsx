@@ -1,6 +1,7 @@
 import { messageText, type AgentMessage, type PartialMessage, type ToolExecution } from "@pios/protocol";
 import { useState } from "react";
 import { EyeIcon, EyeOffIcon } from "./icons.tsx";
+import { Markdown } from "./markdown.tsx";
 import { ToolCard } from "./tool-card.tsx";
 
 export function MessageBubble({ message, tools }: {
@@ -26,7 +27,7 @@ export function MessageBubble({ message, tools }: {
   return (
     <div className="bubble assistant">
       {message.content.map((part, index) => {
-        if (part.type === "text") return <p key={index}>{part.text}</p>;
+        if (part.type === "text") return <Markdown key={index} text={part.text} />;
         if (part.type === "thinking") return <Thinking key={index} text={part.thinking} />;
         if (part.type === "image") {
           return <img key={index} alt="" src={`data:${part.mimeType};base64,${part.data}`} />;
@@ -52,7 +53,7 @@ export function StreamingBubble({ partial, tools }: {
   return (
     <div className="bubble assistant streaming">
       {partial.content.map((part, index) => {
-        if (part.type === "text") return <p key={index}>{part.text}</p>;
+        if (part.type === "text") return <Markdown key={index} text={part.text} />;
         if (part.type === "thinking") return <Thinking key={index} text={part.thinking} />;
         const tool = part.id ? tools.get(part.id) : undefined;
         if (tool) return <ToolCard key={part.id} tool={tool} />;

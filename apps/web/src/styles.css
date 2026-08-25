@@ -684,7 +684,7 @@ button.danger {
   margin: 0 0 12px;
 }
 
-.bubble p:last-child {
+.bubble > :last-child {
   margin-bottom: 0;
 }
 
@@ -708,6 +708,75 @@ button.danger {
 .bubble img {
   max-width: 100%;
   border-radius: 12px;
+}
+
+/*
+ * Markdown inside a turn. Everything is sized off the body text: an assistant
+ * heading marks a section of one answer, not a level of the page.
+ */
+.md-heading {
+  margin: 16px 0 8px;
+  font-size: 1em;
+  font-weight: 650;
+  line-height: 1.35;
+}
+
+.bubble > .md-heading:first-child {
+  margin-top: 0;
+}
+
+.md-list {
+  margin: 0 0 12px;
+  padding-left: 1.4em;
+}
+
+.md-list li {
+  margin: 2px 0;
+}
+
+.md-quote {
+  margin: 0 0 12px;
+  padding-left: 12px;
+  border-left: 2px solid var(--border, rgba(255, 255, 255, 0.15));
+  color: var(--muted);
+}
+
+.md-rule {
+  border: 0;
+  border-top: 1px solid var(--border, rgba(255, 255, 255, 0.15));
+  margin: 16px 0;
+}
+
+.md-inline-code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.9em;
+  background: rgba(0, 0, 0, 0.35);
+  border-radius: 5px;
+  padding: 1px 5px;
+}
+
+.md-code {
+  background: rgba(0, 0, 0, 0.35);
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin: 0 0 12px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  /* Code is the one place indentation carries meaning, so it scrolls
+     sideways instead of wrapping into a different program. */
+  overflow-x: auto;
+  white-space: pre;
+  -webkit-overflow-scrolling: touch;
+}
+
+.md-code code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.bubble a {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 
 .bubble.streaming .cursor::after {
