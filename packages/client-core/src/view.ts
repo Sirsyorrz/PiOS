@@ -51,6 +51,23 @@ export function sessionView(
     const key = messageKey(message);
     if (seen.has(key)) return;
     seen.add(key);
+    // Arguments live on the assistant turn that made the call, and the result
+    // arrives as a separate entry. Without this the card from a resumed
+    // session shows output with no command.
+    if (message.role === "assistant") {
+      for (const part of message.content) {
+        if (part.type !== "toolCall") continue;
+        const existing = tools.get(part.id);
+        tools.set(part.id, {
+          toolCallId: part.id,
+          toolName: part.name,
+          args: part.arguments,
+          result: existing?.result,
+          isError: existing?.isError ?? false,
+          status: existing?.status ?? "running",
+        });
+      }
+    }
     // Tool results belong on their tool card, not as a bubble of their own.
     if (message.role === "toolResult") {
       const existing = tools.get(message.toolCallId);
@@ -78,6 +95,7 @@ export function sessionView(
     const historic = tools.get(tool.toolCallId);
     tools.set(tool.toolCallId, {
       ...tool,
+      args: tool.args ?? historic?.args,
       result: tool.result ?? historic?.result,
       isError: tool.isError || (historic?.isError ?? false),
     });

@@ -8,18 +8,31 @@ import { useClient } from "../client-provider.tsx";
  * The daemon and the TUI share one session directory, so this list is the
  * bridge between them: picking a row continues that transcript here.
  */
-export function ResumePicker({ onResume, onCancel }: {
+export function ResumePicker({
+  onResume,
+  onCancel,
+}: {
   onResume: (session: ResumableSessionWire) => void;
   onCancel: () => void;
 }) {
   const client = useClient();
-  const [sessions, setSessions] = useState<ResumableSessionWire[]>(() => client.getResumable());
+  const [sessions, setSessions] = useState<ResumableSessionWire[]>(() =>
+    client.getResumable(),
+  );
   const [filter, setFilter] = useState("");
   const [asked, setAsked] = useState(false);
+  // Scanning every session file takes seconds on a large history, so the
+  // empty state must not claim there is nothing before the answer arrives.
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const off = client.onResumable(setSessions);
-    setAsked(client.listResumable({ limit: 100 }));
+    const off = client.onResumable((found) => {
+      setSessions(found);
+      setLoading(false);
+    });
+    const sent = client.listResumable({ limit: 100 });
+    setAsked(sent);
+    setLoading(sent);
     return off;
   }, [client]);
 
@@ -31,44 +44,60 @@ export function ResumePicker({ onResume, onCancel }: {
     : sessions;
 
   return (
-    <section className="picker">
-      <header className="row spread">
-        <h2>Resume a session</h2>
-        <button type="button" onClick={onCancel}>
-          Cancel
-        </button>
-      </header>
+    <div className="screen centered">
+      {/* A card like every other full-screen step, but wider: these rows carry
+          a path and a preview line, not a single directory name. */}
+      <section className="card picker resume">
+        <header className="row spread">
+          <h2>Resume a session</h2>
+          <button type="button" onClick={onCancel}>
+            Cancel
+          </button>
+        </header>
 
-      <input
-        value={filter}
-        placeholder="Filter by path or text"
-        onChange={(e) => setFilter(e.target.value)}
-      />
+        <input
+          value={filter}
+          placeholder="Filter by path or text"
+          onChange={(e) => setFilter(e.target.value)}
+        />
 
-      {!asked ? <p className="banner error">Not connected: the list may be stale.</p> : null}
+        {!asked ? (
+          <p className="banner error">Not connected: the list may be stale.</p>
+        ) : null}
 
-      {shown.length === 0 ? (
-        <p className="muted">Nothing to resume.</p>
-      ) : (
-        <ul className="resumable">
-          {shown.map((session) => (
-            <li key={session.path}>
-              <button type="button" className="session" onClick={() => onResume(session)}>
-                <span className="name">{session.name ?? basename(session.cwd)}</span>
-                <span className="muted">{session.cwd}</span>
-                <span className="preview">{session.preview}</span>
-                <span className="tags">
-                  <span className="muted">{when(session.modifiedAt)}</span>
-                  <span className="muted">{session.messageCount} msgs</span>
-                  {/* Already open here: resuming attaches rather than forking. */}
-                  {session.live ? <span className="status running">open</span> : null}
-                </span>
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
-    </section>
+        {loading ? (
+          <p className="muted loading">Reading sessions…</p>
+        ) : shown.length === 0 ? (
+          <p className="muted">Nothing to resume.</p>
+        ) : (
+          <ul className="resumable">
+            {shown.map((session) => (
+              <li key={session.path}>
+                <button
+                  type="button"
+                  className="session"
+                  onClick={() => onResume(session)}
+                >
+                  <span className="name">
+                    {session.name ?? basename(session.cwd)}
+                  </span>
+                  <span className="muted">{session.cwd}</span>
+                  <span className="preview">{session.preview}</span>
+                  <span className="tags">
+                    <span className="muted">{when(session.modifiedAt)}</span>
+                    <span className="muted">{session.messageCount} msgs</span>
+                    {/* Already open here: resuming attaches rather than forking. */}
+                    {session.live ? (
+                      <span className="status running">open</span>
+                    ) : null}
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+    </div>
   );
 }
 
@@ -78,7 +107,11 @@ function basename(path: string): string {
 
 function when(at: number): string {
   const days = Math.floor((Date.now() - at) / 86_400_000);
-  if (days === 0) return new Date(at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  if (days === 0)
+    return new Date(at).toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
   if (days === 1) return "yesterday";
   return `${days}d ago`;
 }

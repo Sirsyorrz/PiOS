@@ -381,6 +381,9 @@ button.danger {
   display: flex;
   flex-direction: column;
   min-height: 0;
+  /* A grid item defaults to min-content width, so one long line of tool
+     output would widen the column and scroll the whole page sideways. */
+  min-width: 0;
   height: 100%;
   padding: 12px;
   gap: 8px;
@@ -448,6 +451,7 @@ button.danger {
   border-radius: 10px;
   margin: 6px 0;
   padding: 8px;
+  min-width: 0;
 }
 
 .tool.error {
@@ -458,10 +462,21 @@ button.danger {
   display: flex;
   gap: 8px;
   width: 100%;
+  min-width: 0;
   border: none;
   background: none;
   padding: 0;
   text-align: left;
+}
+
+/* A shell command is one long line. Clipped to the row, or it stretches the
+   whole transcript and the page scrolls sideways. */
+.tool-head .muted {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .tool-name {
@@ -565,6 +580,21 @@ button.danger {
 
 .probe.down {
   color: var(--error);
+}
+
+/* Wider than the other cards: every row carries a path and a preview line. */
+.picker.resume {
+  width: min(720px, 100%);
+}
+
+.picker.resume h2 {
+  margin: 0;
+  font-size: 17px;
+}
+
+/* The list scrolls; the filter above it must not sit on the first row. */
+.picker.resume .resumable {
+  margin-top: 4px;
 }
 
 /* The resume list is a full-screen picker, not a sidebar: rows can afford a

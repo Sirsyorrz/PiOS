@@ -119,3 +119,36 @@ test("a stopped agent stops looking busy even without agent_settled", () => {
   assert.equal(view.running, false);
   assert.equal(view.interrupting, false);
 });
+
+test("a tool card rebuilt from history keeps the call, not just its output", () => {
+  const store = new SessionStore();
+  store.applyEntries(
+    "s1",
+    [
+      {
+        id: "e1",
+        type: "message",
+        message: {
+          role: "assistant",
+          content: [{ type: "toolCall", id: "t1", name: "bash", arguments: { command: "ls -la" } }],
+        },
+      },
+      {
+        id: "e2",
+        type: "message",
+        message: {
+          role: "toolResult",
+          toolCallId: "t1",
+          toolName: "bash",
+          content: [{ type: "text", text: "total 0" }],
+        },
+      },
+    ],
+    "e2",
+    true,
+  );
+
+  const tool = sessionView(store, [], "s1").tools.get("t1");
+  assert.deepEqual(tool?.args, { command: "ls -la" });
+  assert.equal(tool?.status, "done");
+});
