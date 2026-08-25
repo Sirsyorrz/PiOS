@@ -17,6 +17,20 @@ export function ChatView({ sessionId, session, state, onTrust, onBack }: {
   const client = useClient();
   const view = useSessionView(sessionId);
   const bottom = useRef<HTMLDivElement>(null);
+  const pane = useRef<HTMLElement>(null);
+  const dock = useRef<HTMLDivElement>(null);
+
+  // The dock floats over the transcript, so the transcript has to reserve
+  // exactly as much room as the dock currently takes.
+  useEffect(() => {
+    const box = dock.current;
+    if (!box) return;
+    const measure = new ResizeObserver(() => {
+      pane.current?.style.setProperty("--dock-height", `${box.offsetHeight}px`);
+    });
+    measure.observe(box);
+    return () => measure.disconnect();
+  }, []);
 
   useEffect(() => {
     bottom.current?.scrollIntoView({ block: "end" });
@@ -37,7 +51,7 @@ export function ChatView({ sessionId, session, state, onTrust, onBack }: {
   }
 
   return (
-    <section className="chat">
+    <section className="chat" ref={pane}>
       <header className="chat-header">
         <button type="button" className="back icon ghost" onClick={onBack} aria-label="back to sessions">
           <ChevronLeftIcon />
@@ -79,6 +93,7 @@ export function ChatView({ sessionId, session, state, onTrust, onBack }: {
         <div ref={bottom} />
       </div>
 
+      <div className="dock" ref={dock}>
       {view && (view.queue.steering.length > 0 || view.queue.followUp.length > 0) ? (
         // The daemon's own queue, distinct from the outbox: these were
         // delivered and are waiting on the agent, not on the network.
@@ -107,6 +122,7 @@ export function ChatView({ sessionId, session, state, onTrust, onBack }: {
         onSend={send}
         onInterrupt={() => client.interrupt(sessionId)}
       />
+      </div>
     </section>
   );
 }

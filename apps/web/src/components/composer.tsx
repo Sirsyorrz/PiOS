@@ -1,5 +1,5 @@
 import type { ImageContent, StreamingBehavior } from "@pios/protocol";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { browserStorage } from "../storage.ts";
 import { PlusIcon, SendIcon, StopIcon } from "./icons.tsx";
 
@@ -23,6 +23,18 @@ export function Composer({ sessionId, running, interrupting, onSend, onInterrupt
   const [text, setText] = useState("");
   const [images, setImages] = useState<ImageContent[]>([]);
   const [behavior, setBehavior] = useState<StreamingBehavior>("steer");
+  const field = useRef<HTMLTextAreaElement>(null);
+
+  // One line until there is more to show: a tall empty box eats transcript on
+  // a phone. The height has to be reset before it is read, or it only grows.
+  function resize() {
+    const box = field.current;
+    if (!box) return;
+    box.style.height = "auto";
+    box.style.height = `${box.scrollHeight}px`;
+  }
+
+  useEffect(resize, [text]);
 
   useEffect(() => {
     setText(browserStorage.get(DRAFT_PREFIX + sessionId) ?? "");
@@ -68,8 +80,9 @@ export function Composer({ sessionId, running, interrupting, onSend, onInterrupt
       ) : null}
 
       <textarea
+        ref={field}
         value={text}
-        rows={3}
+        rows={1}
         placeholder="Message pi"
         onChange={(e) => edit(e.target.value)}
         onKeyDown={(e) => {
