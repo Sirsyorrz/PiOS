@@ -11,9 +11,11 @@ const DRAFT_PREFIX = "pios.draft.";
  * evicted at any moment on a phone, and never touches the socket: sending
  * means queueing.
  */
-export function Composer({ sessionId, running, onSend, onInterrupt }: {
+export function Composer({ sessionId, running, interrupting, onSend, onInterrupt }: {
   sessionId: string;
   running: boolean;
+  /** Stop was sent and the agent has not stopped yet. */
+  interrupting: boolean;
   onSend: (text: string, images: ImageContent[], behavior?: StreamingBehavior) => void;
   onInterrupt: () => void;
 }) {
@@ -91,8 +93,13 @@ export function Composer({ sessionId, running, onSend, onInterrupt }: {
         ) : null}
 
         {running ? (
-          <button type="button" className="danger" onClick={onInterrupt}>
-            Stop
+          <button
+            type="button"
+            className="danger"
+            disabled={interrupting}
+            onClick={onInterrupt}
+          >
+            {interrupting ? "Stopping" : "Stop"}
           </button>
         ) : null}
         <button type="button" onClick={send}>

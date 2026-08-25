@@ -104,3 +104,18 @@ test("banner state is carried out of the event stream", () => {
   assert.equal(status.compaction?.reason, "threshold");
   assert.equal(status.extensionErrors[0]?.error, "boom");
 });
+
+test("a stopped agent stops looking busy even without agent_settled", () => {
+  const store = new SessionStore();
+  store.applyEvent("s1", 1, { type: "agent_start" } as AgentEvent);
+  assert.equal(sessionView(store, [], "s1").running, true);
+
+  store.setInterrupting("s1", true);
+  assert.equal(sessionView(store, [], "s1").interrupting, true);
+
+  // The daemon aborts the turn and reports idle; no `agent_settled` arrives.
+  store.setDaemonStatus("s1", "idle");
+  const view = sessionView(store, [], "s1");
+  assert.equal(view.running, false);
+  assert.equal(view.interrupting, false);
+});

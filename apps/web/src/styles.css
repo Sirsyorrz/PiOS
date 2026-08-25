@@ -566,3 +566,41 @@ button.danger {
 .probe.down {
   color: var(--error);
 }
+
+/* The resume list is a full-screen picker, not a sidebar: rows can afford a
+   preview line, and there can be hundreds of them. */
+.picker .resumable {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+}
+
+.picker .resumable .session {
+  width: 100%;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 8px 12px;
+}
+
+.picker .resumable .name,
+.picker .resumable .muted,
+.picker .resumable .preview {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.picker .resumable .preview {
+  font-size: 12px;
+  color: var(--muted);
+}

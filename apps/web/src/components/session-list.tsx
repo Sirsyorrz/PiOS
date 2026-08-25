@@ -1,10 +1,11 @@
 import type { SessionSummary } from "@pios/protocol";
 
-export function SessionList({ sessions, activeId, onSelect, onCreate, onDispose }: {
+export function SessionList({ sessions, activeId, onSelect, onCreate, onResume, onDispose }: {
   sessions: SessionSummary[];
   activeId: string | null;
   onSelect: (sessionId: string) => void;
   onCreate: () => void;
+  onResume: () => void;
   onDispose: (sessionId: string) => void;
 }) {
   const ordered = [...sessions].sort((a, b) => b.updatedAt - a.updatedAt);
@@ -13,9 +14,16 @@ export function SessionList({ sessions, activeId, onSelect, onCreate, onDispose 
     <nav className="sessions">
       <div className="row spread section-head">
         <h2>Sessions</h2>
-        <button type="button" onClick={onCreate}>
-          New
-        </button>
+        <span className="row">
+          {/* Sessions started in the pi TUI live in the same directory, so
+              they are reachable from here too. */}
+          <button type="button" onClick={onResume}>
+            Resume
+          </button>
+          <button type="button" onClick={onCreate}>
+            New
+          </button>
+        </span>
       </div>
       {/* No empty list element: it would still take a gap and push the empty
           state away from its heading. */}

@@ -19,6 +19,8 @@ export interface SessionView {
   tools: Map<string, ToolExecution>;
   queue: { steering: string[]; followUp: string[] };
   running: boolean;
+  /** Stop was sent and the agent has not stopped yet. */
+  interrupting: boolean;
   status: TranscriptStatus;
 }
 
@@ -89,11 +91,18 @@ export function sessionView(
     items.push({ kind: "pending", key: `p:${entry.messageId}`, entry });
   }
 
+  // The daemon is authoritative about the agent being busy. An aborted turn
+  // can end without `agent_settled`, and then the event stream alone would
+  // leave the transcript running for the rest of the session's life.
+  const daemonStatus = store.status(sessionId);
+  const running = transcript.running && daemonStatus !== "idle";
+
   return {
     items,
     tools,
     queue: transcript.queue,
-    running: transcript.running,
+    running,
+    interrupting: running && store.isInterrupting(sessionId),
     status: transcript.status,
   };
 }

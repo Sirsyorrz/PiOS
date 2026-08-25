@@ -1,3 +1,6 @@
+import { existsSync } from "node:fs";
+import { readdir } from "node:fs/promises";
+import { join, resolve } from "node:path";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 
 /**
@@ -37,15 +40,66 @@ export function createSessionLister(defaults: ListResumableOptions = {}): Sessio
     const limit = options.limit ?? defaults.limit ?? DEFAULT_LIMIT;
     const cwd = options.cwd ?? defaults.cwd;
 
-    const found = cwd
-      ? await SessionManager.list(cwd, sessionDir)
-      : await SessionManager.listAll(sessionDir);
+    const found = cwd ? await listForCwd(cwd, sessionDir) : await listEverything(sessionDir);
 
     return found
       .map(toResumable)
       .sort((a, b) => b.modifiedAt - a.modifiedAt)
       .slice(0, limit);
   };
+}
+
+/**
+ * pi's `sessionDir` is one project's directory, not the root above them.
+ *
+ * The root holds one encoded directory per project, so a plain `listAll(root)`
+ * finds nothing: every file is one level further down.
+ */
+async function listEverything(root?: string): Promise<PiSessionInfo[]> {
+  if (!root) return SessionManager.listAll();
+  const leaves = await leafDirs(root);
+  // The root itself is included for a flat directory, e.g. a test fixture.
+  const batches = await Promise.all([root, ...leaves].map((dir) => SessionManager.listAll(dir)));
+  return batches.flat();
+}
+
+async function listForCwd(cwd: string, root?: string): Promise<PiSessionInfo[]> {
+  if (!root) return SessionManager.list(cwd);
+  const leaf = leafDirFor(cwd, root);
+  if (existsSync(leaf)) return SessionManager.list(cwd, leaf);
+  // A session file can name a cwd that does not match the directory it sits
+  // in, e.g. after a fork, so falling back to a filtered scan is not dead code.
+  const all = await listEverything(root);
+  const resolved = resolve(cwd);
+  return all.filter((session) => resolve(session.cwd || "/") === resolved);
+}
+
+/** Mirrors pi's own encoding, so one project maps to exactly one directory. */
+function leafDirFor(cwd: string, root: string): string {
+  const safe = `--${resolve(cwd).replace(/^[/\\]/, "").replace(/[/\\:]/g, "-")}--`;
+  return join(root, safe);
+}
+
+async function leafDirs(root: string): Promise<string[]> {
+  try {
+    const entries = await readdir(root, { withFileTypes: true });
+    return entries
+      .filter((entry) => entry.isDirectory() || entry.isSymbolicLink())
+      .map((entry) => join(root, entry.name));
+  } catch {
+    return [];
+  }
+}
+
+interface PiSessionInfo {
+  path: string;
+  id: string;
+  cwd: string;
+  name?: string;
+  created: Date;
+  modified: Date;
+  messageCount: number;
+  firstMessage: string;
 }
 
 function toResumable(info: {

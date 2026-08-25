@@ -29,6 +29,10 @@ export interface ApplyResult {
 export class SessionStore {
   private readonly caches = new Map<string, SessionCache>();
   private readonly assemblers = new Map<string, TranscriptAssembler>();
+  /** Last status the daemon reported. Never persisted: it is live state. */
+  private readonly daemonStatus = new Map<string, string>();
+  /** Interrupt sent, agent not yet observed stopping. */
+  private readonly interrupting = new Set<string>();
   private readonly storage: StorageAdapter | null;
   private readonly listeners = new Set<(sessionId: string) => void>();
 
@@ -114,6 +118,7 @@ export class SessionStore {
     const cache = this.get(sessionId);
     cache.lastSeq = Math.max(cache.lastSeq, seq);
     this.assembler(sessionId).apply(event);
+    if (event.type === "agent_settled") this.interrupting.delete(sessionId);
     this.notify(sessionId);
   }
 
@@ -121,10 +126,39 @@ export class SessionStore {
     return this.assembler(sessionId).snapshot();
   }
 
+  /**
+   * The daemon's view of whether the agent is working.
+   *
+   * Needed because an aborted turn does not always produce `agent_settled`:
+   * without this the transcript would stay "running" forever after a stop.
+   */
+  setDaemonStatus(sessionId: string, status: string): void {
+    if (this.daemonStatus.get(sessionId) === status) return;
+    this.daemonStatus.set(sessionId, status);
+    if (status !== "running") this.interrupting.delete(sessionId);
+    this.notify(sessionId);
+  }
+
+  status(sessionId: string): string | undefined {
+    return this.daemonStatus.get(sessionId);
+  }
+
+  setInterrupting(sessionId: string, interrupting: boolean): void {
+    if (interrupting) this.interrupting.add(sessionId);
+    else this.interrupting.delete(sessionId);
+    this.notify(sessionId);
+  }
+
+  isInterrupting(sessionId: string): boolean {
+    return this.interrupting.has(sessionId);
+  }
+
   /** Drops everything for a session, for a reset or a dispose. */
   clear(sessionId: string): void {
     this.caches.delete(sessionId);
     this.assemblers.delete(sessionId);
+    this.daemonStatus.delete(sessionId);
+    this.interrupting.delete(sessionId);
     this.storage?.remove(STORAGE_PREFIX + sessionId);
     this.notify(sessionId);
   }

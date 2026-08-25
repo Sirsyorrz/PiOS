@@ -14,6 +14,7 @@ import { ChatView } from "./components/chat-view.tsx";
 import { DirectoryPicker } from "./components/directory-picker.tsx";
 import { EndpointPicker } from "./components/endpoint-picker.tsx";
 import { PairingScreen } from "./components/pairing-screen.tsx";
+import { ResumePicker } from "./components/resume-picker.tsx";
 import { SessionList } from "./components/session-list.tsx";
 
 export function App() {
@@ -65,6 +66,7 @@ function Workspace({ machine, onMachineChange, onForget }: {
   const state = useSupervisorState();
   const [activeId, setActiveId] = useState<string | null>(null);
   const [picking, setPicking] = useState(false);
+  const [resuming, setResuming] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   // Session commands are not queued, so a dropped one has to be said out loud.
   const [notice, setNotice] = useState<string | null>(null);
@@ -81,6 +83,24 @@ function Workspace({ machine, onMachineChange, onForget }: {
     [client],
   );
   const base = httpBase(machine);
+
+  if (resuming) {
+    return (
+      <ResumePicker
+        onCancel={() => setResuming(false)}
+        onResume={(session) => {
+          // Same call as a new session: the daemon decides whether this is an
+          // attach to something already open or a fresh load of the file.
+          const sent = client.createSession(
+            { cwd: session.cwd, name: session.name, trustProject: true, resumeFrom: session.path },
+            setActiveId,
+          );
+          setNotice(sent ? null : "Not connected: the session was not resumed.");
+          setResuming(false);
+        }}
+      />
+    );
+  }
 
   if (picking && base) {
     return (
@@ -124,6 +144,7 @@ function Workspace({ machine, onMachineChange, onForget }: {
           activeId={activeId}
           onSelect={setActiveId}
           onCreate={() => setPicking(true)}
+          onResume={() => setResuming(true)}
           onDispose={(sessionId) => {
             client.disposeSession(sessionId);
             if (sessionId === activeId) setActiveId(null);

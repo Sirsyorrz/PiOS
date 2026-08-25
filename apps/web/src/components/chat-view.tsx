@@ -33,7 +33,7 @@ export function ChatView({ sessionId, session, state, onTrust, onBack }: {
         </button>
         <span className="title">{session?.name ?? session?.cwd ?? sessionId}</span>
         <span className={`status ${view?.running ? "running" : (session?.status ?? "idle")}`}>
-          {view?.running ? "running" : (session?.status ?? "")}
+          {view?.interrupting ? "stopping" : view?.running ? "running" : (session?.status ?? "")}
         </span>
       </header>
 
@@ -91,6 +91,7 @@ export function ChatView({ sessionId, session, state, onTrust, onBack }: {
       <Composer
         sessionId={sessionId}
         running={view?.running ?? false}
+        interrupting={view?.interrupting ?? false}
         onSend={send}
         onInterrupt={() => client.interrupt(sessionId)}
       />

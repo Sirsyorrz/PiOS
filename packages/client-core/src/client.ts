@@ -1,4 +1,10 @@
-import { WIRE_VERSION, type ImageContent, type StreamingBehavior } from "@pios/protocol";
+import {
+  WIRE_VERSION,
+  type ImageContent,
+  type ResumableSessionWire,
+  type SessionSummary,
+  type StreamingBehavior,
+} from "@pios/protocol";
 import { AppStatePolicy } from "./app-state.ts";
 import type { BackoffOptions } from "./backoff.ts";
 import { ThreadOutbox, outboxFrame, type OutboxEntry } from "./outbox.ts";
@@ -52,6 +58,9 @@ export class PiosClient {
    * sync" sends the user looking for a problem that is not there.
    */
   private readonly syncCommands = new Set<string>();
+  /** Sessions on disk, from the last `listResumable`. */
+  private resumable: ResumableSessionWire[] = [];
+  private readonly resumableHandlers = new Set<(sessions: ResumableSessionWire[]) => void>();
   /** Failures of one-off commands, for the UI to say out loud. */
   private readonly commandErrorHandlers = new Set<(error: { commandId?: string; message: string }) => void>();
   private lastTransport: SupervisorState["transport"] = "idle";
@@ -123,6 +132,11 @@ export class PiosClient {
       name?: string;
       trustProject?: boolean;
       model?: string;
+      /**
+       * Session file to adopt, from `listResumable`. Continues a transcript
+       * started elsewhere, including one started in the pi TUI.
+       */
+      resumeFrom?: string;
     },
     /** Called once the daemon names the session, so the UI can open it. */
     onCreated?: (sessionId: string) => void,
@@ -137,9 +151,35 @@ export class PiosClient {
       name: args.name,
       trustProject: args.trustProject ?? false,
       model: args.model,
+      resumeFrom: args.resumeFrom,
     });
     if (!sent) this.pendingCreates.delete(commandId);
     return sent;
+  }
+
+  /**
+   * Asks for the sessions on disk, including ones this daemon never started.
+   *
+   * Not queued and not cached across reconnects: the answer is a directory
+   * listing, and a stale one is worse than asking again.
+   */
+  listResumable(args: { cwd?: string; limit?: number } = {}): boolean {
+    return this.supervisor.send({
+      v: WIRE_VERSION,
+      type: "list_resumable",
+      commandId: this.generateId(),
+      cwd: args.cwd,
+      limit: args.limit,
+    });
+  }
+
+  getResumable(): ResumableSessionWire[] {
+    return this.resumable;
+  }
+
+  onResumable(handler: (sessions: ResumableSessionWire[]) => void): () => void {
+    this.resumableHandlers.add(handler);
+    return () => this.resumableHandlers.delete(handler);
   }
 
   /**
@@ -185,13 +225,21 @@ export class PiosClient {
     });
   }
 
+  /**
+   * Asks the agent to stop.
+   *
+   * Marked locally as well as sent, because the stop is not instant and a
+   * button that goes back to looking idle reads as "nothing happened".
+   */
   interrupt(sessionId: string): boolean {
-    return this.supervisor.send({
+    const sent = this.supervisor.send({
       v: WIRE_VERSION,
       type: "interrupt",
       commandId: this.generateId(),
       sessionId,
     });
+    if (sent) this.sessions.setInterrupting(sessionId, true);
+    return sent;
   }
 
   /** Marks a session live: subscribed now and after every reconnect. */
@@ -292,11 +340,20 @@ export class PiosClient {
         this.sessions.applyEvent(frame.sessionId, frame.seq, frame.event);
         break;
       case "session_state": {
+        this.trackStatus([frame.summary]);
         const onCreated = frame.commandId ? this.pendingCreates.get(frame.commandId) : undefined;
         if (frame.commandId) this.pendingCreates.delete(frame.commandId);
         onCreated?.(frame.sessionId);
         break;
       }
+      case "welcome":
+      case "sessions":
+        this.trackStatus(frame.sessions);
+        break;
+      case "resumable_sessions":
+        this.resumable = frame.sessions;
+        for (const handler of [...this.resumableHandlers]) handler(this.resumable);
+        break;
       case "session_recovered":
         if (this.sessions.needsFullRefetch(frame.sessionId, frame.leafId)) {
           this.sessions.clear(frame.sessionId);
@@ -305,6 +362,12 @@ export class PiosClient {
         break;
       default:
         break;
+    }
+  }
+
+  private trackStatus(summaries: SessionSummary[]): void {
+    for (const summary of summaries) {
+      this.sessions.setDaemonStatus(summary.sessionId, summary.status);
     }
   }
 }
