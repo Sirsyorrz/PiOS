@@ -4,4 +4,4 @@
 - are we still using tmux?
 - can we startup in chat view, and choose dir from there instead of being session picking first?
 - move the chat input up on mobile while keyboard is open, so that we can still see chat
-- settings toggle, show/hide thinking by default
+- settings toggle, show/hide thinking by default, expand tool calls

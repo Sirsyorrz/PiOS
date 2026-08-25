@@ -481,6 +481,26 @@ button.danger {
   color: var(--error);
 }
 
+/* No hover to reveal with, so the control is permanent and the badge steps
+   aside instead of sharing the corner. */
+@media (hover: none) {
+  .sessions .dispose {
+    opacity: 1;
+  }
+
+  .sessions li:hover .badge {
+    opacity: 1;
+  }
+
+  .badge {
+    right: 40px;
+  }
+
+  .sessions .session {
+    padding-right: 114px;
+  }
+}
+
 .sessions .session {
   /* Room for whatever occupies the corner. */
   padding-right: 84px;
@@ -534,6 +554,12 @@ button.danger {
 
 .endpoints .forget:hover {
   color: var(--error);
+}
+
+@media (hover: none) {
+  .endpoints .forget {
+    opacity: 1;
+  }
 }
 
 /* Row controls, not page controls: the full 40px would make each endpoint
