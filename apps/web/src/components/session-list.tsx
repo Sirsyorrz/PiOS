@@ -1,5 +1,6 @@
 import type { SessionSummary } from "@pios/protocol";
 import { basename, shortenPath } from "../format.ts";
+import { HistoryIcon, PlusIcon, TrashIcon } from "./icons.tsx";
 import { ListRowButton } from "./ui.tsx";
 
 export function SessionList({ sessions, activeId, onSelect, onCreate, onResume, onDispose }: {
@@ -19,11 +20,11 @@ export function SessionList({ sessions, activeId, onSelect, onCreate, onResume, 
         <span className="row">
           {/* Sessions started in the pi TUI live in the same directory, so
               they are reachable from here too. */}
-          <button type="button" onClick={onResume}>
-            Resume
+          <button type="button" className="ghost icon" aria-label="resume a session" onClick={onResume}>
+            <HistoryIcon />
           </button>
-          <button type="button" onClick={onCreate}>
-            New
+          <button type="button" className="ghost icon" aria-label="new session" onClick={onCreate}>
+            <PlusIcon />
           </button>
         </span>
       </div>
@@ -46,15 +47,15 @@ export function SessionList({ sessions, activeId, onSelect, onCreate, onResume, 
                   {session.trusted ? null : <span className="status untrusted">untrusted</span>}
                 </span>
               </ListRowButton>
-              {/* Inside the card, over its top corner: a sibling column made
-                  every row wider than the sidebar could afford. */}
+              {/* Over the row, not beside it: a sibling column made every row
+                  wider than the sidebar could afford. */}
               <button
                 type="button"
-                className="icon danger dispose"
+                className="icon ghost dispose"
                 aria-label={`dispose ${session.name ?? session.cwd}`}
                 onClick={() => onDispose(session.sessionId)}
               >
-                &times;
+                <TrashIcon width={16} height={16} />
               </button>
             </li>
           ))}

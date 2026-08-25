@@ -1,12 +1,13 @@
 import type { ToolExecution } from "@pios/protocol";
 import { useState } from "react";
 import { diffLines, editArgs } from "../diff.ts";
+import { ChevronRightIcon, ToolIcon } from "./icons.tsx";
 
 /**
  * One tool call, correlated on `toolCallId`.
  *
  * Args and result arrive from different events (and sometimes from the
- * persisted transcript instead), so the card renders whatever is known and
+ * persisted transcript instead), so the row renders whatever is known and
  * leaves the rest blank rather than waiting for a complete pair.
  */
 export function ToolCard({ tool }: { tool: ToolExecution }) {
@@ -15,10 +16,18 @@ export function ToolCard({ tool }: { tool: ToolExecution }) {
 
   return (
     <div className={`tool ${tool.status} ${tool.isError ? "error" : ""}`}>
-      <button type="button" className="tool-head" onClick={() => setOpen(!open)}>
+      <button
+        type="button"
+        className="tool-head"
+        aria-expanded={open}
+        onClick={() => setOpen(!open)}
+      >
+        <ToolIcon name={tool.toolName} className="tool-glyph" width={16} height={16} />
         <span className="tool-name">{tool.toolName}</span>
         <span className="muted line">{summarise(tool)}</span>
-        <span className="tool-status">{tool.isError ? "failed" : tool.status}</span>
+        {tool.isError ? <span className="tool-status">failed</span> : null}
+        {tool.status === "running" ? <span className="spinner" /> : null}
+        <ChevronRightIcon className={`caret ${open ? "open" : ""}`} width={16} height={16} />
       </button>
 
       {edit ? <Diff before={edit.oldText} after={edit.newText} /> : null}

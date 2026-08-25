@@ -15,6 +15,7 @@ import { DirectoryPicker } from "./components/directory-picker.tsx";
 import { EndpointPicker } from "./components/endpoint-picker.tsx";
 import { PairingScreen } from "./components/pairing-screen.tsx";
 import { ResumePicker } from "./components/resume-picker.tsx";
+import { SettingsIcon } from "./components/icons.tsx";
 import { SessionList } from "./components/session-list.tsx";
 
 export function App() {
@@ -123,10 +124,23 @@ function Workspace({ machine, onMachineChange, onForget }: {
     <div className={`workspace ${activeId ? "chatting" : ""}`}>
       <aside className="sidebar">
         <header className="row spread">
-          <button type="button" onClick={() => setShowSettings(!showSettings)}>
-            {machine.label}
+          <button
+            type="button"
+            className="ghost machine"
+            aria-expanded={showSettings}
+            onClick={() => setShowSettings(!showSettings)}
+          >
+            <span className={`dot ${state.transport}`} title={state.transport} />
+            <span className="line">{machine.label}</span>
           </button>
-          <span className={`dot ${state.transport}`} title={state.transport} />
+          <button
+            type="button"
+            className="ghost icon"
+            aria-label="machine settings"
+            onClick={() => setShowSettings(!showSettings)}
+          >
+            <SettingsIcon />
+          </button>
         </header>
 
         {notice ? (

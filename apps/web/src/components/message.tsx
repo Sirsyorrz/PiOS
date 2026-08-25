@@ -1,5 +1,6 @@
 import { messageText, type AgentMessage, type PartialMessage, type ToolExecution } from "@pios/protocol";
 import { useState } from "react";
+import { EyeIcon, EyeOffIcon } from "./icons.tsx";
 import { ToolCard } from "./tool-card.tsx";
 
 export function MessageBubble({ message, tools }: {
@@ -68,14 +69,27 @@ export function StreamingBubble({ partial, tools }: {
   );
 }
 
+/**
+ * Reasoning reads as prose, so it is shown, not filed away behind a control.
+ * The eye only takes it back off the screen once it is in the way.
+ */
 function Thinking({ text }: { text: string }) {
-  const [open, setOpen] = useState(false);
+  const [shown, setShown] = useState(true);
   return (
-    <div className="thinking">
-      <button type="button" onClick={() => setOpen(!open)}>
-        {open ? "hide thinking" : "thinking"}
-      </button>
-      {open ? <pre>{text}</pre> : null}
+    <div className={`thinking ${shown ? "" : "hidden"}`}>
+      <div className="thinking-head">
+        <span className="label">Thinking</span>
+        <button
+          type="button"
+          className="ghost icon sm"
+          aria-label={shown ? "hide thinking" : "show thinking"}
+          aria-pressed={!shown}
+          onClick={() => setShown(!shown)}
+        >
+          {shown ? <EyeIcon /> : <EyeOffIcon />}
+        </button>
+      </div>
+      {shown ? <div className="thinking-text">{text}</div> : null}
     </div>
   );
 }

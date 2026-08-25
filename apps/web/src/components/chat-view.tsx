@@ -4,6 +4,7 @@ import { useClient, useSessionView } from "../client-provider.tsx";
 import type { SupervisorState } from "@pios/client-core";
 import { Banners } from "./banners.tsx";
 import { Composer } from "./composer.tsx";
+import { ChevronLeftIcon } from "./icons.tsx";
 import { MessageBubble, StreamingBubble } from "./message.tsx";
 
 export function ChatView({ sessionId, session, state, onTrust, onBack }: {
@@ -28,11 +29,12 @@ export function ChatView({ sessionId, session, state, onTrust, onBack }: {
   return (
     <section className="chat">
       <header className="chat-header">
-        <button type="button" className="back icon" onClick={onBack} aria-label="back to sessions">
-          &lsaquo;
+        <button type="button" className="back icon ghost" onClick={onBack} aria-label="back to sessions">
+          <ChevronLeftIcon />
         </button>
         <span className="title line">{session?.name ?? session?.cwd ?? sessionId}</span>
         <span className={`status ${view?.running ? "running" : (session?.status ?? "idle")}`}>
+          {view?.running ? <span className="spinner" /> : null}
           {view?.interrupting ? "stopping" : view?.running ? "running" : (session?.status ?? "")}
         </span>
       </header>

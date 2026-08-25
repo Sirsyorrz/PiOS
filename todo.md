@@ -1,8 +1,5 @@
 - easy dev one command setup/run/pair
 - compare implementation with paseo, what can we learn/improve
 - are we still using tmux?
-- redesign styles
-  - redesign thinking display, show thinking, with an eye icon next to, to hide, rather than a big fucking "thinking" card/button
-  - try and avoid cards as much as possible, only when necessary
 - can we startup in chat view, and choose dir from there instead of being session picking first?
 - move the chat input up on mobile while keyboard is open, so that we can still see chat

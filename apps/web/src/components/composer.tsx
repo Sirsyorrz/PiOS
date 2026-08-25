@@ -1,6 +1,7 @@
 import type { ImageContent, StreamingBehavior } from "@pios/protocol";
 import { useEffect, useState } from "react";
 import { browserStorage } from "../storage.ts";
+import { ImageIcon, SendIcon, StopIcon } from "./icons.tsx";
 
 const DRAFT_PREFIX = "pios.draft.";
 
@@ -79,31 +80,46 @@ export function Composer({ sessionId, running, interrupting, onSend, onInterrupt
         }}
       />
 
-      <div className="row spread">
-        <label className="attach">
+      <div className="composer-actions">
+        <label className="attach ghost icon" title="Attach an image">
           <input type="file" accept="image/*" multiple onChange={(e) => void attach(e.target.files)} />
-          Attach
+          <ImageIcon />
         </label>
 
         {running ? (
-          <select value={behavior} onChange={(e) => setBehavior(e.target.value as StreamingBehavior)}>
+          <select
+            className="ghost"
+            value={behavior}
+            onChange={(e) => setBehavior(e.target.value as StreamingBehavior)}
+          >
             <option value="steer">Steer now</option>
             <option value="followUp">Follow up after</option>
           </select>
         ) : null}
 
+        <span className="spacer" />
+
+        {/* Stop sits beside Send, not instead of it: queueing the next turn
+            while the agent runs is the point of the steering selector. */}
         {running ? (
           <button
             type="button"
-            className="danger"
+            className="icon ghost stop"
             disabled={interrupting}
+            aria-label={interrupting ? "stopping" : "stop"}
             onClick={onInterrupt}
           >
-            {interrupting ? "Stopping" : "Stop"}
+            <StopIcon />
           </button>
         ) : null}
-        <button type="button" onClick={send}>
-          Send
+        <button
+          type="button"
+          className="icon send"
+          aria-label="send"
+          disabled={!text.trim() && images.length === 0}
+          onClick={send}
+        >
+          <SendIcon />
         </button>
       </div>
     </div>
