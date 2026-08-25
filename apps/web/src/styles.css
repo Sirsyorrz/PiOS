@@ -318,6 +318,8 @@ button.danger {
   right: 6px;
   width: 30px;
   height: 30px;
+  /* Beats the shared control min-height, which would make it a rectangle. */
+  min-height: 0;
   border-color: transparent;
   background: none;
   font-size: 16px;
