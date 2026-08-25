@@ -6,3 +6,4 @@
 - settings toggle, show/hide thinking by default, expand tool calls
 - dont show tool call usless fields, dont show "command", or "path"
 - model picker, scoped/all
+- tree picker

@@ -22,6 +22,16 @@ export function ChatView({ sessionId, session, state, onTrust, onBack }: {
     bottom.current?.scrollIntoView({ block: "end" });
   }, [view]);
 
+  // The keyboard shortens the transcript under the reader; without this the
+  // last message would be scrolled off the top of the shrunken pane.
+  useEffect(() => {
+    const vv = window.visualViewport;
+    if (!vv) return;
+    const stick = () => bottom.current?.scrollIntoView({ block: "end" });
+    vv.addEventListener("resize", stick);
+    return () => vv.removeEventListener("resize", stick);
+  }, []);
+
   function send(text: string, images: ImageContent[], behavior?: StreamingBehavior) {
     client.prompt({ sessionId, text, images, streamingBehavior: behavior });
   }
