@@ -15,6 +15,56 @@
   box-sizing: border-box;
 }
 
+/*
+ * Scrollbars, without a JS scroller.
+ *
+ * `scrollbar-width`/`scrollbar-color` are the standard properties and are all
+ * Firefox and modern Chromium need; the `::-webkit-` block below is for the
+ * WebKit engines that ignore them, which includes every browser on iOS. The
+ * two together are still native scrolling: no library, no wheel handlers, no
+ * hijacked momentum.
+ */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--line) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: var(--line);
+  border-radius: 999px;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: #38414f;
+}
+
+/* A corner square between two bars reads as a rendering artefact. */
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* Touch devices already draw an overlay bar that fades out, so nothing needs
+   to be reserved for one. */
+@media (hover: none) {
+  * {
+    scrollbar-width: none;
+  }
+
+  *::-webkit-scrollbar {
+    width: 0;
+    height: 0;
+  }
+}
+
 body {
   margin: 0;
   background: var(--bg);
@@ -153,7 +203,8 @@ button.danger {
   min-height: 0;
   overflow-y: auto;
   /* Room for the scrollbar, so it does not sit on top of the rows. */
-  padding-right: 6px;
+  scrollbar-gutter: stable;
+  padding-right: 8px;
 }
 
 .workspace {
@@ -401,6 +452,11 @@ button.danger {
   display: flex;
   flex-direction: column;
   gap: 10px;
+  /* Bubbles must not butt up against the scrollbar. The gutter is reserved
+     rather than conditional, so the transcript does not reflow the moment it
+     grows past one screen. */
+  scrollbar-gutter: stable;
+  padding-right: 8px;
 }
 
 .bubble {
@@ -441,9 +497,13 @@ button.danger {
   background: #0b0d11;
   border-radius: 8px;
   padding: 8px;
-  overflow-x: auto;
   font-size: 12px;
   margin: 6px 0 0;
+  /* Wrapped, not scrolled sideways: reasoning and command output are prose
+     and long lines, and a horizontal scrollbar per block is unreadable on a
+     phone. Indentation still survives, only the overflow folds. */
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .tool {
@@ -492,6 +552,10 @@ button.danger {
 
 .diff {
   font-family: ui-monospace, monospace;
+  /* A diff is columnar: folding it breaks the alignment that makes it
+     readable, so this one block keeps a scroller. */
+  white-space: pre;
+  overflow-x: auto;
 }
 
 .diff-add {
@@ -602,11 +666,12 @@ button.danger {
 .picker .resumable {
   list-style: none;
   margin: 0;
-  padding: 0;
+  padding: 0 8px 0 0;
   display: flex;
   flex-direction: column;
   gap: 6px;
   overflow-y: auto;
+  scrollbar-gutter: stable;
   flex: 1;
   min-height: 0;
 }
