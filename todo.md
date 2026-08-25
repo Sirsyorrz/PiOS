@@ -1,3 +1,5 @@
+- resume session with loaded sessions isnt repsonsive
+- render markdown in webapp
 - easy dev one command setup/run/pair
 - compare implementation with paseo, what can we learn/improve
 - are we still using tmux?

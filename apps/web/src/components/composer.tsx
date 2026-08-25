@@ -1,7 +1,7 @@
 import type { ImageContent, StreamingBehavior } from "@pios/protocol";
 import { useEffect, useState } from "react";
 import { browserStorage } from "../storage.ts";
-import { ImageIcon, SendIcon, StopIcon } from "./icons.tsx";
+import { PlusIcon, SendIcon, StopIcon } from "./icons.tsx";
 
 const DRAFT_PREFIX = "pios.draft.";
 
@@ -83,7 +83,7 @@ export function Composer({ sessionId, running, interrupting, onSend, onInterrupt
       <div className="composer-actions">
         <label className="attach ghost icon" title="Attach an image">
           <input type="file" accept="image/*" multiple onChange={(e) => void attach(e.target.files)} />
-          <ImageIcon />
+          <PlusIcon />
         </label>
 
         {running ? (

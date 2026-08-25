@@ -106,21 +106,10 @@ export function StopIcon(props: SVGProps<SVGSVGElement>) {
   );
 }
 
-export function ImageIcon(props: SVGProps<SVGSVGElement>) {
+export function ChevronDownIcon(props: SVGProps<SVGSVGElement>) {
   return (
     <Svg {...props}>
-      <rect x="3" y="4.5" width="18" height="15" rx="2.5" />
-      <circle cx="8.5" cy="9.5" r="1.4" />
-      <path d="M4 17l4.8-4.6a2 2 0 0 1 2.7 0L20 20" />
-    </Svg>
-  );
-}
-
-export function SettingsIcon(props: SVGProps<SVGSVGElement>) {
-  return (
-    <Svg {...props}>
-      <circle cx="12" cy="12" r="3" />
-      <path d="M12 2.8v2.4M12 18.8v2.4M4.5 4.5l1.7 1.7M17.8 17.8l1.7 1.7M2.8 12h2.4M18.8 12h2.4M4.5 19.5l1.7-1.7M17.8 6.2l1.7-1.7" />
+      <path d="M5 9l7 7 7-7" />
     </Svg>
   );
 }

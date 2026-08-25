@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { probeEndpoint, type Endpoint, type Machine } from "../machine.ts";
+import { TrashIcon } from "./icons.tsx";
 import { ListRowButton } from "./ui.tsx";
 
 type ProbeState = "unknown" | "checking" | "up" | "down";
@@ -18,6 +19,29 @@ export function EndpointPicker({ machine, onChange, onForget }: {
 }) {
   const [checking, setChecking] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
+  // Forgetting drops the device token: it cannot be undone from here, and an
+  // icon is too easy to hit by accident to fire on the first press.
+  // Dropping the last route drops the machine with it, which takes the device
+  // token: not something an icon should do on the first press.
+  const [confirming, setConfirming] = useState<string | null>(null);
+  const last = machine.endpoints.length <= 1;
+
+  function remove(endpoint: Endpoint) {
+    if (last) {
+      onForget();
+      return;
+    }
+    const endpoints = machine.endpoints.filter((e) => e.key !== endpoint.key);
+    onChange({
+      ...machine,
+      endpoints,
+      preferredKey:
+        machine.preferredKey === endpoint.key
+          ? (endpoints[0]?.key ?? null)
+          : machine.preferredKey,
+    });
+    setConfirming(null);
+  }
 
   function patchEndpoint(key: string, patch: Partial<Endpoint>): Endpoint[] {
     return machine.endpoints.map((e) => (e.key === key ? { ...e, ...patch } : e));
@@ -59,11 +83,37 @@ export function EndpointPicker({ machine, onChange, onForget }: {
                 <span className="key">{endpoint.key}</span>
                 <span className="muted">{endpoint.url}</span>
               </ListRowButton>
+              {/* Over the row's corner, away from Test: removing a route and
+                  testing it are opposite intents and should not sit as two
+                  identical controls side by side. */}
+              {confirming === endpoint.key ? null : (
+                <button
+                  type="button"
+                  className="ghost icon forget"
+                  aria-label={last ? "forget this machine" : `remove ${endpoint.key}`}
+                  onClick={() => setConfirming(endpoint.key)}
+                >
+                  <TrashIcon width={16} height={16} />
+                </button>
+              )}
               <div className="row spread">
                 <span className={`probe ${state}`}>{probeLabel(state, endpoint)}</span>
-                <button type="button" onClick={() => void probe(endpoint)}>
-                  Test
-                </button>
+                <span className="row">
+                  {confirming === endpoint.key ? (
+                    <>
+                      <button type="button" className="ghost" onClick={() => setConfirming(null)}>
+                        Cancel
+                      </button>
+                      <button type="button" className="danger" onClick={() => remove(endpoint)}>
+                        {last ? "Forget machine" : "Remove"}
+                      </button>
+                    </>
+                  ) : (
+                    <button type="button" className="ghost" onClick={() => void probe(endpoint)}>
+                      Test
+                    </button>
+                  )}
+                </span>
               </div>
             </li>
           );
@@ -79,10 +129,6 @@ export function EndpointPicker({ machine, onChange, onForget }: {
         />
         <button type="submit">Add</button>
       </form>
-
-      <button type="button" className="danger" onClick={onForget}>
-        Forget this machine
-      </button>
     </div>
   );
 }

@@ -79,6 +79,8 @@ function Thinking({ text }: { text: string }) {
     <div className={`thinking ${shown ? "" : "hidden"}`}>
       <div className="thinking-head">
         <span className="label">Thinking</span>
+        {/* The icon names the action, not the state: crossed-out eye means
+            "hide this", which is the only thing the button can do here. */}
         <button
           type="button"
           className="ghost icon sm"
@@ -86,7 +88,7 @@ function Thinking({ text }: { text: string }) {
           aria-pressed={!shown}
           onClick={() => setShown(!shown)}
         >
-          {shown ? <EyeIcon /> : <EyeOffIcon />}
+          {shown ? <EyeOffIcon width={15} height={15} /> : <EyeIcon width={15} height={15} />}
         </button>
       </div>
       {shown ? <div className="thinking-text">{text}</div> : null}

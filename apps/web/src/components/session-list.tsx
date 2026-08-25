@@ -42,9 +42,11 @@ export function SessionList({ sessions, activeId, onSelect, onCreate, onResume, 
               >
                 <span className="name line">{session.name ?? basename(session.cwd)}</span>
                 <span className="muted line">{shortenPath(session.cwd)}</span>
-                <span className="tags">
-                  <span className={`status ${session.status}`}>{session.status}</span>
-                  {session.trusted ? null : <span className="status untrusted">untrusted</span>}
+                {/* Two lines, fixed: the row is a list entry, so state rides
+                    in the corner rather than adding a third line to some
+                    rows and not others. */}
+                <span className={`badge ${session.trusted ? session.status : "untrusted"}`}>
+                  {session.trusted ? session.status : "untrusted"}
                 </span>
               </ListRowButton>
               {/* Over the row, not beside it: a sibling column made every row

@@ -15,7 +15,7 @@ import { DirectoryPicker } from "./components/directory-picker.tsx";
 import { EndpointPicker } from "./components/endpoint-picker.tsx";
 import { PairingScreen } from "./components/pairing-screen.tsx";
 import { ResumePicker } from "./components/resume-picker.tsx";
-import { SettingsIcon } from "./components/icons.tsx";
+import { ChevronDownIcon } from "./components/icons.tsx";
 import { SessionList } from "./components/session-list.tsx";
 
 export function App() {
@@ -123,7 +123,10 @@ function Workspace({ machine, onMachineChange, onForget }: {
   return (
     <div className={`workspace ${activeId ? "chatting" : ""}`}>
       <aside className="sidebar">
-        <header className="row spread">
+        {/* Machine, link state and the disclosure are one control: they are
+            all the same subject, and three of them in a row read as three
+            unrelated things to press. */}
+        <header>
           <button
             type="button"
             className="ghost machine"
@@ -132,14 +135,7 @@ function Workspace({ machine, onMachineChange, onForget }: {
           >
             <span className={`dot ${state.transport}`} title={state.transport} />
             <span className="line">{machine.label}</span>
-          </button>
-          <button
-            type="button"
-            className="ghost icon"
-            aria-label="machine settings"
-            onClick={() => setShowSettings(!showSettings)}
-          >
-            <SettingsIcon />
+            <ChevronDownIcon className={`caret ${showSettings ? "flip" : ""}`} />
           </button>
         </header>
 
