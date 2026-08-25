@@ -1,7 +1,13 @@
 import { createServer, type Server } from "node:http";
 import { mkdirSync } from "node:fs";
 import { WebSocketServer } from "ws";
-import { SessionRegistry, subprocessHost, type SessionHost } from "@pios/pi-host";
+import {
+  createSessionLister,
+  SessionRegistry,
+  subprocessHost,
+  type SessionHost,
+  type SessionLister,
+} from "@pios/pi-host";
 import { AuthStore } from "./auth.ts";
 import { CommandLedger } from "./dedupe.ts";
 import { Connection } from "./connection.ts";
@@ -13,6 +19,8 @@ export interface PiosServerOptions extends Partial<ServerConfig> {
   /** Overridable so tests can run without spawning real pi. */
   host_?: SessionHost;
   piVersion?: string;
+  /** Overridable so tests do not touch the real session directory. */
+  lister_?: SessionLister;
 }
 
 export class PiosServer {
@@ -24,6 +32,7 @@ export class PiosServer {
   private readonly wss: WebSocketServer;
   private readonly ledger = new CommandLedger();
   private readonly connections = new Set<Connection>();
+  private readonly lister: SessionLister;
 
   constructor(options: PiosServerOptions = {}) {
     this.config = defaultConfig(options);
@@ -31,6 +40,8 @@ export class PiosServer {
     mkdirSync(this.config.sessionDir, { recursive: true });
 
     this.auth = new AuthStore(authStorePath(this.config));
+    this.lister =
+      options.lister_ ?? createSessionLister({ sessionDir: this.config.sessionDir });
     this.registry = new SessionRegistry(
       options.host_ ?? subprocessHost({ sessionDir: this.config.sessionDir }),
     );
@@ -49,6 +60,7 @@ export class PiosServer {
         ledger: this.ledger,
         piVersion: options.piVersion ?? "unknown",
         helloTimeoutMs: this.config.helloTimeoutMs,
+        lister: this.lister,
         announceSessions: () => this.announceSessions(),
       });
       this.connections.add(connection);

@@ -5,7 +5,10 @@ export interface ServerConfig {
   host: string;
   port: number;
   dataDir: string;
-  /** Where pi session JSONL lives; sessions survive daemon restarts here. */
+  /**
+   * Where pi session JSONL lives. Defaults to pi's own directory so the TUI
+   * and PiOS see one set of sessions and can resume each other's work.
+   */
   sessionDir: string;
   /** Cap on a single upload, so a phone cannot fill the disk. */
   maxUploadBytes: number;
@@ -23,7 +26,10 @@ export function defaultConfig(overrides: Partial<ServerConfig> = {}): ServerConf
     host: overrides.host ?? "0.0.0.0",
     port: overrides.port ?? 4111,
     dataDir,
-    sessionDir: overrides.sessionDir ?? join(dataDir, "sessions"),
+    sessionDir:
+      overrides.sessionDir ??
+      process.env.PIOS_SESSION_DIR ??
+      join(homedir(), ".pi", "agent", "sessions"),
     maxUploadBytes: overrides.maxUploadBytes ?? 25 * 1024 * 1024,
     helloTimeoutMs: overrides.helloTimeoutMs ?? 5_000,
   };

@@ -40,6 +40,19 @@ export const ClientFrameSchema = z.discriminatedUnion("type", [
     /** Explicit, because pi's headless trust default is not something to inherit. */
     trustProject: z.boolean().default(false),
     model: z.string().optional(),
+    /**
+     * Path to an existing pi session JSONL, from `list_resumable`. Adopts that
+     * transcript instead of starting an empty one, so a session begun in the
+     * TUI continues here under its own id.
+     */
+    resumeFrom: z.string().optional(),
+  }),
+  /** Sessions on disk, including ones the daemon never started. */
+  Envelope({
+    type: z.literal("list_resumable"),
+    /** Restrict to one project directory. Omitted means every project. */
+    cwd: z.string().optional(),
+    limit: z.number().optional(),
   }),
   Envelope({ type: z.literal("dispose_session"), sessionId: z.string() }),
   // Relaunches the same session under new trust; it never forks a new one.
@@ -109,6 +122,21 @@ export const SessionSummarySchema = z.object({
 });
 export type SessionSummary = z.infer<typeof SessionSummarySchema>;
 
+export const ResumableSessionSchema = z.object({
+  /** Pass back as `create_session.resumeFrom`. */
+  path: z.string(),
+  sessionId: z.string(),
+  cwd: z.string(),
+  name: z.string().optional(),
+  createdAt: z.number(),
+  modifiedAt: z.number(),
+  messageCount: z.number(),
+  preview: z.string(),
+  /** Already open in the daemon; resuming it is an attach, not a new session. */
+  live: z.boolean().default(false),
+});
+export type ResumableSessionWire = z.infer<typeof ResumableSessionSchema>;
+
 const ServerBase = z.object({
   v: z.literal(WIRE_VERSION),
   /** Echoed from the request that caused this frame, when there was one. */
@@ -124,6 +152,10 @@ export const ServerFrameSchema = z.discriminatedUnion("type", [
     serverVersion: z.string(),
     piVersion: z.string(),
     sessions: z.array(SessionSummarySchema),
+  }),
+  ServerEnvelope({
+    type: z.literal("resumable_sessions"),
+    sessions: z.array(ResumableSessionSchema),
   }),
   ServerEnvelope({
     type: z.literal("ack"),

@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { WebSocket } from "ws";
-import { subprocessHost } from "@pios/pi-host";
+import { subprocessHost, type SessionLister } from "@pios/pi-host";
 import { WIRE_VERSION, type ClientFrame, type ServerFrame } from "@pios/protocol";
 import { PiosServer } from "../src/server.ts";
 
@@ -20,9 +20,10 @@ export interface Harness {
 }
 
 /** A real server over the loopback, driven by the stub pi from Phase 2. */
-export async function startHarness(): Promise<Harness> {
+export async function startHarness(lister?: SessionLister): Promise<Harness> {
   const dir = mkdtempSync(join(tmpdir(), "pios-server-"));
   const server = new PiosServer({
+    lister_: lister,
     host: "127.0.0.1",
     port: 0,
     dataDir: join(dir, "data"),

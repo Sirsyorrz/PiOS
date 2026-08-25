@@ -6,3 +6,4 @@ export * from "./in-process.ts";
 export * from "./subprocess.ts";
 export * from "./registry.ts";
 export * from "./default-factory.ts";
+export * from "./discovery.ts";

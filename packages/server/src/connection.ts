@@ -1,5 +1,11 @@
 import type { WebSocket } from "ws";
-import type { HostEvent, PiSession, SessionInfo, SessionRegistry } from "@pios/pi-host";
+import type {
+  HostEvent,
+  PiSession,
+  SessionInfo,
+  SessionLister,
+  SessionRegistry,
+} from "@pios/pi-host";
 import {
   ClientFrameSchema,
   WIRE_VERSION,
@@ -17,6 +23,8 @@ export interface ConnectionDeps {
   ledger: CommandLedger;
   piVersion: string;
   helloTimeoutMs: number;
+  /** Reads pi's session directory, so TUI sessions are resumable from here. */
+  lister?: SessionLister;
   /** Tells every authenticated socket the session list changed. */
   announceSessions?: () => void;
 }
@@ -112,12 +120,18 @@ export class Connection {
         if (!this.deps.ledger.claim(frame.commandId)) {
           return this.ack(frame.commandId, true);
         }
-        const session = await this.deps.registry.create({
-          cwd: frame.cwd,
-          name: frame.name,
-          trustProject: frame.trustProject,
-          model: frame.model,
-        });
+        // Resuming a session that is already live must attach, not open the
+        // same JSONL twice: two writers on one file interleave entries.
+        const existing = frame.resumeFrom ? this.liveByFile(frame.resumeFrom) : undefined;
+        const session =
+          existing ??
+          (await this.deps.registry.create({
+            cwd: frame.cwd,
+            name: frame.name,
+            trustProject: frame.trustProject,
+            model: frame.model,
+            resumeFrom: frame.resumeFrom,
+          }));
         // Sessions are shared, so a second device must not have to guess that
         // one appeared.
         this.deps.announceSessions?.();
@@ -127,6 +141,34 @@ export class Connection {
           commandId: frame.commandId,
           sessionId: session.id,
           summary: toSummary(session.info),
+        });
+      }
+
+      case "list_resumable": {
+        const lister = this.deps.lister;
+        if (!lister) return this.fail(frame.commandId, "internal", "session listing disabled");
+        const found = await lister({ cwd: frame.cwd, limit: frame.limit });
+        const live = new Set(
+          this.deps.registry
+            .list()
+            .map((info) => info.sessionFile)
+            .filter((path): path is string => Boolean(path)),
+        );
+        return this.send({
+          v: WIRE_VERSION,
+          type: "resumable_sessions",
+          commandId: frame.commandId,
+          sessions: found.map((session) => ({
+            path: session.path,
+            sessionId: session.id,
+            cwd: session.cwd,
+            name: session.name,
+            createdAt: session.createdAt,
+            modifiedAt: session.modifiedAt,
+            messageCount: session.messageCount,
+            preview: session.preview,
+            live: live.has(session.path),
+          })),
         });
       }
 
@@ -260,6 +302,13 @@ export class Connection {
       type: "sessions",
       sessions: this.deps.registry.list().map(toSummary),
     });
+  }
+
+  private liveByFile(path: string): PiSession | undefined {
+    for (const info of this.deps.registry.list()) {
+      if (info.sessionFile === path) return this.deps.registry.get(info.id);
+    }
+    return undefined;
   }
 
   private ack(commandId: string, duplicate = false): void {
