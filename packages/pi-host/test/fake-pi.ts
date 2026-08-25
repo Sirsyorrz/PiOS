@@ -7,7 +7,7 @@
  *
  * Behaviour is pinned to what the Phase 0 traces actually showed.
  */
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { JsonlFramer, encodeJsonl } from "@pios/protocol/jsonl";
 
 const argv = process.argv.slice(2);
@@ -16,11 +16,17 @@ const arg = (name: string) => {
   return i === -1 ? undefined : argv[i + 1];
 };
 
-const sessionId = arg("--session-id") ?? "fake";
+// `--session <path>` binds to an exact file, `--session-id` looks one up.
+const sessionPath = arg("--session");
 const sessionDir = arg("--session-dir") ?? ".";
+const sessionId = sessionPath
+  ? sessionPath.split("/").pop()!.replace(/\.json$/, "")
+  : arg("--session-id") ?? "fake";
 const trusted = argv.includes("--approve");
 mkdirSync(sessionDir, { recursive: true });
-const statePath = `${sessionDir}/${sessionId}.json`;
+const statePath = sessionPath ?? `${sessionDir}/${sessionId}.json`;
+// So tests can assert how the host launched pi, including on a relaunch.
+appendFileSync(`${sessionDir}/argv.log`, `${argv.join(" ")}\n`);
 
 interface Entry {
   id: string;

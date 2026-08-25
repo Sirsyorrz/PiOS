@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -134,6 +134,13 @@ test("trusting a session relaunches it in place, keeping id and transcript", asy
   const recovered = waitFor(session, (e) => e.event.type === "session_recovered");
   await registry.setProjectTrust("trust-1", true);
   await recovered;
+
+  const launches = readFileSync(join(dir, "argv.log"), "utf8").trim().split("\n");
+  assert.equal(launches.length, 2);
+  assert.match(launches[0]!, /--session-id trust-1 .*--no-approve/);
+  // The relaunch resumes the exact file, so it cannot land on an empty
+  // session when the project lookup by id misses.
+  assert.match(launches[1]!, /--session \S+trust-1\.json .*--approve/);
 
   assert.equal(registry.list().length, 1, "trusting must not fork a second session");
   assert.equal(session.info.trusted, true);

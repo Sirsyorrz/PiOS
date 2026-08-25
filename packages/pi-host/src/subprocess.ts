@@ -87,7 +87,14 @@ export class SubprocessSession extends BaseSession implements PiSession {
   }
 
   private buildArgs(): string[] {
-    const args = ["--mode", "rpc", "--session-id", this.id];
+    // A relaunch binds to the exact file pi reported, not to a project lookup
+    // by id: the lookup is scoped to the project and misses when the session
+    // was never persisted or the directory resolves differently, and a miss
+    // silently starts an empty session under the same id.
+    const resumeFrom = this.sessionFile ?? this.createOptions.resumeFrom;
+    const args = resumeFrom
+      ? ["--mode", "rpc", "--session", resumeFrom]
+      : ["--mode", "rpc", "--session-id", this.id];
     if (this.options.sessionDir) args.push("--session-dir", this.options.sessionDir);
     // Always explicit. pi's headless trust default depends on machine state,
     // and a session that silently loses project extensions is worse than one
