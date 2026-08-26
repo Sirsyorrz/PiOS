@@ -1,4 +1,4 @@
-import type { ExtensionUiRequest } from "@pios/protocol";
+import { isDialogRequest, type ExtensionUiRequest } from "@pios/protocol";
 import { useState } from "react";
 import { ListRowButton, ModalCard, PickerHeader } from "./ui.tsx";
 
@@ -22,6 +22,9 @@ export function DialogSheet({ request, onAnswer }: {
   const [text, setText] = useState(request.prefill ?? "");
   const cancel = () => onAnswer({ cancelled: true });
   const title = request.title ?? "The agent is asking";
+  // A method with no renderer would be an unanswerable card, which is worse
+  // than declining it: the agent stays blocked either way.
+  const answerable = isDialogRequest(request);
 
   return (
     <ModalCard
@@ -36,6 +39,17 @@ export function DialogSheet({ request, onAnswer }: {
       }
     >
       <PickerHeader title={title} onCancel={cancel} />
+
+      {answerable ? null : (
+        <>
+          <p className="muted">This request cannot be shown here.</p>
+          <div className="row">
+            <button type="button" onClick={cancel}>
+              Dismiss
+            </button>
+          </div>
+        </>
+      )}
 
       {request.method === "confirm" ? (
         <>

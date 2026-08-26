@@ -1,5 +1,6 @@
 import {
   WIRE_VERSION,
+  isDialogRequest,
   type ImageContent,
   type ModelOption,
   type ResumableSessionWire,
@@ -438,7 +439,9 @@ export class PiosClient {
         for (const handler of [...this.resumableHandlers]) handler(this.resumable);
         break;
       case "extension_ui_request":
-        this.sessions.openDialog(frame.sessionId, frame.request);
+        // Most methods are presentation the agent does not wait on; only a
+        // dialog blocks it, and only a dialog gets a sheet.
+        if (isDialogRequest(frame.request)) this.sessions.openDialog(frame.sessionId, frame.request);
         break;
       case "extension_ui_closed":
         this.sessions.closeDialog(frame.sessionId, frame.requestId);

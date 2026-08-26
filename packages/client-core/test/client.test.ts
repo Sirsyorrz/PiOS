@@ -293,3 +293,33 @@ test("a session command with no live socket is reported, not silently dropped", 
   assert.equal(client.createSession({ cwd: "/tmp" }), false);
   assert.equal(client.interrupt("s1"), false);
 });
+
+test("only blocking dialogs become sheets; presentation requests are not", async () => {
+  const { transports, client } = setup();
+  await flush();
+  transports.last.acceptHello([summary({ sessionId: "s1", leafId: null })]);
+
+  transports.last.emit({
+    v: WIRE_VERSION,
+    type: "extension_ui_request",
+    sessionId: "s1",
+    // Extensions set a status line on every session start. It answers nothing
+    // and must not put an unanswerable card in front of the transcript.
+    request: { type: "extension_ui_request", id: "r1", method: "setStatus", statusKey: "nolo" },
+  });
+  assert.deepEqual(client.sessions.openDialogs("s1"), []);
+
+  transports.last.emit({
+    v: WIRE_VERSION,
+    type: "extension_ui_request",
+    sessionId: "s1",
+    request: { type: "extension_ui_request", id: "r2", method: "confirm", title: "Apply edit?" },
+  });
+  assert.equal(client.sessions.openDialogs("s1").length, 1);
+
+  client.answerDialog("s1", "r2", { confirmed: true });
+  const [answer] = transports.last.sentOfType("extension_ui_response");
+  assert.equal(answer?.requestId, "r2");
+  // Closed on send: the sheet must not linger while the agent unblocks.
+  assert.deepEqual(client.sessions.openDialogs("s1"), []);
+});
