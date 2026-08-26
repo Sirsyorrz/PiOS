@@ -85,7 +85,19 @@ function Thinking({ text }: { text: string }) {
       >
         {shown ? "Thinking:" : "Thinking\u2026"}
       </button>
-      {shown ? <div className="thinking-text">{text}</div> : null}
+      {/* Collapsing from the body is a convenience, not the accessible path:
+          the header button owns that. Prose stays selectable, so a tap that
+          ends a selection must not also fold the block away. */}
+      {shown ? (
+        <div
+          className="thinking-text"
+          onClick={() => {
+            if (window.getSelection()?.isCollapsed !== false) setShown(false);
+          }}
+        >
+          {text}
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -944,12 +944,15 @@ button.danger {
   color: var(--muted);
 }
 
-/* The label is the button: text-sized, but padded out to a real tap target. */
+/* The label is the button, but the target is the whole row: on touch there is
+   nothing else on that line to hit, so the empty space to the right is free. */
 .thinking-head {
   display: block;
-  margin: -4px -8px 0;
-  padding: 4px 8px;
+  width: 100%;
+  margin: -4px 0 0;
+  padding: 4px 0;
   border: 0;
+  text-align: left;
   background: none;
   font: inherit;
   font-size: 13px;
@@ -970,6 +973,7 @@ button.danger {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   font-size: 14px;
+  cursor: pointer;
 }
 
 /* Collapsed, it is a one-line trace that the agent thought at all. */
