@@ -1321,15 +1321,23 @@ button.danger {
   align-items: center;
 }
 
-/* A dialog blocks the agent, so it covers the transcript instead of taking a
-   turn in the layout like the other cards. */
-.screen:has(> .dialog) {
-  position: fixed;
-  inset: 0;
-  z-index: 20;
-  display: grid;
-  place-items: center;
-  background: rgba(0, 0, 0, 0.55);
+/* A dialog docks with the composer and borrows its surface, so a blocked
+   agent reads as a question about the visible transcript, not a page change. */
+.dialog {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px 12px;
+  background: color-mix(in srgb, var(--panel) 88%, transparent);
+  backdrop-filter: blur(16px) saturate(1.4);
+  -webkit-backdrop-filter: blur(16px) saturate(1.4);
+  border: 1px solid var(--line);
+  border-radius: 20px;
+}
+
+/* Bounded so a long option list cannot push the composer off screen. */
+.dialog .scroll-y {
+  max-height: min(40vh, 320px);
 }
 
 .dialog .row {

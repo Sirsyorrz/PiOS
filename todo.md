@@ -1,4 +1,6 @@
 - move conf to be replacement/over the input, so you can see chat, while confirming
+- hide input when conf open
+- toggleable expand tools by default
 - decide what to do about steering mode (long-press send, extra square button, split send button, or keep the select in the actions row)
 - compare implementation with paseo, what can we learn/improve, can we relay, rather than tailscale?
 - can we startup in chat view, and choose dir from there instead of being session picking first?

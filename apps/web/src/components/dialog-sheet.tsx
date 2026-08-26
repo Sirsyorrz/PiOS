@@ -1,6 +1,6 @@
 import { isDialogRequest, stripAnsi, type ExtensionUiRequest } from "@pios/protocol";
-import { useState } from "react";
-import { ListRowButton, ModalCard, PickerHeader } from "./ui.tsx";
+import { useState, type FormEvent } from "react";
+import { ListRowButton, PickerHeader } from "./ui.tsx";
 
 export interface DialogAnswer {
   value?: string;
@@ -10,6 +10,8 @@ export interface DialogAnswer {
 
 /**
  * The agent is blocked on an extension's question until this is answered.
+ * It docks above the composer rather than covering the screen: the answer
+ * usually depends on the transcript, which a centred modal would hide.
  *
  * Deliberately generic: PiOS renders whatever `method` pi sends and returns
  * the answer verbatim. It decides nothing and remembers nothing, so this is a
@@ -26,18 +28,14 @@ export function DialogSheet({ request, onAnswer }: {
   // than declining it: the agent stays blocked either way.
   const answerable = isDialogRequest(request);
 
-  return (
-    <ModalCard
-      className="dialog"
-      onSubmit={
-        request.method === "input" || request.method === "editor"
-          ? (event) => {
-              event.preventDefault();
-              onAnswer({ value: text });
-            }
-          : undefined
-      }
-    >
+  const submit = (event: FormEvent) => {
+    event.preventDefault();
+    onAnswer({ value: text });
+  };
+  const typed = request.method === "input" || request.method === "editor";
+
+  const body = (
+    <>
       <PickerHeader title={title} onCancel={cancel} />
 
       {answerable ? null : (
@@ -101,6 +99,14 @@ export function DialogSheet({ request, onAnswer }: {
           </button>
         </div>
       ) : null}
-    </ModalCard>
+    </>
+  );
+
+  return typed ? (
+    <form className="dialog" onSubmit={submit}>
+      {body}
+    </form>
+  ) : (
+    <section className="dialog">{body}</section>
   );
 }

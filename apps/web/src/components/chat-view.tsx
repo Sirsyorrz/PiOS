@@ -174,6 +174,16 @@ export function ChatView({
         onDismissNotice={(id) => client.sessions.dismissNotice(sessionId, id)}
       />
 
+      {/* Docked above the input: the agent is blocked, but the transcript it
+          is asking about stays readable. */}
+      {dialog ? (
+        <DialogSheet
+          key={dialog.id}
+          request={dialog}
+          onAnswer={(answer) => client.answerDialog(sessionId, dialog.id, answer)}
+        />
+      ) : null}
+
       <Composer
         sessionId={sessionId}
         model={session?.model}
@@ -187,14 +197,6 @@ export function ChatView({
       />
       {widgets(view, "belowEditor")}
       </div>
-
-      {dialog ? (
-        <DialogSheet
-          key={dialog.id}
-          request={dialog}
-          onAnswer={(answer) => client.answerDialog(sessionId, dialog.id, answer)}
-        />
-      ) : null}
     </section>
     </FileAccessContext.Provider>
   );
