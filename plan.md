@@ -238,11 +238,14 @@ Exit: full v0 scope usable from a phone browser.
 - Raw terminal tab: daemon-owned PTY, separate shell channel (RPC `bash` is not
   a terminal). Renderer decision deferred; xterm.js in a WebView is the cheap
   first cut.
-- macOS / Windows daemon (path-handling pass + launchd unit).
 - Forking and branch browsing (`fork`, `clone`, `get_fork_messages`, `get_tree`).
 - Model switching, thinking level, compaction UI.
 - Text editor
 - Lazygit
+- slash commands, and / autocomplete suggestions
+
+## Unplanned
+- macOS / Windows daemon (path-handling pass + launchd unit).
 
 ---
 
