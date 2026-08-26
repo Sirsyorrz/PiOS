@@ -75,6 +75,9 @@ export function StreamingBubble({ partial, tools }: {
  */
 function Thinking({ text }: { text: string }) {
   const [shown, setShown] = useState(true);
+  // A reasoning part can arrive before any of its text does; heading an empty
+  // block would announce thinking that is not on screen yet.
+  if (text.trim() === "") return null;
   return (
     <div className={`thinking ${shown ? "" : "hidden"}`}>
       <button
