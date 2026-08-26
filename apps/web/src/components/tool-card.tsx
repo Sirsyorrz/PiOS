@@ -1,5 +1,5 @@
 import type { ImageContent, ToolExecution } from "@pios/protocol";
-import { useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { diffLines, editBlocks } from "../diff.ts";
 import { ChevronRightIcon, ToolIcon } from "./icons.tsx";
 import { TranscriptImage } from "./image-view.tsx";
@@ -13,19 +13,29 @@ import { TranscriptImage } from "./image-view.tsx";
  */
 export function ToolCard({ tool, cwd }: { tool: ToolExecution; cwd?: string }) {
   const [open, setOpen] = useState(false);
+  const card = useRef<HTMLDivElement>(null);
+  // Set at the tap, read after the body lands: once expanded the card is no
+  // longer at the bottom, so the test has to be made before the layout moves.
+  const wasLast = useRef(false);
+
+  const toggle = () => {
+    wasLast.current = !open && isLastInView(card.current);
+    setOpen(!open);
+  };
+
+  // Expanding the last card would otherwise reveal its body below the fold,
+  // leaving the reader looking at the same collapsed row that they just tapped.
+  useLayoutEffect(() => {
+    if (open && wasLast.current) revealInView(card.current);
+  }, [open]);
   const edits = editBlocks(tool.args);
   const rest = leftoverArgs(tool.args);
   const headline = summarise(tool);
   const images = resultImages(tool);
 
   return (
-    <div className={`tool ${tool.status} ${tool.isError ? "error" : ""}`}>
-      <button
-        type="button"
-        className="tool-head"
-        aria-expanded={open}
-        onClick={() => setOpen(!open)}
-      >
+    <div ref={card} className={`tool ${tool.status} ${tool.isError ? "error" : ""}`}>
+      <button type="button" className="tool-head" aria-expanded={open} onClick={toggle}>
         <ToolIcon name={tool.toolName} className="tool-glyph" width={16} height={16} />
         <span className="tool-name">{tool.toolName}</span>
         <span className="muted line">{shortenPreview(headline, cwd)}</span>
@@ -68,6 +78,36 @@ export function ToolCard({ tool, cwd }: { tool: ToolExecution; cwd?: string }) {
       ) : null}
     </div>
   );
+}
+
+/** Within this much of the transcript's end still counts as the last card. */
+const TAIL_SLACK = 64;
+
+function scroller(el: HTMLElement | null): HTMLElement | null {
+  return el?.closest(".scroll-y") ?? null;
+}
+
+/** True when nothing but the dock's reserved padding follows this card. */
+function isLastInView(el: HTMLElement | null): boolean {
+  const pane = scroller(el);
+  if (!el || !pane) return false;
+  // Rects, not offsetTop: the card's offsetParent is the pane, not the
+  // scroller, so the two coordinate systems differ by a constant.
+  const below = el.getBoundingClientRect().bottom - pane.getBoundingClientRect().top;
+  const reserved = parseFloat(getComputedStyle(pane).paddingBottom) || 0;
+  return pane.scrollHeight - reserved - (pane.scrollTop + below) <= TAIL_SLACK;
+}
+
+/**
+ * Bring the freshly expanded body into view: to the end when it fits, else to
+ * the card's own head, since the top of a long result is what is read first.
+ */
+function revealInView(el: HTMLElement | null) {
+  const pane = scroller(el);
+  if (!el || !pane) return;
+  const top = pane.scrollTop + el.getBoundingClientRect().top - pane.getBoundingClientRect().top;
+  if (el.offsetHeight >= pane.clientHeight) pane.scrollTop = top;
+  else pane.scrollTop = pane.scrollHeight;
 }
 
 function Diff({ before, after }: { before: string; after: string }) {
