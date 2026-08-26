@@ -1,6 +1,6 @@
 import { test, describe, before, after } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -31,6 +31,7 @@ const harnesses: Harness[] = [
           command: process.execPath,
           argsPrefix: [FAKE_PI],
           sessionDir: dir,
+          agentDir: join(dir, "agent"),
           requestTimeoutMs: 10_000,
         },
       ),
@@ -59,6 +60,13 @@ for (const harness of harnesses) {
 
     before(async () => {
       dir = mkdtempSync(join(tmpdir(), "pios-host-"));
+      // The stub pi has no scope of its own, so the subprocess host reads one
+      // from settings; a temp agentDir keeps the suite off the real ~/.pi.
+      mkdirSync(join(dir, "agent"), { recursive: true });
+      writeFileSync(
+        join(dir, "agent", "settings.json"),
+        JSON.stringify({ enabledModels: ["acme/fast-1", "acme/deep-1"] }),
+      );
       session = await harness.start(dir, "s1");
     });
 
@@ -121,6 +129,28 @@ for (const harness of harnesses) {
       assert.equal(busy.accepted, false);
       assert.match(busy.error ?? "", /streamingBehavior/);
       await done;
+    });
+
+    test("models are listed and switching one updates the summary", async () => {
+      const scoped = await session.listModels();
+      assert.equal(scoped.all, false, "the scope is the default, not the catalogue");
+      assert.deepEqual(
+        scoped.models.map((model) => model.modelId),
+        ["fast-1", "deep-1"],
+      );
+
+      const all = await session.listModels({ all: true });
+      assert.equal(all.all, true);
+      assert.equal(all.models.length, 3);
+      assert.deepEqual(
+        all.models.filter((model) => model.scoped).map((model) => model.modelId),
+        ["fast-1", "deep-1"],
+      );
+
+      const target = all.models.find((model) => model.modelId !== session.info.model?.modelId)!;
+      await session.setModel(target.provider, target.modelId);
+      assert.equal(session.info.model?.modelId, target.modelId);
+      assert.equal(session.info.model?.provider, target.provider);
     });
 
     test("replay returns the tail after a seq and flags nothing missing", async () => {

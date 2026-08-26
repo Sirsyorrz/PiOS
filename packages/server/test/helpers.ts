@@ -33,6 +33,8 @@ export async function startHarness(lister?: SessionLister): Promise<Harness> {
       command: process.execPath,
       argsPrefix: [FAKE_PI],
       sessionDir: join(dir, "sessions"),
+      // Empty: the suite must not inherit the developer's own model scope.
+      agentDir: join(dir, "agent"),
       requestTimeoutMs: 5_000,
     }),
     piVersion: "fake",

@@ -1,5 +1,6 @@
 import type {
   AgentEvent,
+  ModelOption,
   ExtensionUiRequest,
   ImageContent,
   SessionEntry,
@@ -44,6 +45,12 @@ export interface PromptOptions {
   streamingBehavior?: StreamingBehavior;
 }
 
+export interface ModelListing {
+  models: ModelOption[];
+  /** True when this is the full catalogue, including when there is no scope. */
+  all: boolean;
+}
+
 export interface PromptResult {
   accepted: boolean;
   error?: string;
@@ -62,6 +69,8 @@ export interface SessionInfo {
   /** Live cursor: the newest buffered event, including in-flight partials. */
   lastSeq: number;
   updatedAt: number;
+  /** Active model, absent until pi resolves one. */
+  model?: ModelOption;
 }
 
 export interface PiSession {
@@ -77,6 +86,10 @@ export interface PiSession {
 
   interrupt(): Promise<void>;
   dispose(): Promise<void>;
+
+  /** The session's model scope, or the whole catalogue when asked for it. */
+  listModels(options?: { all?: boolean }): Promise<ModelListing>;
+  setModel(provider: string, modelId: string): Promise<void>;
 
   /**
    * Reloads the session under a different project trust, in place.

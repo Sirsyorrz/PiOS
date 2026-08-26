@@ -1,10 +1,11 @@
-import type { AgentEvent, ImageContent, SessionEntry } from "@pios/protocol";
+import type { AgentEvent, ImageContent, ModelOption, SessionEntry } from "@pios/protocol";
 import { AgentEventSchema } from "@pios/protocol";
 import { BaseSession } from "./base-session.ts";
 import { sliceEntriesSince } from "./entries.ts";
 import type {
   CreateSessionOptions,
   EntriesPage,
+  ModelListing,
   PiSession,
   PromptOptions,
   PromptResult,
@@ -16,8 +17,23 @@ import type {
  * Structural rather than imported so the host can be driven by a stub in
  * tests. The real `AgentSession` satisfies it as-is.
  */
+/** The parts of a pi-ai `Model` this host reads. */
+export interface AgentModelLike {
+  id: string;
+  name: string;
+  provider: string;
+}
+
 export interface AgentSessionLike {
   readonly isStreaming: boolean;
+  readonly model?: AgentModelLike;
+  /** Models pi was scoped to (`--models`), empty when unscoped. */
+  readonly scopedModels?: ReadonlyArray<{ model: AgentModelLike }>;
+  readonly modelRuntime?: {
+    getAvailable(): Promise<readonly AgentModelLike[]>;
+    getModel(provider: string, modelId: string): AgentModelLike | undefined;
+  };
+  setModel?(model: AgentModelLike): Promise<void>;
   readonly sessionId: string;
   readonly sessionFile: string | undefined;
   readonly sessionManager: {
@@ -84,6 +100,7 @@ export class InProcessSession extends BaseSession implements PiSession {
     this.sessionFile = agent.sessionFile;
     this.setLeafId(agent.sessionManager.getLeafId());
     this.unsubscribe = agent.subscribe((raw) => this.onAgentEvent(raw));
+    this.setModelInfo(this.describe(agent.model));
     this.setStatus(agent.isStreaming ? "running" : "idle");
   }
 
@@ -96,6 +113,12 @@ export class InProcessSession extends BaseSession implements PiSession {
     }
     const event: AgentEvent = parsed.data;
     this.observeAgentEvent(event);
+    // pi can move the model itself (cycling, a fallback after an auth error),
+    // so the summary is refreshed from the agent rather than only on our own
+    // set_model.
+    if (event.type === "agent_start" || event.type === "agent_settled") {
+      this.setModelInfo(this.describe(this.agent?.model));
+    }
     if (event.type === "message_end" || event.type === "agent_settled") {
       this.setLeafId(this.agent?.sessionManager.getLeafId() ?? this.leafId);
     }
@@ -151,6 +174,42 @@ export class InProcessSession extends BaseSession implements PiSession {
     const leafId = manager.getLeafId();
     this.setLeafId(leafId);
     return sliceEntriesSince(manager.getEntries(), leafId, since);
+  }
+
+  async listModels(options: { all?: boolean } = {}): Promise<ModelListing> {
+    const agent = this.requireAgent();
+    const scoped = agent.scopedModels ?? [];
+    if (!options.all && scoped.length > 0) {
+      return { models: scoped.map((entry) => this.describe(entry.model)!), all: false };
+    }
+    const keys = new Set(scoped.map((entry) => key(entry.model.provider, entry.model.id)));
+    const available = (await agent.modelRuntime?.getAvailable()) ?? [];
+    return {
+      models: available.map((model) => ({
+        provider: model.provider,
+        modelId: model.id,
+        name: model.name,
+        scoped: keys.has(key(model.provider, model.id)),
+      })),
+      all: true,
+    };
+  }
+
+  async setModel(provider: string, modelId: string): Promise<void> {
+    const agent = this.requireAgent();
+    if (!agent.setModel) throw new Error("this host cannot switch models");
+    const model = agent.modelRuntime?.getModel(provider, modelId);
+    if (!model) throw new Error(`unknown model ${key(provider, modelId)}`);
+    await agent.setModel(model);
+    this.setModelInfo(this.describe(agent.model ?? model));
+  }
+
+  private describe(model: AgentModelLike | undefined): ModelOption | undefined {
+    if (!model) return undefined;
+    const scoped = (this.agent?.scopedModels ?? []).some(
+      (entry) => key(entry.model.provider, entry.model.id) === key(model.provider, model.id),
+    );
+    return { provider: model.provider, modelId: model.id, name: model.name, scoped };
   }
 
   async interrupt(): Promise<void> {
@@ -218,6 +277,10 @@ export class InProcessSession extends BaseSession implements PiSession {
       return { accepted: false, error: messageOf(error) };
     }
   }
+}
+
+function key(provider: string, modelId: string): string {
+  return `${provider}/${modelId}`;
 }
 
 function messageOf(error: unknown): string {

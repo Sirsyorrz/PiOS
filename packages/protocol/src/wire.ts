@@ -68,6 +68,17 @@ export const ClientFrameSchema = z.discriminatedUnion("type", [
     sinceSeq: z.number().optional(),
   }),
   Envelope({ type: z.literal("unsubscribe"), sessionId: z.string() }),
+  /**
+   * Models this session can switch to. Scoped only by default: the whole
+   * catalogue is hundreds of rows, and asking for it is a deliberate act.
+   */
+  Envelope({ type: z.literal("list_models"), sessionId: z.string(), all: z.boolean().default(false) }),
+  Envelope({
+    type: z.literal("set_model"),
+    sessionId: z.string(),
+    provider: z.string(),
+    modelId: z.string(),
+  }),
   // Resume. `since` omitted means "send everything".
   Envelope({
     type: z.literal("get_entries"),
@@ -104,6 +115,19 @@ export const ClientFrameSchema = z.discriminatedUnion("type", [
 ]);
 export type ClientFrame = z.infer<typeof ClientFrameSchema>;
 
+export const ModelOptionSchema = z.object({
+  provider: z.string(),
+  modelId: z.string(),
+  name: z.string(),
+  /**
+   * In the model scope pi was configured with (`--models`). The picker shows
+   * these alone until the user asks for everything, because an unfiltered
+   * catalogue is hundreds of rows on a phone.
+   */
+  scoped: z.boolean().default(false),
+});
+export type ModelOption = z.infer<typeof ModelOptionSchema>;
+
 export const SessionSummarySchema = z.object({
   sessionId: z.string(),
   name: z.string().optional(),
@@ -119,6 +143,8 @@ export const SessionSummarySchema = z.object({
    */
   lastSeq: z.number(),
   updatedAt: z.number(),
+  /** The model the agent is on right now, absent when pi has not resolved one. */
+  model: ModelOptionSchema.optional(),
 });
 export type SessionSummary = z.infer<typeof SessionSummarySchema>;
 
@@ -187,6 +213,17 @@ export const ServerFrameSchema = z.discriminatedUnion("type", [
     message: z.string(),
   }),
   ServerEnvelope({ type: z.literal("sessions"), sessions: z.array(SessionSummarySchema) }),
+  ServerEnvelope({
+    type: z.literal("models"),
+    sessionId: z.string(),
+    models: z.array(ModelOptionSchema),
+    /**
+     * The whole catalogue, not the scope. Set even for a scoped request when
+     * the daemon has no scope to narrow to, so the client never shows an empty
+     * picker and calls it a scope.
+     */
+    all: z.boolean().default(false),
+  }),
   ServerEnvelope({
     type: z.literal("session_state"),
     sessionId: z.string(),

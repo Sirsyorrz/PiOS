@@ -6,11 +6,24 @@
  */
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import type { SessionEntry } from "@pios/protocol";
-import type { AgentSessionLike } from "../src/in-process.ts";
+import type { AgentModelLike, AgentSessionLike } from "../src/in-process.ts";
 import type { CreateSessionOptions } from "../src/types.ts";
+
+const CATALOGUE: AgentModelLike[] = [
+  { id: "fast-1", name: "Fast 1", provider: "acme" },
+  { id: "deep-1", name: "Deep 1", provider: "acme" },
+  { id: "other-1", name: "Other 1", provider: "other" },
+];
 
 export class FakeAgentSession implements AgentSessionLike {
   isStreaming = false;
+  model: AgentModelLike | undefined = CATALOGUE[0];
+  readonly scopedModels = [{ model: CATALOGUE[0]! }, { model: CATALOGUE[1]! }];
+  readonly modelRuntime = {
+    getAvailable: async () => CATALOGUE,
+    getModel: (provider: string, id: string) =>
+      CATALOGUE.find((model) => model.provider === provider && model.id === id),
+  };
   readonly sessionId: string;
   readonly sessionFile: string;
   private entries: SessionEntry[] = [];
@@ -99,6 +112,10 @@ export class FakeAgentSession implements AgentSessionLike {
     this.emit({ type: "agent_end", messages: [], willRetry: false });
     this.isStreaming = false;
     this.emit({ type: "agent_settled" });
+  }
+
+  async setModel(model: AgentModelLike): Promise<void> {
+    this.model = model;
   }
 
   async steer(text: string): Promise<void> {

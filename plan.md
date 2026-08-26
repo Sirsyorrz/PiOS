@@ -225,7 +225,8 @@ Exit: full v0 scope usable from a phone browser.
 3. Extension UI dialogs: `select` / `confirm` / `input` / `editor` as native
    sheets, reply `extension_ui_response` with matching `id`. Render or ignore
    `notify` / `setStatus` / `setWidget` / `setTitle`. Document `custom()` as a
-   hard gap.
+   hard gap. The daemon-side dialog deadline already ships; what is left is
+   pending-dialog state on the session, the response route, and the sheets.
 4. Activity-lease reporting: 25s report, 45s TTL, carrying
    `visible` / `focused` / `appState` and warm scopes.
 5. `@path` file picker backed by daemon directory listing.

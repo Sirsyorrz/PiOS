@@ -195,6 +195,35 @@ export class Connection {
         });
       }
 
+      case "list_models": {
+        const session = this.require(frame.sessionId, frame.commandId);
+        if (!session) return;
+        const listing = await session.listModels({ all: frame.all });
+        return this.send({
+          v: WIRE_VERSION,
+          type: "models",
+          commandId: frame.commandId,
+          sessionId: frame.sessionId,
+          models: listing.models,
+          all: listing.all,
+        });
+      }
+
+      case "set_model": {
+        const session = this.require(frame.sessionId, frame.commandId);
+        if (!session) return;
+        // Idempotent: setting the model it already has changes nothing, so a
+        // redelivered frame needs no ledger claim.
+        await session.setModel(frame.provider, frame.modelId);
+        return this.send({
+          v: WIRE_VERSION,
+          type: "session_state",
+          commandId: frame.commandId,
+          sessionId: frame.sessionId,
+          summary: toSummary(session.info),
+        });
+      }
+
       case "subscribe":
         return this.subscribe(frame);
 
@@ -378,5 +407,6 @@ function toSummary(info: SessionInfo): SessionSummary {
     leafId: info.leafId,
     lastSeq: info.lastSeq,
     updatedAt: info.updatedAt,
+    model: info.model,
   };
 }

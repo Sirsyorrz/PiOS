@@ -117,6 +117,7 @@ export function ChatView({ sessionId, session, state, onTrust, onBack }: {
 
       <Composer
         sessionId={sessionId}
+        model={session?.model}
         running={view?.running ?? false}
         interrupting={view?.interrupting ?? false}
         onSend={send}

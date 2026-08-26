@@ -64,6 +64,16 @@ function addEntry(message: unknown): Entry {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+// Mirrors pi: a dialog blocks the turn until the host answers by id, and no
+// timer is armed unless the extension asked for one.
+let answerDialog: ((response: Record<string, unknown>) => void) | null = null;
+function askDialog(id: string): Promise<Record<string, unknown>> {
+  write({ type: "extension_ui_request", id, method: "confirm", title: "Apply edit?" });
+  return new Promise((resolve) => {
+    answerDialog = resolve;
+  });
+}
+
 async function runTurn(text: string) {
   streaming = true;
   aborted = false;
@@ -74,7 +84,8 @@ async function runTurn(text: string) {
   write({ type: "message_start", message: user });
   write({ type: "message_end", message: user });
 
-  const reply = `echo: ${text}`;
+  const answer = text.includes("ASK_DIALOG") ? await askDialog(`${sessionId}-dialog`) : null;
+  const reply = answer ? `dialog: ${JSON.stringify(answer)}` : `echo: ${text}`;
   write({ type: "message_start", message: { role: "assistant", content: [] } });
   write({
     type: "message_update",
@@ -104,6 +115,13 @@ async function runTurn(text: string) {
   write({ type: "agent_settled" });
 }
 
+const catalogue = [
+  { id: "fast-1", name: "Fast 1", provider: "acme" },
+  { id: "deep-1", name: "Deep 1", provider: "acme" },
+  { id: "other-1", name: "Other 1", provider: "other" },
+];
+let model = catalogue[0];
+
 let queue: Promise<void> = Promise.resolve();
 
 function handle(command: Record<string, any>) {
@@ -111,11 +129,30 @@ function handle(command: Record<string, any>) {
     write({ type: "response", command: command.type, id: command.id, ...extra });
 
   switch (command.type) {
+    case "extension_ui_response": {
+      const resolve = answerDialog;
+      answerDialog = null;
+      resolve?.(command);
+      return;
+    }
+
     case "get_state":
       return respond({
         success: true,
-        data: { isStreaming: streaming, sessionFile: statePath, sessionId, trusted },
+        data: { isStreaming: streaming, sessionFile: statePath, sessionId, trusted, model },
       });
+
+    case "get_available_models":
+      return respond({ success: true, data: { models: catalogue } });
+
+    case "set_model": {
+      const found = catalogue.find(
+        (m) => m.provider === command.provider && m.id === command.modelId,
+      );
+      if (!found) return respond({ success: false, error: "Unknown model" });
+      model = found;
+      return respond({ success: true, data: found });
+    }
 
     case "get_entries": {
       if (command.since === undefined) {

@@ -252,8 +252,15 @@ compaction, or queued continuations.
 ### Extension UI
 
 Render `select`/`confirm`/`input`/`editor` as native sheets; reply with
-`extension_ui_response` and the matching `id`. Dialogs may carry a `timeout`
-that the agent auto-resolves, so the client need not track it.
+`extension_ui_response` and the matching `id`.
+
+A dialog carries a `timeout` only when the extension asked for one, and pi
+arms no timer otherwise, so an unanswered dialog blocks the agent forever.
+The daemon therefore caps every dialog itself and cancels on expiry: a session
+must never be wedgeable by an extension the client cannot render. A pending
+dialog is session state, not connection state, so it survives reconnects and is
+delivered to whichever clients are attached; the first answer wins and a
+duplicate id is a no-op.
 
 Degraded in RPC mode (already stubbed): `custom()` returns undefined;
 `setWorkingMessage`, `setFooter`, `setHeader`, `setEditorComponent`,

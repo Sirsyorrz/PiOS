@@ -1,10 +1,12 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
-import type { ImageContent } from "@pios/protocol";
+import { SettingsManager } from "@earendil-works/pi-coding-agent";
+import type { ExtensionUiResponse, ImageContent, ModelOption } from "@pios/protocol";
 import {
   AgentEventSchema,
   ExtensionUiRequestSchema,
   GetEntriesDataSchema,
   RpcResponseSchema,
+  isDialogRequest,
   isUnknownCursorError,
   type RpcResponse,
 } from "@pios/protocol";
@@ -14,6 +16,7 @@ import { projectSessionDir } from "./session-paths.ts";
 import type {
   CreateSessionOptions,
   EntriesPage,
+  ModelListing,
   PiSession,
   PromptOptions,
   PromptResult,
@@ -27,11 +30,16 @@ export interface SubprocessOptions {
   extraArgs?: string[];
   /** Root holding one directory per project, i.e. `~/.pi/agent/sessions`. */
   sessionDir?: string;
+  /** pi's global config directory, for reading its model scope. */
+  agentDir?: string;
   env?: NodeJS.ProcessEnv;
   requestTimeoutMs?: number;
+  /** Upper bound on an unanswered extension dialog. See `dialogTimers`. */
+  dialogTimeoutMs?: number;
 }
 
 const DEFAULT_REQUEST_TIMEOUT_MS = 120_000;
+const DEFAULT_DIALOG_TIMEOUT_MS = 10 * 60_000;
 
 /**
  * Session backed by a `pi --mode rpc` child process.
@@ -49,6 +57,12 @@ export class SubprocessSession extends BaseSession implements PiSession {
   >();
   private seq = 0;
   private disposed = false;
+  /**
+   * pi only arms its own timer when the extension passes `timeout`, and most
+   * do not. An unanswered dialog then blocks the agent forever, so every
+   * dialog gets a deadline here and is cancelled on expiry.
+   */
+  private readonly dialogTimers = new Map<string, NodeJS.Timeout>();
   /** Set when the child could not be spawned at all, e.g. pi is not on PATH. */
   private spawnError: Error | null = null;
   private readonly options: SubprocessOptions;
@@ -148,8 +162,11 @@ export class SubprocessSession extends BaseSession implements PiSession {
     // never answer anything.
     if (this.spawnError) throw this.spawnError;
     if (state.success) {
-      const data = state.data as { sessionFile?: string; isStreaming?: boolean } | undefined;
+      const data = state.data as
+        | { sessionFile?: string; isStreaming?: boolean; model?: RpcModel }
+        | undefined;
       this.sessionFile = data?.sessionFile;
+      this.setModelInfo(toModelOption(data?.model));
       if (data?.isStreaming) this.setStatus("running");
     }
     try {
@@ -178,6 +195,7 @@ export class SubprocessSession extends BaseSession implements PiSession {
 
     const uiRequest = ExtensionUiRequestSchema.safeParse(json);
     if (uiRequest.success) {
+      if (isDialogRequest(uiRequest.data)) this.armDialogTimeout(uiRequest.data.id);
       this.publish({ type: "extension_ui_request", request: uiRequest.data });
       return;
     }
@@ -227,8 +245,34 @@ export class SubprocessSession extends BaseSession implements PiSession {
     });
   }
 
+  private armDialogTimeout(id: string): void {
+    this.clearDialogTimeout(id);
+    const timer = setTimeout(() => {
+      this.dialogTimers.delete(id);
+      console.warn(`[pi-host] session ${this.id} cancelled unanswered dialog ${id}`);
+      this.answerDialog({ type: "extension_ui_response", id, cancelled: true });
+    }, this.options.dialogTimeoutMs ?? DEFAULT_DIALOG_TIMEOUT_MS);
+    timer.unref?.();
+    this.dialogTimers.set(id, timer);
+  }
+
+  private clearDialogTimeout(id: string): void {
+    const timer = this.dialogTimers.get(id);
+    if (!timer) return;
+    clearTimeout(timer);
+    this.dialogTimers.delete(id);
+  }
+
+  /** Fire and forget: pi answers a dialog by id, not with an RPC response. */
+  answerDialog(response: ExtensionUiResponse): void {
+    this.clearDialogTimeout(response.id);
+    this.proc?.stdin.write(encodeJsonl(response));
+  }
+
   private handleExit(code: number | null, signal: string | null): void {
     this.proc = null;
+    // A restart replays nothing, so a dialog from the dead child is dead too.
+    for (const id of this.dialogTimers.keys()) this.clearDialogTimeout(id);
     for (const [id, waiter] of this.pending) {
       clearTimeout(waiter.timer);
       waiter.resolve({
@@ -255,6 +299,45 @@ export class SubprocessSession extends BaseSession implements PiSession {
         streamingBehavior: options.streamingBehavior,
       }),
     );
+  }
+
+  /**
+   * RPC mode has no command for pi's model scope, so the scope is read from
+   * pi's own settings and applied to the catalogue here. Read per call, so an
+   * edit to the settings does not need a daemon restart.
+   */
+  async listModels(options: { all?: boolean } = {}): Promise<ModelListing> {
+    const response = await this.request({ type: "get_available_models" });
+    if (!response.success) throw new Error(response.error ?? "get_available_models failed");
+    const catalogue = (response.data as { models?: RpcModel[] } | undefined)?.models ?? [];
+    const patterns = this.scopePatterns();
+    const models = catalogue
+      .map((model) => toModelOption(model))
+      .filter((model): model is ModelOption => Boolean(model))
+      .map((model) => ({ ...model, scoped: inScope(model, patterns) }));
+
+    const scoped = models.filter((model) => model.scoped);
+    // An empty scope is reported as the full catalogue rather than as an empty
+    // list, so a client never shows nothing and calls it a scope.
+    if (!options.all && scoped.length > 0) return { models: scoped, all: false };
+    return { models, all: true };
+  }
+
+  private scopePatterns(): string[] {
+    try {
+      return (
+        SettingsManager.create(this.createOptions.cwd, this.options.agentDir).getEnabledModels() ??
+        []
+      );
+    } catch {
+      return [];
+    }
+  }
+
+  async setModel(provider: string, modelId: string): Promise<void> {
+    const response = await this.request({ type: "set_model", provider, modelId });
+    if (!response.success) throw new Error(response.error ?? "set_model failed");
+    this.setModelInfo(toModelOption(response.data as RpcModel | undefined));
   }
 
   async steer(text: string, images?: ImageContent[]): Promise<PromptResult> {
@@ -289,6 +372,7 @@ export class SubprocessSession extends BaseSession implements PiSession {
   async dispose(): Promise<void> {
     if (this.disposed) return;
     this.disposed = true;
+    for (const id of this.dialogTimers.keys()) this.clearDialogTimeout(id);
     const proc = this.proc;
     this.proc = null;
     if (proc) {
@@ -333,6 +417,39 @@ export class SubprocessSession extends BaseSession implements PiSession {
     await this.spawnChild();
     this.publish({ type: "session_recovered", leafId: this.leafId, reason });
   }
+}
+
+/** The fields of pi's `Model` payload that reach a client. */
+interface RpcModel {
+  id?: string;
+  name?: string;
+  provider?: string;
+}
+
+const THINKING_LEVELS = new Set(["off", "minimal", "low", "medium", "high"]);
+
+/**
+ * Whether a model is inside pi's `enabledModels` scope.
+ *
+ * Patterns are `provider/id` or a bare id, optionally suffixed with a thinking
+ * level, and may name an alias whose concrete id is dated, so a pattern also
+ * matches an id that starts with it.
+ */
+function inScope(model: ModelOption, patterns: string[]): boolean {
+  return patterns.some((raw) => {
+    const [head, ...rest] = raw.split(":");
+    const last = rest.at(-1);
+    const pattern = last && THINKING_LEVELS.has(last) ? [head, ...rest.slice(0, -1)].join(":") : raw;
+    const [provider, id] = pattern.includes("/")
+      ? [pattern.slice(0, pattern.indexOf("/")), pattern.slice(pattern.indexOf("/") + 1)]
+      : [model.provider, pattern];
+    return provider === model.provider && model.modelId.startsWith(id);
+  });
+}
+
+function toModelOption(model: RpcModel | undefined): ModelOption | undefined {
+  if (!model?.id || !model.provider) return undefined;
+  return { provider: model.provider, modelId: model.id, name: model.name ?? model.id, scoped: false };
 }
 
 function toResult(response: RpcResponse): PromptResult {

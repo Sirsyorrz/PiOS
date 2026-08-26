@@ -1,6 +1,7 @@
 import {
   WIRE_VERSION,
   type ImageContent,
+  type ModelOption,
   type ResumableSessionWire,
   type SessionSummary,
   type StreamingBehavior,
@@ -17,6 +18,12 @@ import {
   type SupervisorOptions,
   type SupervisorState,
 } from "./supervisor.ts";
+
+export interface ModelListing {
+  models: ModelOption[];
+  /** The full catalogue rather than the session's scope. */
+  all: boolean;
+}
 
 export interface PiosClientOptions extends Omit<SupervisorOptions, "scheduler"> {
   storage?: StorageAdapter;
@@ -61,6 +68,9 @@ export class PiosClient {
   /** Sessions on disk, from the last `listResumable`. */
   private resumable: ResumableSessionWire[] = [];
   private readonly resumableHandlers = new Set<(sessions: ResumableSessionWire[]) => void>();
+  /** Model lists by session, from the last `listModels`. */
+  private readonly models = new Map<string, ModelListing>();
+  private readonly modelHandlers = new Set<(sessionId: string, listing: ModelListing) => void>();
   /** Failures of one-off commands, for the UI to say out loud. */
   private readonly commandErrorHandlers = new Set<(error: { commandId?: string; message: string }) => void>();
   private lastTransport: SupervisorState["transport"] = "idle";
@@ -183,6 +193,49 @@ export class PiosClient {
   }
 
   /**
+   * Asks what this session can run on: its model scope, or everything.
+   *
+   * Not queued: the answer depends on which providers are authenticated right
+   * now, so a reply to a question asked before a reconnect is not worth
+   * replaying.
+   */
+  listModels(sessionId: string, options: { all?: boolean } = {}): boolean {
+    return this.supervisor.send({
+      v: WIRE_VERSION,
+      type: "list_models",
+      commandId: this.generateId(),
+      sessionId,
+      all: options.all ?? false,
+    });
+  }
+
+  getModels(sessionId: string): ModelListing {
+    return this.models.get(sessionId) ?? { models: [], all: false };
+  }
+
+  onModels(handler: (sessionId: string, listing: ModelListing) => void): () => void {
+    this.modelHandlers.add(handler);
+    return () => this.modelHandlers.delete(handler);
+  }
+
+  /**
+   * Switches the model for one session.
+   *
+   * The daemon answers with `session_state`, so every device sees the switch,
+   * not just the one that asked.
+   */
+  setModel(sessionId: string, provider: string, modelId: string): boolean {
+    return this.supervisor.send({
+      v: WIRE_VERSION,
+      type: "set_model",
+      commandId: this.generateId(),
+      sessionId,
+      provider,
+      modelId,
+    });
+  }
+
+  /**
    * Relaunches a session with project trust enabled.
    *
    * The session id does not change, so the open transcript stays open; the
@@ -207,6 +260,7 @@ export class PiosClient {
 
   disposeSession(sessionId: string): boolean {
     this.subscribed.delete(sessionId);
+    this.models.delete(sessionId);
     this.sessions.clear(sessionId);
     this.supervisor.forgetSession(sessionId);
     return this.supervisor.send({
@@ -350,6 +404,12 @@ export class PiosClient {
       case "sessions":
         this.trackStatus(frame.sessions);
         break;
+      case "models": {
+        const listing = { models: frame.models, all: frame.all };
+        this.models.set(frame.sessionId, listing);
+        for (const handler of [...this.modelHandlers]) handler(frame.sessionId, listing);
+        break;
+      }
       case "resumable_sessions":
         this.resumable = frame.sessions;
         for (const handler of [...this.resumableHandlers]) handler(this.resumable);

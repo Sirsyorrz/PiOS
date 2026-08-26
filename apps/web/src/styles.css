@@ -1150,6 +1150,61 @@ button.danger {
   border-radius: 999px;
 }
 
+/* The menu is anchored to the button and opens upward: the dock sits at the
+   bottom of the screen, so downward is off it. */
+.model-picker {
+  position: relative;
+  min-width: 0;
+}
+
+.model-button {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 40vw;
+  min-height: 32px;
+  font-size: 13px;
+  border-radius: 999px;
+  color: var(--muted);
+}
+
+.model-menu {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 0;
+  width: max(240px, 60vw);
+  padding: 6px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  box-shadow: 0 12px 32px rgb(0 0 0 / 45%);
+}
+
+.model-menu header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 8px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.model-menu .all {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.model-list {
+  max-height: min(320px, calc(var(--app-height) * 0.4));
+}
+
+.model-list .list-row.active {
+  background: var(--hover);
+  color: var(--text);
+}
+
 /* The one filled control on the screen: it is the primary action. */
 .composer .send {
   background: var(--accent);

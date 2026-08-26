@@ -1,4 +1,4 @@
-import type { AgentEvent } from "@pios/protocol";
+import type { AgentEvent, ModelOption } from "@pios/protocol";
 import { EventRingBuffer } from "./ring-buffer.ts";
 import type {
   BufferedEvent,
@@ -23,6 +23,7 @@ export abstract class BaseSession {
   protected status: SessionStatus = "starting";
   protected leafId: string | null = null;
   protected sessionFile: string | undefined;
+  protected model: ModelOption | undefined;
   protected updatedAt = Date.now();
 
   private readonly buffer: EventRingBuffer;
@@ -62,6 +63,7 @@ export abstract class BaseSession {
       leafId: this.leafId,
       lastSeq: this.buffer.lastSeq,
       updatedAt: this.updatedAt,
+      model: this.model,
     };
   }
 
@@ -87,6 +89,18 @@ export abstract class BaseSession {
       }
     }
     return buffered;
+  }
+
+  /**
+   * Records the active model and tells subscribers.
+   *
+   * Published as a status event because that is what clients turn into a fresh
+   * summary; a model switch from one device has to reach the others.
+   */
+  protected setModelInfo(model: ModelOption | undefined): void {
+    if (model?.provider === this.model?.provider && model?.modelId === this.model?.modelId) return;
+    this.model = model;
+    this.publish({ type: "status", status: this.status });
   }
 
   protected setStatus(status: SessionStatus): void {

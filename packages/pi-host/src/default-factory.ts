@@ -1,4 +1,9 @@
-import { createAgentSession, SessionManager } from "@earendil-works/pi-coding-agent";
+import {
+  createAgentSessionFromServices,
+  createAgentSessionServices,
+  resolveModelScopeWithDiagnostics,
+  SessionManager,
+} from "@earendil-works/pi-coding-agent";
 import type { AgentSessionFactory, AgentSessionLike } from "./in-process.ts";
 import { projectSessionDir } from "./session-paths.ts";
 
@@ -27,10 +32,21 @@ export function createDefaultAgentSessionFactory(
       ? SessionManager.open(createOptions.resumeFrom, dir, createOptions.cwd)
       : SessionManager.create(createOptions.cwd, dir);
 
-    const { session } = await createAgentSession({
+    const services = await createAgentSessionServices({
       cwd: createOptions.cwd,
       agentDir: options.agentDir,
+    });
+    // pi's own model scope (`enabledModels`) is what the picker offers first.
+    // Without it every client would face the whole authenticated catalogue.
+    const patterns = services.settingsManager.getEnabledModels() ?? [];
+    const scopedModels = patterns.length
+      ? (await resolveModelScopeWithDiagnostics(patterns, services.modelRuntime)).scopedModels
+      : [];
+
+    const { session } = await createAgentSessionFromServices({
+      services,
       sessionManager,
+      scopedModels,
     });
     return session as unknown as AgentSessionLike;
   };

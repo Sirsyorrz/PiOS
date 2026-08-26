@@ -1,7 +1,8 @@
-import type { ImageContent, StreamingBehavior } from "@pios/protocol";
+import type { ImageContent, ModelOption, StreamingBehavior } from "@pios/protocol";
 import { useEffect, useRef, useState } from "react";
 import { browserStorage } from "../storage.ts";
 import { PlusIcon, SendIcon, StopIcon } from "./icons.tsx";
+import { ModelPicker } from "./model-picker.tsx";
 
 const DRAFT_PREFIX = "pios.draft.";
 
@@ -12,8 +13,10 @@ const DRAFT_PREFIX = "pios.draft.";
  * evicted at any moment on a phone, and never touches the socket: sending
  * means queueing.
  */
-export function Composer({ sessionId, running, interrupting, onSend, onInterrupt }: {
+export function Composer({ sessionId, model, running, interrupting, onSend, onInterrupt }: {
   sessionId: string;
+  /** Active model, for the picker's label. */
+  model?: ModelOption;
   running: boolean;
   /** Stop was sent and the agent has not stopped yet. */
   interrupting: boolean;
@@ -109,6 +112,8 @@ export function Composer({ sessionId, running, interrupting, onSend, onInterrupt
             <option value="followUp">Follow up after</option>
           </select>
         ) : null}
+
+        <ModelPicker sessionId={sessionId} current={model} />
 
         <span className="spacer" />
 

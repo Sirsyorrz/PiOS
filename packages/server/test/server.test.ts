@@ -336,3 +336,28 @@ test("disposing a session is announced to every connected client", async () => {
   watcher.close();
   actor.close();
 });
+
+test("the model list and a model switch cross the wire", async () => {
+  const client = await hello(harness);
+  const cwd = join(harness.dir, "models");
+  mkdirSync(cwd, { recursive: true });
+
+  const sessionId = await createSession(client, cwd);
+  const listed = await client.waitForCommand(
+    client.send({ type: "list_models", sessionId, all: false }),
+  );
+  assert.equal(listed.type, "models");
+  assert.ok(listed.type === "models" && listed.models.length >= 2);
+
+  const target = listed.type === "models" ? listed.models[1]! : null;
+  assert.ok(target);
+  const switched = await client.waitForCommand(
+    client.send({ type: "set_model", sessionId, provider: target.provider, modelId: target.modelId }),
+  );
+  assert.equal(switched.type, "session_state");
+  assert.equal(
+    switched.type === "session_state" ? switched.summary.model?.modelId : null,
+    target.modelId,
+  );
+  client.close();
+});
