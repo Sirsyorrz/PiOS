@@ -1,6 +1,7 @@
 import type { ImageContent, SessionSummary, StreamingBehavior } from "@pios/protocol";
 import { useEffect, useRef } from "react";
 import { useClient, useSessionView } from "../client-provider.tsx";
+import { useStickToBottom } from "../scroll.ts";
 import type { SessionView, SupervisorState } from "@pios/client-core";
 import { Banners } from "./banners.tsx";
 import { Composer } from "./composer.tsx";
@@ -38,35 +39,24 @@ export function ChatView({ sessionId, session, state, onTrust, onBack }: {
 }) {
   const client = useClient();
   const view = useSessionView(sessionId);
-  const bottom = useRef<HTMLDivElement>(null);
   const pane = useRef<HTMLElement>(null);
   const dock = useRef<HTMLDivElement>(null);
+  const transcript = useStickToBottom(view);
 
   // The dock floats over the transcript, so the transcript has to reserve
-  // exactly as much room as the dock currently takes.
+  // exactly as much room as the dock currently takes. That reservation is
+  // padding, so it changes scrollHeight without resizing the scroller: the
+  // pane cannot observe it and has to be told.
   useEffect(() => {
     const box = dock.current;
     if (!box) return;
     const measure = new ResizeObserver(() => {
       pane.current?.style.setProperty("--dock-height", `${box.offsetHeight}px`);
+      transcript.settle();
     });
     measure.observe(box);
     return () => measure.disconnect();
-  }, []);
-
-  useEffect(() => {
-    bottom.current?.scrollIntoView({ block: "end" });
-  }, [view]);
-
-  // The keyboard shortens the transcript under the reader; without this the
-  // last message would be scrolled off the top of the shrunken pane.
-  useEffect(() => {
-    const vv = window.visualViewport;
-    if (!vv) return;
-    const stick = () => bottom.current?.scrollIntoView({ block: "end" });
-    vv.addEventListener("resize", stick);
-    return () => vv.removeEventListener("resize", stick);
-  }, []);
+  }, [transcript.settle]);
 
   function send(text: string, images: ImageContent[], behavior?: StreamingBehavior) {
     client.prompt({ sessionId, text, images, streamingBehavior: behavior });
@@ -91,7 +81,7 @@ export function ChatView({ sessionId, session, state, onTrust, onBack }: {
         </span>
       </header>
 
-      <div className="transcript scroll-y">
+      <div className="transcript scroll-y" ref={transcript.ref} onScroll={transcript.onScroll}>
         {view?.items.map((item) => {
           if (item.kind === "message") {
             return <MessageBubble key={item.key} message={item.message} tools={view.tools} />;
@@ -118,7 +108,6 @@ export function ChatView({ sessionId, session, state, onTrust, onBack }: {
             </div>
           );
         })}
-        <div ref={bottom} />
       </div>
 
       <div className="dock" ref={dock}>

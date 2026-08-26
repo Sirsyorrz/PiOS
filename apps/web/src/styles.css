@@ -269,6 +269,9 @@ button.danger {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  /* Reaching the end scrolls nothing else: chaining on a phone drags the app
+     box itself, which the reader has no way to put back. */
+  overscroll-behavior: contain;
   scrollbar-gutter: stable;
   padding-right: 8px;
 }
