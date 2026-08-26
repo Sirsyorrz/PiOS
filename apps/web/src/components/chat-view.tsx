@@ -6,6 +6,7 @@ import { useStickToBottom } from "../scroll.ts";
 import type { SessionView, SupervisorState } from "@pios/client-core";
 import { Banners } from "./banners.tsx";
 import { Composer } from "./composer.tsx";
+import { sessionState } from "../session-status.ts";
 import { DialogSheet } from "./dialog-sheet.tsx";
 import { ChevronLeftIcon, PlusIcon } from "./icons.tsx";
 import { MessageBubble, StreamingBubble } from "./message.tsx";
@@ -79,6 +80,13 @@ export function ChatView({
   // One at a time, oldest first: an extension chains its questions, and a
   // stack of sheets makes it unclear which one is being answered.
   const dialog = view?.dialogs[0];
+  const rowState = sessionState(session ?? undefined, {
+    running: view?.running,
+    interrupting: view?.interrupting,
+    // The local dialog leads the summary that announces it, and this client is
+    // the one being asked.
+    blocked: Boolean(dialog),
+  });
 
   const files = useMemo(
     () => ({ baseUrl, deviceToken, sessionId }),
@@ -95,9 +103,10 @@ export function ChatView({
         <span className="title line">
           {view?.presentation.title ?? session?.name ?? session?.cwd ?? sessionId}
         </span>
-        <span className={`status ${view?.running ? "running" : (session?.status ?? "idle")}`}>
-          {view?.running ? <span className="spinner" /> : null}
-          {view?.interrupting ? "stopping" : view?.running ? "running" : (session?.status ?? "")}
+        {/* One source for the word and its colour, shared with the list. */}
+        <span className={`status ${rowState.tone}`}>
+          {rowState.tone === "running" ? <span className="spinner" /> : null}
+          {rowState.label}
         </span>
         {/* Starts from this session's cwd: a second agent on the same project
             is the common case, and it is one tap away. */}

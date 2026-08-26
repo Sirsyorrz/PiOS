@@ -78,3 +78,30 @@ test("an answered dialog is forwarded and cancels its deadline", async () => {
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("a pending dialog is reported in the session summary and announced", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "pios-dialog-"));
+  const session = await start(dir, 5_000);
+  try {
+    const asked = waitFor(session, (e) => e.event.type === "extension_ui_request");
+    const done = waitFor(session, settled);
+    await session.prompt("ASK_DIALOG");
+    const request = await asked;
+    // Clients that are not attached learn about it from the summary alone,
+    // so the flag has to be set by the time the request goes out.
+    assert.equal(session.info.awaitingInput, true);
+
+    const cleared = waitFor(
+      session,
+      (e) => e.event.type === "status" && session.info.awaitingInput === false,
+    );
+    const id = request.event.type === "extension_ui_request" ? request.event.request.id : "";
+    session.answerDialog({ type: "extension_ui_response", id, confirmed: true });
+    await cleared;
+    await done;
+    assert.equal(session.info.awaitingInput, false);
+  } finally {
+    await session.dispose();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

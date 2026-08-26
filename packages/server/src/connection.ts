@@ -443,6 +443,7 @@ function toSummary(info: SessionInfo): SessionSummary {
     name: info.name,
     cwd: info.cwd,
     status: info.status === "starting" ? "idle" : info.status,
+    awaitingInput: info.awaitingInput,
     trusted: info.trusted,
     leafId: info.leafId,
     lastSeq: info.lastSeq,

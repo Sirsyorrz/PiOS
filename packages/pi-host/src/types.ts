@@ -66,6 +66,8 @@ export interface SessionInfo {
   /** Whether project-local extensions, settings, and packages were loaded. */
   trusted: boolean;
   status: SessionStatus;
+  /** Blocked on an extension dialog: running, but waiting on a human. */
+  awaitingInput: boolean;
   sessionFile?: string;
   /** Durable cursor: the last entry pi persisted. */
   leafId: string | null;

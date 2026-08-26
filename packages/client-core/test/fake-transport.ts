@@ -88,6 +88,7 @@ export function summary(overrides: Partial<SessionSummary> = {}): SessionSummary
     sessionId: "s1",
     cwd: "/work",
     status: "idle",
+    awaitingInput: false,
     trusted: false,
     leafId: null,
     lastSeq: 0,

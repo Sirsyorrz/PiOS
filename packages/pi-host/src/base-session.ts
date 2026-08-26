@@ -80,6 +80,7 @@ export abstract class BaseSession {
       name: this.name,
       trusted: this.trusted,
       status: this.status,
+      awaitingInput: this.dialogs.size > 0,
       sessionFile: this.sessionFile,
       leafId: this.leafId,
       lastSeq: this.buffer.lastSeq,
@@ -107,14 +108,18 @@ export abstract class BaseSession {
     return [...this.dialogs.values()];
   }
 
+  /** Published as a status event: a blocked agent has to show in list rows. */
   protected trackDialog(request: ExtensionUiRequest): void {
+    if (this.dialogs.has(request.id)) return;
     this.dialogs.set(request.id, request);
+    this.publish({ type: "status", status: this.status });
   }
 
   /** Announced so every attached client dismisses, not just the answerer. */
   protected closeDialog(id: string): boolean {
     if (!this.dialogs.delete(id)) return false;
     this.publish({ type: "extension_ui_closed", id });
+    this.publish({ type: "status", status: this.status });
     return true;
   }
 

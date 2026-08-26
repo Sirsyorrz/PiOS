@@ -140,6 +140,12 @@ export const SessionSummarySchema = z.object({
   cwd: z.string(),
   /** `crashed` is reported, never hidden behind a silent restart. */
   status: z.enum(["idle", "running", "crashed", "disposed"]),
+  /**
+   * Blocked on an extension dialog. Kept beside `status` rather than folded
+   * into it: the agent is still running, it just cannot proceed without an
+   * answer, and only a client attached to the session can give one.
+   */
+  awaitingInput: z.boolean().default(false),
   trusted: z.boolean(),
   /** Durable cursor: survives restarts, covers only what pi persisted. */
   leafId: z.string().nullable(),

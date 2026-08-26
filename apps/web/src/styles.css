@@ -561,7 +561,8 @@ button.danger {
   color: var(--ok);
 }
 
-.badge.untrusted {
+.badge.untrusted,
+.badge.waiting {
   color: var(--warn);
 }
 
@@ -728,6 +729,11 @@ button.danger {
 
 .status.running {
   color: var(--ok);
+}
+
+/* Blocked on an answer, not working: warm, so it is never read as progress. */
+.status.waiting {
+  color: var(--warn);
 }
 
 .status.crashed,
