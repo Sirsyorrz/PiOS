@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import { SessionRegistry, subprocessHost, inProcessHost } from "../src/registry.ts";
 import type { BufferedEvent } from "../src/types.ts";
 import { fakeAgentFactory } from "./fake-agent.ts";
+import { projectSessionDir } from "../src/session-paths.ts";
 
 const FAKE_PI = fileURLToPath(new URL("./fake-pi.ts", import.meta.url));
 
@@ -135,7 +136,9 @@ test("trusting a session relaunches it in place, keeping id and transcript", asy
   await registry.setProjectTrust("trust-1", true);
   await recovered;
 
-  const launches = readFileSync(join(dir, "argv.log"), "utf8").trim().split("\n");
+  const launches = readFileSync(join(projectSessionDir(dir, dir), "argv.log"), "utf8")
+    .trim()
+    .split("\n");
   assert.equal(launches.length, 2);
   assert.match(launches[0]!, /--session-id trust-1 .*--no-approve/);
   // The relaunch resumes the exact file, so it cannot land on an empty

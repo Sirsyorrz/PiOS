@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { readdir } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
+import { projectSessionDir } from "./session-paths.ts";
 
 /**
  * A session file on disk that no PiOS session currently owns.
@@ -65,19 +66,13 @@ async function listEverything(root?: string): Promise<PiSessionInfo[]> {
 
 async function listForCwd(cwd: string, root?: string): Promise<PiSessionInfo[]> {
   if (!root) return SessionManager.list(cwd);
-  const leaf = leafDirFor(cwd, root);
+  const leaf = projectSessionDir(cwd, root);
   if (existsSync(leaf)) return SessionManager.list(cwd, leaf);
   // A session file can name a cwd that does not match the directory it sits
   // in, e.g. after a fork, so falling back to a filtered scan is not dead code.
   const all = await listEverything(root);
   const resolved = resolve(cwd);
   return all.filter((session) => resolve(session.cwd || "/") === resolved);
-}
-
-/** Mirrors pi's own encoding, so one project maps to exactly one directory. */
-function leafDirFor(cwd: string, root: string): string {
-  const safe = `--${resolve(cwd).replace(/^[/\\]/, "").replace(/[/\\:]/g, "-")}--`;
-  return join(root, safe);
 }
 
 async function leafDirs(root: string): Promise<string[]> {

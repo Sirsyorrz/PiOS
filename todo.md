@@ -7,3 +7,4 @@
 - dont show tool call usless fields, dont show "command", or "path"
 - model picker, scoped/all
 - tree picker
+- render edits and writes calls code blocks

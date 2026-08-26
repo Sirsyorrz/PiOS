@@ -10,6 +10,7 @@ import {
 } from "@pios/protocol";
 import { JsonlFramer, encodeJsonl } from "@pios/protocol/jsonl";
 import { BaseSession } from "./base-session.ts";
+import { projectSessionDir } from "./session-paths.ts";
 import type {
   CreateSessionOptions,
   EntriesPage,
@@ -24,6 +25,7 @@ export interface SubprocessOptions {
   /** Inserted before pi's own arguments, for a wrapper or interpreter. */
   argsPrefix?: string[];
   extraArgs?: string[];
+  /** Root holding one directory per project, i.e. `~/.pi/agent/sessions`. */
   sessionDir?: string;
   env?: NodeJS.ProcessEnv;
   requestTimeoutMs?: number;
@@ -95,7 +97,14 @@ export class SubprocessSession extends BaseSession implements PiSession {
     const args = resumeFrom
       ? ["--mode", "rpc", "--session", resumeFrom]
       : ["--mode", "rpc", "--session-id", this.id];
-    if (this.options.sessionDir) args.push("--session-dir", this.options.sessionDir);
+    // pi wants the project's own directory here, not the root above it:
+    // passing the root writes sessions flat, where `/resume` never looks.
+    if (this.options.sessionDir) {
+      args.push(
+        "--session-dir",
+        projectSessionDir(this.createOptions.cwd, this.options.sessionDir),
+      );
+    }
     // Always explicit. pi's headless trust default depends on machine state,
     // and a session that silently loses project extensions is worse than one
     // that reports being untrusted.
