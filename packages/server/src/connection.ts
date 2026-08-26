@@ -224,6 +224,21 @@ export class Connection {
         });
       }
 
+      case "set_thinking_level": {
+        const session = this.require(frame.sessionId, frame.commandId);
+        if (!session) return;
+        // Idempotent for the same reason as set_model: re-applying the level it
+        // already has changes nothing.
+        await session.setThinkingLevel(frame.level);
+        return this.send({
+          v: WIRE_VERSION,
+          type: "session_state",
+          commandId: frame.commandId,
+          sessionId: frame.sessionId,
+          summary: toSummary(session.info),
+        });
+      }
+
       case "subscribe":
         return this.subscribe(frame);
 
@@ -433,5 +448,7 @@ function toSummary(info: SessionInfo): SessionSummary {
     lastSeq: info.lastSeq,
     updatedAt: info.updatedAt,
     model: info.model,
+    thinkingLevel: info.thinkingLevel,
+    thinkingLevels: info.thinkingLevels,
   };
 }

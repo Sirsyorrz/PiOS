@@ -135,6 +135,10 @@ const catalogue = [
   { id: "other-1", name: "Other 1", provider: "other" },
 ];
 let model = catalogue[0];
+// Only the "deep" model reasons, so tests can watch the level get clamped.
+const levelsFor = (id: string | undefined) =>
+  id === "deep-1" ? ["off", "low", "medium", "high"] : ["off"];
+let thinkingLevel = "off";
 
 let queue: Promise<void> = Promise.resolve();
 
@@ -153,7 +157,14 @@ function handle(command: Record<string, any>) {
     case "get_state":
       return respond({
         success: true,
-        data: { isStreaming: streaming, sessionFile: statePath, sessionId, trusted, model },
+        data: {
+          isStreaming: streaming,
+          sessionFile: statePath,
+          sessionId,
+          trusted,
+          model,
+          thinkingLevel,
+        },
       });
 
     case "get_available_models":
@@ -165,7 +176,19 @@ function handle(command: Record<string, any>) {
       );
       if (!found) return respond({ success: false, error: "Unknown model" });
       model = found;
+      if (!levelsFor(model?.id).includes(thinkingLevel)) thinkingLevel = "off";
       return respond({ success: true, data: found });
+    }
+
+    case "get_available_thinking_levels":
+      return respond({ success: true, data: { levels: levelsFor(model?.id) } });
+
+    case "set_thinking_level": {
+      if (!levelsFor(model?.id).includes(command.level)) {
+        return respond({ success: false, error: "Unsupported thinking level" });
+      }
+      thinkingLevel = command.level;
+      return respond({ success: true });
     }
 
     case "get_entries": {

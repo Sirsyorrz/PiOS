@@ -6,6 +6,8 @@ import {
   ExtensionUiRequestSchema,
   GetEntriesDataSchema,
   RpcResponseSchema,
+  SessionStateSchema,
+  ThinkingLevelsDataSchema,
   isDialogRequest,
   isUnknownCursorError,
   type RpcResponse,
@@ -163,10 +165,11 @@ export class SubprocessSession extends BaseSession implements PiSession {
     if (this.spawnError) throw this.spawnError;
     if (state.success) {
       const data = state.data as
-        | { sessionFile?: string; isStreaming?: boolean; model?: RpcModel }
+        | { sessionFile?: string; isStreaming?: boolean; model?: RpcModel; thinkingLevel?: string }
         | undefined;
       this.sessionFile = data?.sessionFile;
       this.setModelInfo(toModelOption(data?.model));
+      await this.refreshThinking(data?.thinkingLevel);
       if (data?.isStreaming) this.setStatus("running");
     }
     try {
@@ -356,6 +359,30 @@ export class SubprocessSession extends BaseSession implements PiSession {
     const response = await this.request({ type: "set_model", provider, modelId });
     if (!response.success) throw new Error(response.error ?? "set_model failed");
     this.setModelInfo(toModelOption(response.data as RpcModel | undefined));
+    // A new model can offer different levels, and pi clamps the active one to
+    // what it supports, so both are re-read rather than assumed unchanged.
+    await this.refreshThinking();
+  }
+
+  async setThinkingLevel(level: string): Promise<void> {
+    const response = await this.request({ type: "set_thinking_level", level });
+    if (!response.success) throw new Error(response.error ?? "set_thinking_level failed");
+    await this.refreshThinking(level);
+  }
+
+  /** Re-reads the level from pi when the caller does not already know it. */
+  private async refreshThinking(level?: string): Promise<void> {
+    const [levels, state] = await Promise.all([
+      this.request({ type: "get_available_thinking_levels" }),
+      level === undefined ? this.request({ type: "get_state" }) : undefined,
+    ]);
+    const available = levels.success
+      ? ThinkingLevelsDataSchema.safeParse(levels.data).data?.levels
+      : undefined;
+    const current =
+      level ??
+      (state?.success ? SessionStateSchema.safeParse(state.data).data?.thinkingLevel : undefined);
+    this.setThinkingInfo(current, available);
   }
 
   async steer(text: string, images?: ImageContent[]): Promise<PromptResult> {

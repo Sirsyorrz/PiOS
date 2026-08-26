@@ -337,6 +337,35 @@ test("disposing a session is announced to every connected client", async () => {
   actor.close();
 });
 
+test("thinking levels follow the model and a switch crosses the wire", async () => {
+  const client = await hello(harness);
+  const cwd = join(harness.dir, "thinking");
+  mkdirSync(cwd, { recursive: true });
+
+  const sessionId = await createSession(client, cwd);
+  // The starting model does not reason, so there is nothing to choose from.
+  const reasoning = await client.waitForCommand(
+    client.send({ type: "set_model", sessionId, provider: "acme", modelId: "deep-1" }),
+  );
+  assert.deepEqual(
+    reasoning.type === "session_state" ? reasoning.summary.thinkingLevels : null,
+    ["off", "low", "medium", "high"],
+  );
+
+  const raised = await client.waitForCommand(
+    client.send({ type: "set_thinking_level", sessionId, level: "high" }),
+  );
+  assert.equal(raised.type === "session_state" ? raised.summary.thinkingLevel : null, "high");
+
+  // Moving back to a model without reasoning clamps the level pi reports.
+  const plain = await client.waitForCommand(
+    client.send({ type: "set_model", sessionId, provider: "acme", modelId: "fast-1" }),
+  );
+  assert.equal(plain.type === "session_state" ? plain.summary.thinkingLevel : null, "off");
+  assert.deepEqual(plain.type === "session_state" ? plain.summary.thinkingLevels : null, ["off"]);
+  client.close();
+});
+
 test("the model list and a model switch cross the wire", async () => {
   const client = await hello(harness);
   const cwd = join(harness.dir, "models");

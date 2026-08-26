@@ -80,6 +80,11 @@ export const ClientFrameSchema = z.discriminatedUnion("type", [
     provider: z.string(),
     modelId: z.string(),
   }),
+  Envelope({
+    type: z.literal("set_thinking_level"),
+    sessionId: z.string(),
+    level: z.string(),
+  }),
   // Resume. `since` omitted means "send everything".
   Envelope({
     type: z.literal("get_entries"),
@@ -146,6 +151,13 @@ export const SessionSummarySchema = z.object({
   updatedAt: z.number(),
   /** The model the agent is on right now, absent when pi has not resolved one. */
   model: ModelOptionSchema.optional(),
+  /** Effective thinking level, absent when pi has not reported one. */
+  thinkingLevel: z.string().optional(),
+  /**
+   * Levels the current model accepts. Model-dependent, so it travels with the
+   * summary that carries the model rather than being assumed by the client.
+   */
+  thinkingLevels: z.array(z.string()).default([]),
 });
 export type SessionSummary = z.infer<typeof SessionSummarySchema>;
 

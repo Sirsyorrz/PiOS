@@ -31,6 +31,8 @@ export abstract class BaseSession {
   protected leafId: string | null = null;
   protected sessionFile: string | undefined;
   protected model: ModelOption | undefined;
+  protected thinkingLevel: string | undefined;
+  protected thinkingLevels: string[] = [];
   protected updatedAt = Date.now();
 
   private readonly buffer: EventRingBuffer;
@@ -79,6 +81,8 @@ export abstract class BaseSession {
       lastSeq: this.buffer.lastSeq,
       updatedAt: this.updatedAt,
       model: this.model,
+      thinkingLevel: this.thinkingLevel,
+      thinkingLevels: this.thinkingLevels,
     };
   }
 
@@ -147,6 +151,24 @@ export abstract class BaseSession {
   protected setModelInfo(model: ModelOption | undefined): void {
     if (model?.provider === this.model?.provider && model?.modelId === this.model?.modelId) return;
     this.model = model;
+    this.publish({ type: "status", status: this.status });
+  }
+
+  /**
+   * Records the thinking level and the levels the model offers.
+   *
+   * Published like the model switch: pi clamps the level when the model
+   * changes, so a client that never asked still has to hear about it.
+   */
+  protected setThinkingInfo(level: string | undefined, levels?: string[]): void {
+    const nextLevels = levels ?? this.thinkingLevels;
+    const same =
+      level === this.thinkingLevel &&
+      nextLevels.length === this.thinkingLevels.length &&
+      nextLevels.every((entry, index) => entry === this.thinkingLevels[index]);
+    if (same) return;
+    this.thinkingLevel = level;
+    this.thinkingLevels = nextLevels;
     this.publish({ type: "status", status: this.status });
   }
 

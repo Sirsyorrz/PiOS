@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { browserStorage } from "../storage.ts";
 import { PlusIcon, SendIcon, StopIcon } from "./icons.tsx";
 import { ModelPicker } from "./model-picker.tsx";
+import { ThinkingPicker } from "./thinking-picker.tsx";
 
 const DRAFT_PREFIX = "pios.draft.";
 
@@ -13,12 +14,25 @@ const DRAFT_PREFIX = "pios.draft.";
  * evicted at any moment on a phone, and never touches the socket: sending
  * means queueing.
  */
-export function Composer({ sessionId, model, running, interrupting, editorText, onSend, onInterrupt }: {
+export function Composer({
+  sessionId,
+  model,
+  thinkingLevel,
+  thinkingLevels,
+  running,
+  interrupting,
+  editorText,
+  onSend,
+  onInterrupt,
+}: {
   sessionId: string;
   /** An extension asked to replace what is typed, e.g. a prompt template. */
   editorText?: string;
   /** Active model, for the picker's label. */
   model?: ModelOption;
+  thinkingLevel?: string;
+  /** Levels the active model accepts; empty hides the picker. */
+  thinkingLevels?: string[];
   running: boolean;
   /** Stop was sent and the agent has not stopped yet. */
   interrupting: boolean;
@@ -126,6 +140,8 @@ export function Composer({ sessionId, model, running, interrupting, editorText, 
         ) : null}
 
         <ModelPicker sessionId={sessionId} current={model} />
+
+        <ThinkingPicker sessionId={sessionId} current={thinkingLevel} levels={thinkingLevels ?? []} />
 
         <span className="spacer" />
 

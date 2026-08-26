@@ -74,6 +74,10 @@ export interface SessionInfo {
   updatedAt: number;
   /** Active model, absent until pi resolves one. */
   model?: ModelOption;
+  /** Effective thinking level, absent until pi resolves one. */
+  thinkingLevel?: string;
+  /** Levels the active model accepts; `["off"]` for a model without reasoning. */
+  thinkingLevels: string[];
 }
 
 export interface PiSession {
@@ -100,6 +104,7 @@ export interface PiSession {
   /** The session's model scope, or the whole catalogue when asked for it. */
   listModels(options?: { all?: boolean }): Promise<ModelListing>;
   setModel(provider: string, modelId: string): Promise<void>;
+  setThinkingLevel(level: string): Promise<void>;
 
   /**
    * Reloads the session under a different project trust, in place.

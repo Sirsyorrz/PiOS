@@ -237,6 +237,22 @@ export class PiosClient {
   }
 
   /**
+   * Switches the thinking level for one session.
+   *
+   * Not queued, like `set_model`: the levels on offer belong to the model that
+   * is loaded now, so replaying a stale choice after a reconnect is wrong.
+   */
+  setThinkingLevel(sessionId: string, level: string): boolean {
+    return this.supervisor.send({
+      v: WIRE_VERSION,
+      type: "set_thinking_level",
+      commandId: this.generateId(),
+      sessionId,
+      level,
+    });
+  }
+
+  /**
    * Relaunches a session with project trust enabled.
    *
    * The session id does not change, so the open transcript stays open; the

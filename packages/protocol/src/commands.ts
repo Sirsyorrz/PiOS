@@ -37,6 +37,7 @@ export const RpcCommandSchema = z.discriminatedUnion("type", [
   withId({ type: z.literal("set_model"), provider: z.string(), modelId: z.string() }),
   withId({ type: z.literal("get_available_models") }),
   withId({ type: z.literal("set_thinking_level"), level: z.string() }),
+  withId({ type: z.literal("get_available_thinking_levels") }),
   withId({ type: z.literal("compact"), customInstructions: z.string().optional() }),
   withId({ type: z.literal("set_auto_compaction"), enabled: z.boolean() }),
   withId({ type: z.literal("set_auto_retry"), enabled: z.boolean() }),
@@ -94,6 +95,10 @@ export const GetEntriesDataSchema = z.looseObject({
   leafId: z.string().nullable(),
 });
 export type GetEntriesData = z.infer<typeof GetEntriesDataSchema>;
+
+export const ThinkingLevelsDataSchema = z.looseObject({
+  levels: z.array(z.string()),
+});
 
 export const GetMessagesDataSchema = z.looseObject({
   messages: z.array(AgentMessageSchema),

@@ -152,6 +152,8 @@ export function ChatView({ sessionId, session, state, onTrust, onBack }: {
       <Composer
         sessionId={sessionId}
         model={session?.model}
+        thinkingLevel={session?.thinkingLevel}
+        thinkingLevels={session?.thinkingLevels}
         running={view?.running ?? false}
         interrupting={view?.interrupting ?? false}
         editorText={view?.presentation.editorText}

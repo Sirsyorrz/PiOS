@@ -1161,6 +1161,11 @@ button.danger {
   color: var(--muted);
 }
 
+.thinking-select {
+  flex: 0 0 auto;
+  color: var(--muted);
+}
+
 /* The one filled control on the screen: it is the primary action. */
 .composer .send {
   background: var(--accent);

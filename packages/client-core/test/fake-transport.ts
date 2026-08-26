@@ -92,6 +92,7 @@ export function summary(overrides: Partial<SessionSummary> = {}): SessionSummary
     leafId: null,
     lastSeq: 0,
     updatedAt: 0,
+    thinkingLevels: [],
     ...overrides,
   };
 }

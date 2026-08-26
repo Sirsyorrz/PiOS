@@ -34,6 +34,9 @@ export interface AgentSessionLike {
     getModel(provider: string, modelId: string): AgentModelLike | undefined;
   };
   setModel?(model: AgentModelLike): Promise<void>;
+  readonly thinkingLevel?: string;
+  setThinkingLevel?(level: string): void;
+  getAvailableThinkingLevels?(): string[];
   readonly sessionId: string;
   readonly sessionFile: string | undefined;
   readonly sessionManager: {
@@ -101,6 +104,7 @@ export class InProcessSession extends BaseSession implements PiSession {
     this.setLeafId(agent.sessionManager.getLeafId());
     this.unsubscribe = agent.subscribe((raw) => this.onAgentEvent(raw));
     this.setModelInfo(this.describe(agent.model));
+    this.readThinking();
     this.setStatus(agent.isStreaming ? "running" : "idle");
   }
 
@@ -118,6 +122,7 @@ export class InProcessSession extends BaseSession implements PiSession {
     // set_model.
     if (event.type === "agent_start" || event.type === "agent_settled") {
       this.setModelInfo(this.describe(this.agent?.model));
+      this.readThinking();
     }
     if (event.type === "message_end" || event.type === "agent_settled") {
       this.setLeafId(this.agent?.sessionManager.getLeafId() ?? this.leafId);
@@ -202,6 +207,20 @@ export class InProcessSession extends BaseSession implements PiSession {
     if (!model) throw new Error(`unknown model ${key(provider, modelId)}`);
     await agent.setModel(model);
     this.setModelInfo(this.describe(agent.model ?? model));
+    // pi clamps the level to what the new model supports.
+    this.readThinking();
+  }
+
+  async setThinkingLevel(level: string): Promise<void> {
+    const agent = this.requireAgent();
+    if (!agent.setThinkingLevel) throw new Error("this host cannot set a thinking level");
+    agent.setThinkingLevel(level);
+    this.readThinking();
+  }
+
+  private readThinking(): void {
+    const agent = this.agent;
+    this.setThinkingInfo(agent?.thinkingLevel, agent?.getAvailableThinkingLevels?.() ?? []);
   }
 
   private describe(model: AgentModelLike | undefined): ModelOption | undefined {
