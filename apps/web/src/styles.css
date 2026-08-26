@@ -944,21 +944,26 @@ button.danger {
   color: var(--muted);
 }
 
+/* The label is the button: text-sized, but padded out to a real tap target. */
 .thinking-head {
-  display: flex;
-  align-items: center;
-  gap: 0;
-}
-
-.thinking-head .label {
+  display: block;
+  margin: -4px -8px 0;
+  padding: 4px 8px;
+  border: 0;
+  background: none;
+  font: inherit;
   font-size: 13px;
   color: var(--muted);
+  cursor: pointer;
 }
 
-.thinking-head button {
-  width: 24px;
-  height: 24px;
-  margin-left: 2px;
+/* Reads as the heading it is, so it takes no button chrome from the base rule. */
+.thinking-head:hover {
+  background: none;
+}
+
+.thinking-head:active {
+  color: var(--fg);
 }
 
 .thinking-text {

@@ -1,6 +1,5 @@
 import { messageText, type AgentMessage, type PartialMessage, type ToolExecution } from "@pios/protocol";
 import { useState } from "react";
-import { EyeIcon, EyeOffIcon } from "./icons.tsx";
 import { Markdown } from "./markdown.tsx";
 import { ToolCard } from "./tool-card.tsx";
 
@@ -72,26 +71,20 @@ export function StreamingBubble({ partial, tools }: {
 
 /**
  * Reasoning reads as prose, so it is shown, not filed away behind a control.
- * The eye only takes it back off the screen once it is in the way.
+ * The label is the only control: no icon competes with the text it heads.
  */
 function Thinking({ text }: { text: string }) {
   const [shown, setShown] = useState(true);
   return (
     <div className={`thinking ${shown ? "" : "hidden"}`}>
-      <div className="thinking-head">
-        <span className="label">Thinking</span>
-        {/* The icon names the action, not the state: crossed-out eye means
-            "hide this", which is the only thing the button can do here. */}
-        <button
-          type="button"
-          className="ghost icon sm"
-          aria-label={shown ? "hide thinking" : "show thinking"}
-          aria-pressed={!shown}
-          onClick={() => setShown(!shown)}
-        >
-          {shown ? <EyeOffIcon width={15} height={15} /> : <EyeIcon width={15} height={15} />}
-        </button>
-      </div>
+      <button
+        type="button"
+        className="thinking-head"
+        aria-expanded={shown}
+        onClick={() => setShown(!shown)}
+      >
+        {shown ? "Thinking:" : "Thinking\u2026"}
+      </button>
       {shown ? <div className="thinking-text">{text}</div> : null}
     </div>
   );
