@@ -1154,14 +1154,17 @@ button.danger {
    bottom of the screen, so downward is off it. */
 .model-picker {
   position: relative;
+  /* The row also holds the steering selector while the agent runs, so the
+     model label is the part that gives way. */
   min-width: 0;
+  flex: 0 1 auto;
 }
 
 .model-button {
   display: flex;
   align-items: center;
   gap: 4px;
-  max-width: 40vw;
+  max-width: 100%;
   min-height: 32px;
   font-size: 13px;
   border-radius: 999px;

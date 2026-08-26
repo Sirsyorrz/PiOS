@@ -108,8 +108,10 @@ export function Composer({ sessionId, model, running, interrupting, onSend, onIn
             value={behavior}
             onChange={(e) => setBehavior(e.target.value as StreamingBehavior)}
           >
-            <option value="steer">Steer now</option>
-            <option value="followUp">Follow up after</option>
+            {/* Two words, because this shares the row with the model picker
+                and a phone has no space for a sentence. */}
+            <option value="steer">Steer</option>
+            <option value="followUp">Follow</option>
           </select>
         ) : null}
 
