@@ -1,4 +1,4 @@
-import { isDialogRequest, type ExtensionUiRequest } from "@pios/protocol";
+import { isDialogRequest, stripAnsi, type ExtensionUiRequest } from "@pios/protocol";
 import { useState } from "react";
 import { ListRowButton, ModalCard, PickerHeader } from "./ui.tsx";
 
@@ -21,7 +21,7 @@ export function DialogSheet({ request, onAnswer }: {
 }) {
   const [text, setText] = useState(request.prefill ?? "");
   const cancel = () => onAnswer({ cancelled: true });
-  const title = request.title ?? "The agent is asking";
+  const title = stripAnsi(request.title ?? "The agent is asking");
   // A method with no renderer would be an unanswerable card, which is worse
   // than declining it: the agent stays blocked either way.
   const answerable = isDialogRequest(request);
@@ -53,7 +53,7 @@ export function DialogSheet({ request, onAnswer }: {
 
       {request.method === "confirm" ? (
         <>
-          {request.message ? <p className="muted">{request.message}</p> : null}
+          {request.message ? <p className="muted">{stripAnsi(request.message)}</p> : null}
           <div className="row">
             <button type="button" onClick={() => onAnswer({ confirmed: false })}>
               Deny
@@ -68,8 +68,10 @@ export function DialogSheet({ request, onAnswer }: {
       {request.method === "select" ? (
         <div className="scroll-y">
           {(request.options ?? []).map((option, index) => (
+            // Displayed without styling, answered with the original string:
+            // the extension compares against exactly what it sent.
             <ListRowButton key={`${index}:${option}`} onClick={() => onAnswer({ value: option })}>
-              <span className="line">{option}</span>
+              <span className="line">{stripAnsi(option)}</span>
             </ListRowButton>
           ))}
         </div>

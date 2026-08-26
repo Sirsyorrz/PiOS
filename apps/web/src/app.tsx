@@ -178,7 +178,13 @@ function Workspace({ machine, onMachineChange, onForget }: {
         />
       ) : (
         <section className="empty">
-          <Banners state={state} view={null} session={null} onTrust={() => {}} />
+          <Banners
+            state={state}
+            view={null}
+            session={null}
+            onTrust={() => {}}
+            onDismissNotice={() => {}}
+          />
         </section>
       )}
     </div>

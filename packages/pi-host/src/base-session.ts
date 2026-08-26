@@ -1,4 +1,11 @@
-import type { AgentEvent, ExtensionUiRequest, ModelOption } from "@pios/protocol";
+import {
+  applyPresentation,
+  emptyPresentation,
+  type AgentEvent,
+  type ExtensionUiRequest,
+  type ModelOption,
+  type SessionPresentation,
+} from "@pios/protocol";
 import { EventRingBuffer } from "./ring-buffer.ts";
 import type {
   BufferedEvent,
@@ -34,6 +41,8 @@ export abstract class BaseSession {
    * to answer one that is already outstanding.
    */
   private readonly dialogs = new Map<string, ExtensionUiRequest>();
+  /** Last-value-wins state from the non-blocking half of the extension UI. */
+  private presentationState: SessionPresentation = emptyPresentation();
 
   constructor(args: {
     id: string;
@@ -71,6 +80,18 @@ export abstract class BaseSession {
       updatedAt: this.updatedAt,
       model: this.model,
     };
+  }
+
+  get presentation(): SessionPresentation {
+    return this.presentationState;
+  }
+
+  /** True when the request changed something worth telling clients about. */
+  protected recordPresentation(request: ExtensionUiRequest): boolean {
+    const next = applyPresentation(this.presentationState, request);
+    if (next === this.presentationState) return false;
+    this.presentationState = next;
+    return true;
   }
 
   get pendingDialogs(): ExtensionUiRequest[] {

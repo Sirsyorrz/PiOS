@@ -1,12 +1,33 @@
 import type { ImageContent, SessionSummary, StreamingBehavior } from "@pios/protocol";
 import { useEffect, useRef } from "react";
 import { useClient, useSessionView } from "../client-provider.tsx";
-import type { SupervisorState } from "@pios/client-core";
+import type { SessionView, SupervisorState } from "@pios/client-core";
 import { Banners } from "./banners.tsx";
 import { Composer } from "./composer.tsx";
 import { DialogSheet } from "./dialog-sheet.tsx";
 import { ChevronLeftIcon } from "./icons.tsx";
 import { MessageBubble, StreamingBubble } from "./message.tsx";
+
+/** Extension widgets for one slot. pi defaults an unplaced widget above. */
+function widgets(view: SessionView | null, placement: "aboveEditor" | "belowEditor") {
+  const items = (view?.presentation.widgets ?? []).filter(
+    (widget) => (widget.placement ?? "aboveEditor") === placement,
+  );
+  if (items.length === 0) return null;
+  return (
+    <div className="ext-widgets">
+      {items.map((widget) => (
+        <div key={widget.key} className="ext-widget">
+          {widget.lines.map((line, index) => (
+            <div key={index} className="line">
+              {line}
+            </div>
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}
 
 export function ChatView({ sessionId, session, state, onTrust, onBack }: {
   sessionId: string;
@@ -61,7 +82,9 @@ export function ChatView({ sessionId, session, state, onTrust, onBack }: {
         <button type="button" className="back icon ghost" onClick={onBack} aria-label="back to sessions">
           <ChevronLeftIcon />
         </button>
-        <span className="title line">{session?.name ?? session?.cwd ?? sessionId}</span>
+        <span className="title line">
+          {view?.presentation.title ?? session?.name ?? session?.cwd ?? sessionId}
+        </span>
         <span className={`status ${view?.running ? "running" : (session?.status ?? "idle")}`}>
           {view?.running ? <span className="spinner" /> : null}
           {view?.interrupting ? "stopping" : view?.running ? "running" : (session?.status ?? "")}
@@ -99,6 +122,17 @@ export function ChatView({ sessionId, session, state, onTrust, onBack }: {
       </div>
 
       <div className="dock" ref={dock}>
+      {view && view.presentation.status.length > 0 ? (
+        <div className="ext-status row">
+          {view.presentation.status.map((item) => (
+            <span key={item.key} className="chip line">
+              {item.text}
+            </span>
+          ))}
+        </div>
+      ) : null}
+      {widgets(view, "aboveEditor")}
+
       {view && (view.queue.steering.length > 0 || view.queue.followUp.length > 0) ? (
         // The daemon's own queue, distinct from the outbox: these were
         // delivered and are waiting on the agent, not on the network.
@@ -118,16 +152,24 @@ export function ChatView({ sessionId, session, state, onTrust, onBack }: {
 
       {/* Above the composer, not above the transcript: status belongs where
           the eye already is, next to what you are about to type. */}
-      <Banners state={state} view={view} session={session} onTrust={onTrust} />
+      <Banners
+        state={state}
+        view={view}
+        session={session}
+        onTrust={onTrust}
+        onDismissNotice={(id) => client.sessions.dismissNotice(sessionId, id)}
+      />
 
       <Composer
         sessionId={sessionId}
         model={session?.model}
         running={view?.running ?? false}
         interrupting={view?.interrupting ?? false}
+        editorText={view?.presentation.editorText}
         onSend={send}
         onInterrupt={() => client.interrupt(sessionId)}
       />
+      {widgets(view, "belowEditor")}
       </div>
 
       {dialog ? (

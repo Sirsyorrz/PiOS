@@ -442,6 +442,10 @@ export class PiosClient {
         // Most methods are presentation the agent does not wait on; only a
         // dialog blocks it, and only a dialog gets a sheet.
         if (isDialogRequest(frame.request)) this.sessions.openDialog(frame.sessionId, frame.request);
+        else this.sessions.applyPresentationRequest(frame.sessionId, frame.request);
+        break;
+      case "extension_ui_state":
+        this.sessions.setPresentation(frame.sessionId, frame.presentation);
         break;
       case "extension_ui_closed":
         this.sessions.closeDialog(frame.sessionId, frame.requestId);

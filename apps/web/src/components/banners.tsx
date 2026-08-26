@@ -8,11 +8,13 @@ import type { SessionView, SupervisorState } from "@pios/client-core";
  * a compaction that is rewriting history all change what the agent will do
  * next, so they are surfaced even when they are noisy.
  */
-export function Banners({ state, view, session, onTrust }: {
+export function Banners({ state, view, session, onTrust, onDismissNotice }: {
   state: SupervisorState;
   view: SessionView | null;
   session: SessionSummary | null;
   onTrust: () => void;
+  /** Extension messages are the only banners a user can clear by hand. */
+  onDismissNotice: (id: string) => void;
 }) {
   const banners = [] as { key: string; tone: string; text: string; action?: () => void; actionLabel?: string }[];
 
@@ -63,6 +65,16 @@ export function Banners({ state, view, session, onTrust }: {
       key: `ext-${index}`,
       tone: "error",
       text: `Extension error${failure.extensionPath ? ` in ${failure.extensionPath}` : ""}: ${failure.error}`,
+    });
+  }
+
+  for (const notice of view?.notices ?? []) {
+    banners.push({
+      key: `notice-${notice.id}`,
+      tone: notice.type === "error" ? "error" : notice.type === "warning" ? "warn" : "info",
+      text: notice.message,
+      actionLabel: "Dismiss",
+      action: () => onDismissNotice(notice.id),
     });
   }
 

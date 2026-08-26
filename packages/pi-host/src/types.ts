@@ -4,6 +4,7 @@ import type {
   ExtensionUiRequest,
   ExtensionUiResponse,
   ImageContent,
+  SessionPresentation,
   SessionEntry,
   StreamingBehavior,
 } from "@pios/protocol";
@@ -91,6 +92,8 @@ export interface PiSession {
 
   /** Dialogs waiting on a human, oldest first. Survives client reconnects. */
   readonly pendingDialogs: ExtensionUiRequest[];
+  /** Current status lines, widgets and title asked for by extensions. */
+  readonly presentation: SessionPresentation;
   /** First answer wins; a stale or unknown id is ignored. */
   answerDialog(response: ExtensionUiResponse): boolean;
 

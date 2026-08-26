@@ -1324,3 +1324,37 @@ button.danger {
 .dialog .field > input {
   padding-left: 10px;
 }
+
+/* Extension surfaces: status chips and widgets sit with the composer, where
+   the eye already is, and never inside the transcript. */
+.ext-status {
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 4px 4px 0;
+}
+
+.ext-status .chip {
+  max-width: 100%;
+  padding: 2px 8px;
+  font-size: 12px;
+  color: var(--muted);
+  background: var(--raised);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+}
+
+.ext-widgets {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 4px 4px 0;
+}
+
+.ext-widget {
+  padding: 6px 8px;
+  font-size: 12px;
+  color: var(--muted);
+  background: var(--raised);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}

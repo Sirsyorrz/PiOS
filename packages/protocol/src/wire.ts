@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { AgentEventSchema, ExtensionUiRequestSchema } from "./events.ts";
+import { SessionPresentationSchema } from "./presentation.ts";
 import { ImageContentSchema, SessionEntrySchema } from "./messages.ts";
 import { SessionStateSchema, StreamingBehaviorSchema } from "./commands.ts";
 
@@ -260,6 +261,16 @@ export const ServerFrameSchema = z.discriminatedUnion("type", [
     type: z.literal("extension_ui_closed"),
     sessionId: z.string(),
     requestId: z.string(),
+  }),
+  /**
+   * Snapshot of the non-blocking extension UI, sent on subscribe. Live updates
+   * arrive as `extension_ui_request`; this is what a client that missed them
+   * needs in order to show the same thing.
+   */
+  ServerEnvelope({
+    type: z.literal("extension_ui_state"),
+    sessionId: z.string(),
+    presentation: SessionPresentationSchema,
   }),
   /** The daemon restarted a crashed pi session and resumed from its JSONL. */
   ServerEnvelope({

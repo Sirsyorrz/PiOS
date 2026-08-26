@@ -311,6 +311,12 @@ export class Connection {
     for (const request of session.pendingDialogs) {
       this.send({ v: WIRE_VERSION, type: "extension_ui_request", sessionId: session.id, request });
     }
+    this.send({
+      v: WIRE_VERSION,
+      type: "extension_ui_state",
+      sessionId: session.id,
+      presentation: session.presentation,
+    });
 
     this.send({
       v: WIRE_VERSION,

@@ -179,9 +179,19 @@ export class SubprocessSession extends BaseSession implements PiSession {
   }
 
   private onRecord(record: string): void {
+    // Extensions write to the same stdout, and terminal control bytes carry no
+    // newline of their own, so a bell lands glued to the front of the next
+    // record. Stripping them here keeps one stray byte from eating an event.
+    //
+    // ESC is left alone: a themed string arrives as an escaped \u001b inside
+    // JSON, and removing raw ESC bytes would only corrupt half of a sequence
+    // that the presentation reducer strips properly later.
+    const cleaned = record.replace(/[\u0000-\u0008\u000B-\u001A\u001C-\u001F\u007F]/g, "").trim();
+    if (!cleaned) return;
+
     let json: unknown;
     try {
-      json = JSON.parse(record);
+      json = JSON.parse(cleaned);
     } catch {
       console.warn(`[pi-host] session ${this.id} emitted unparseable JSON`);
       return;
@@ -198,6 +208,8 @@ export class SubprocessSession extends BaseSession implements PiSession {
       if (isDialogRequest(uiRequest.data)) {
         this.trackDialog(uiRequest.data);
         this.armDialogTimeout(uiRequest.data.id);
+      } else {
+        this.recordPresentation(uiRequest.data);
       }
       this.publish({ type: "extension_ui_request", request: uiRequest.data });
       return;

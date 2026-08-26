@@ -2,6 +2,7 @@
 // StringDecoder) and only the daemon side frames a stdio stream.
 export * from "./messages.ts";
 export * from "./events.ts";
+export * from "./presentation.ts";
 export * from "./commands.ts";
 export * from "./assembler.ts";
 export * from "./wire.ts";

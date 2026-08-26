@@ -84,6 +84,20 @@ async function runTurn(text: string) {
   write({ type: "message_start", message: user });
   write({ type: "message_end", message: user });
 
+  if (text.includes("SHOW_STATUS")) {
+    // Extensions share pi's stdout and ring the terminal bell without a
+    // newline, so a stray control byte rides along with the next record.
+    process.stdout.write("\x07");
+    write({
+      type: "extension_ui_request",
+      id: `${sessionId}-status`,
+      method: "setStatus",
+      statusKey: "nolo",
+      statusText: "YOLO",
+    });
+    write({ type: "extension_ui_request", id: `${sessionId}-note`, method: "notify", message: "heads up" });
+  }
+
   const answer = text.includes("ASK_DIALOG") ? await askDialog(`${sessionId}-dialog`) : null;
   const reply = answer ? `dialog: ${JSON.stringify(answer)}` : `echo: ${text}`;
   write({ type: "message_start", message: { role: "assistant", content: [] } });

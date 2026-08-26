@@ -1,13 +1,26 @@
 import {
   TranscriptAssembler,
+  applyPresentation,
+  emptyPresentation,
+  isDialogRequest,
+  stripAnsi,
   type AgentEvent,
   type ExtensionUiRequest,
   type SessionEntry,
+  type SessionPresentation,
 } from "@pios/protocol";
 import { readVersioned, writeVersioned, type StorageAdapter } from "./storage.ts";
 
 export const SESSION_CACHE_VERSION = 1;
 const STORAGE_PREFIX = "pios.session.";
+/** A chatty extension must not be able to bury the transcript. */
+const MAX_NOTICES = 3;
+
+export interface Notice {
+  id: string;
+  message: string;
+  type: "info" | "warning" | "error";
+}
 
 export interface SessionCache {
   sessionId: string;
@@ -44,6 +57,11 @@ export class SessionStore {
    * knows whether one is still waiting.
    */
   private readonly dialogs = new Map<string, Map<string, ExtensionUiRequest>>();
+  /** Status lines, widgets and title asked for by extensions. */
+  private readonly presentations = new Map<string, SessionPresentation>();
+  /** Transient extension messages, newest last. Never restored on reconnect. */
+  private readonly notices = new Map<string, Notice[]>();
+  private noticeCounter = 0;
   private readonly storage: StorageAdapter | null;
   private readonly listeners = new Set<(sessionId: string) => void>();
 
@@ -182,6 +200,52 @@ export class SessionStore {
     return [...(this.dialogs.get(sessionId)?.values() ?? [])];
   }
 
+  /**
+   * Applies one non-blocking extension request.
+   *
+   * `notify` is the only one that is an event rather than state: replaying it
+   * on reconnect would show a message about something that already happened.
+   */
+  applyPresentationRequest(sessionId: string, request: ExtensionUiRequest): void {
+    if (isDialogRequest(request)) return;
+    if (request.method === "notify") {
+      if (!request.message) return;
+      const notices = [...(this.notices.get(sessionId) ?? []), {
+        id: `n${++this.noticeCounter}`,
+        message: stripAnsi(request.message),
+        type: request.notifyType ?? "info",
+      }].slice(-MAX_NOTICES);
+      this.notices.set(sessionId, notices);
+      this.notify(sessionId);
+      return;
+    }
+    const current = this.presentation(sessionId);
+    const next = applyPresentation(current, request);
+    if (next === current) return;
+    this.presentations.set(sessionId, next);
+    this.notify(sessionId);
+  }
+
+  /** The daemon's snapshot, which supersedes whatever was accumulated live. */
+  setPresentation(sessionId: string, presentation: SessionPresentation): void {
+    this.presentations.set(sessionId, presentation);
+    this.notify(sessionId);
+  }
+
+  presentation(sessionId: string): SessionPresentation {
+    return this.presentations.get(sessionId) ?? emptyPresentation();
+  }
+
+  openNotices(sessionId: string): Notice[] {
+    return this.notices.get(sessionId) ?? [];
+  }
+
+  dismissNotice(sessionId: string, id: string): void {
+    const rest = this.openNotices(sessionId).filter((notice) => notice.id !== id);
+    this.notices.set(sessionId, rest);
+    this.notify(sessionId);
+  }
+
   /** Drops everything for a session, for a reset or a dispose. */
   clear(sessionId: string): void {
     this.caches.delete(sessionId);
@@ -189,6 +253,8 @@ export class SessionStore {
     this.daemonStatus.delete(sessionId);
     this.interrupting.delete(sessionId);
     this.dialogs.delete(sessionId);
+    this.presentations.delete(sessionId);
+    this.notices.delete(sessionId);
     this.storage?.remove(STORAGE_PREFIX + sessionId);
     this.notify(sessionId);
   }

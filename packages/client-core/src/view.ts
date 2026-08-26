@@ -2,12 +2,13 @@ import {
   messageText,
   type AgentMessage,
   type ExtensionUiRequest,
+  type SessionPresentation,
   type PartialMessage,
   type ToolExecution,
   type TranscriptStatus,
 } from "@pios/protocol";
 import type { OutboxEntry } from "./outbox.ts";
-import type { SessionStore } from "./session-store.ts";
+import type { Notice, SessionStore } from "./session-store.ts";
 
 export type ViewItem =
   | { kind: "message"; key: string; message: AgentMessage }
@@ -24,6 +25,10 @@ export interface SessionView {
   interrupting: boolean;
   /** Extension dialogs blocking the agent, oldest first. */
   dialogs: ExtensionUiRequest[];
+  /** Status lines, widgets and title an extension asked to show. */
+  presentation: SessionPresentation;
+  /** Transient extension messages awaiting dismissal. */
+  notices: Notice[];
   status: TranscriptStatus;
 }
 
@@ -125,6 +130,8 @@ export function sessionView(
     running,
     interrupting: running && store.isInterrupting(sessionId),
     dialogs: store.openDialogs(sessionId),
+    presentation: store.presentation(sessionId),
+    notices: store.openNotices(sessionId),
     status: transcript.status,
   };
 }

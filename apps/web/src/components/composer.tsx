@@ -13,8 +13,10 @@ const DRAFT_PREFIX = "pios.draft.";
  * evicted at any moment on a phone, and never touches the socket: sending
  * means queueing.
  */
-export function Composer({ sessionId, model, running, interrupting, onSend, onInterrupt }: {
+export function Composer({ sessionId, model, running, interrupting, editorText, onSend, onInterrupt }: {
   sessionId: string;
+  /** An extension asked to replace what is typed, e.g. a prompt template. */
+  editorText?: string;
   /** Active model, for the picker's label. */
   model?: ModelOption;
   running: boolean;
@@ -43,6 +45,14 @@ export function Composer({ sessionId, model, running, interrupting, onSend, onIn
     setText(browserStorage.get(DRAFT_PREFIX + sessionId) ?? "");
     setImages([]);
   }, [sessionId]);
+
+  // Keyed on the value, not on arrival: the daemon resends the same text on
+  // every reconnect, and reapplying it would wipe what was typed since.
+  useEffect(() => {
+    if (editorText === undefined) return;
+    setText(editorText);
+    browserStorage.set(DRAFT_PREFIX + sessionId, editorText);
+  }, [editorText, sessionId]);
 
   function edit(value: string) {
     setText(value);

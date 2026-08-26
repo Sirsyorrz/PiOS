@@ -262,6 +262,19 @@ dialog is session state, not connection state, so it survives reconnects and is
 delivered to whichever clients are attached; the first answer wins and a
 duplicate id is a no-op.
 
+The other half of the protocol is presentation, not questions: `setStatus` and
+`setWidget` replace by key, `setTitle` and `set_editor_text` replace outright,
+`notify` is a one-shot message. Those four are last-value-wins session state,
+held by the daemon and snapshotted on subscribe, because a client that
+reconnects needs the current status line rather than the history of how it got
+there. `notify` is deliberately not state: replaying it would announce
+something that already happened. Both the daemon and the client fold requests
+with the same reducer, so neither can drift.
+
+The daemon tolerates non-JSON noise on the RPC stream. Extensions share pi's
+stdout and write terminal control bytes without a newline, so a bell would
+otherwise arrive glued to the front of the next record and destroy it.
+
 Degraded in RPC mode (already stubbed): `custom()` returns undefined;
 `setWorkingMessage`, `setFooter`, `setHeader`, `setEditorComponent`,
 `setToolsExpanded` are no-ops; `getTheme`/`setTheme` unavailable. `setWidget`
