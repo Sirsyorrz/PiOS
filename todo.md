@@ -1,4 +1,3 @@
-- redesign the show hide icon/text/indicator for thinking
 - dont show tool call usless fields, dont show "command", or "path", just show the actual command
 - render edits and writes calls code blocks
 - render them neatly / in code style, potentially in smaller font, and def in a block

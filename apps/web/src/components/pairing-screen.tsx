@@ -38,12 +38,19 @@ export function PairingScreen({ onPaired }: { onPaired: (machine: Machine) => vo
     setBusy(true);
     setError(null);
     try {
-      const result = await pairWithMachine(url, token.trim(), label.trim() || "phone");
+      // Store only a parseable address: a bad one is unrecoverable from the UI.
+      let parsed: URL;
+      try {
+        parsed = new URL(url.trim());
+      } catch {
+        throw new Error("daemon URL is not valid, e.g. http://192.168.1.20:4000");
+      }
+      const result = await pairWithMachine(parsed.origin, token.trim(), label.trim() || "phone");
       onPaired({
         id: result.deviceId,
-        label: new URL(url).hostname,
+        label: parsed.hostname,
         deviceToken: result.deviceToken,
-        endpoints: [{ key: `paired:${new URL(url).host}`, url }],
+        endpoints: [{ key: `paired:${parsed.host}`, url: parsed.origin }],
         preferredKey: null,
       });
     } catch (cause) {

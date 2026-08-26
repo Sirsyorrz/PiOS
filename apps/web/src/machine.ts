@@ -52,7 +52,13 @@ export function socketUrl(machine: Machine): string | null {
   const endpoint =
     machine.endpoints.find((e) => e.key === machine.preferredKey) ?? machine.endpoints[0];
   if (!endpoint) return null;
-  const url = new URL(endpoint.url);
+  // A stored address can be malformed; a throw here would blank the whole app.
+  let url: URL;
+  try {
+    url = new URL(endpoint.url);
+  } catch {
+    return null;
+  }
   url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
   url.pathname = "/ws";
   return url.toString();
