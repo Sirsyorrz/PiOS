@@ -7,4 +7,3 @@
 - settings toggle, show/hide thinking by default, expand tool calls
 - tree picker
 - maybe use native confirmation handling in app
-- drop/truncate the "cd" that agent used at start of bash calls almost always

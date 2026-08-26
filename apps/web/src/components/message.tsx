@@ -3,9 +3,10 @@ import { useState } from "react";
 import { Markdown } from "./markdown.tsx";
 import { ToolCard } from "./tool-card.tsx";
 
-export function MessageBubble({ message, tools }: {
+export function MessageBubble({ message, tools, cwd }: {
   message: AgentMessage;
   tools: Map<string, ToolExecution>;
+  cwd?: string;
 }) {
   if (message.role === "user") {
     return <div className="bubble user">{messageText(message)}</div>;
@@ -38,16 +39,17 @@ export function MessageBubble({ message, tools }: {
           isError: false,
           status: "running" as const,
         };
-        return <ToolCard key={part.id} tool={tool} />;
+        return <ToolCard key={part.id} tool={tool} cwd={cwd} />;
       })}
     </div>
   );
 }
 
 /** The in-flight assistant message: same shapes, none of them final. */
-export function StreamingBubble({ partial, tools }: {
+export function StreamingBubble({ partial, tools, cwd }: {
   partial: PartialMessage;
   tools: Map<string, ToolExecution>;
+  cwd?: string;
 }) {
   return (
     <div className="bubble assistant streaming">
@@ -55,7 +57,7 @@ export function StreamingBubble({ partial, tools }: {
         if (part.type === "text") return <Markdown key={index} text={part.text} />;
         if (part.type === "thinking") return <Thinking key={index} text={part.thinking} />;
         const tool = part.id ? tools.get(part.id) : undefined;
-        if (tool) return <ToolCard key={part.id} tool={tool} />;
+        if (tool) return <ToolCard key={part.id} tool={tool} cwd={cwd} />;
         return (
           <div key={index} className="tool running">
             <span className="tool-name">{part.name ?? "tool"}</span>

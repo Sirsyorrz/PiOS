@@ -10,7 +10,7 @@ import { ChevronRightIcon, ToolIcon } from "./icons.tsx";
  * persisted transcript instead), so the row renders whatever is known and
  * leaves the rest blank rather than waiting for a complete pair.
  */
-export function ToolCard({ tool }: { tool: ToolExecution }) {
+export function ToolCard({ tool, cwd }: { tool: ToolExecution; cwd?: string }) {
   const [open, setOpen] = useState(false);
   const edits = editBlocks(tool.args);
   const rest = leftoverArgs(tool.args);
@@ -26,7 +26,7 @@ export function ToolCard({ tool }: { tool: ToolExecution }) {
       >
         <ToolIcon name={tool.toolName} className="tool-glyph" width={16} height={16} />
         <span className="tool-name">{tool.toolName}</span>
-        <span className="muted line">{headline}</span>
+        <span className="muted line">{shortenCwdPrefix(headline, cwd)}</span>
         {tool.isError ? <span className="tool-status">failed</span> : null}
         {tool.status === "running" ? <span className="spinner" /> : null}
         <ChevronRightIcon className={`caret ${open ? "open" : ""}`} width={16} height={16} />
@@ -68,6 +68,51 @@ function Diff({ before, after }: { before: string; after: string }) {
 
 /** Shown on the row itself, so it is never repeated in the expanded body. */
 const HEADLINE_KEYS = ["command", "path", "file_path", "pattern", "query", "url"] as const;
+
+/**
+ * `cd /long/absolute/path && cmd` wastes the whole preview line on a path the
+ * user already knows. The expanded body still shows the command verbatim.
+ */
+function shortenCwdPrefix(command: string, cwd?: string): string {
+  const match = /^cd\s+('[^']*'|"[^"]*"|\S+)\s+&&\s+/.exec(command);
+  if (!match) return command;
+  const rest = command.slice(match[0].length);
+  const target = absolutePath(unquote(match[1] ?? ""), cwd);
+  if (cwd && target === trimSlash(cwd)) return rest;
+  if (cwd && target.startsWith(`${trimSlash(cwd)}/`)) {
+    return `cd ${target.slice(trimSlash(cwd).length + 1)} && ${rest}`;
+  }
+  return `cd ${collapseHome(target)} && ${rest}`;
+}
+
+function unquote(value: string): string {
+  const quoted = /^'(.*)'$/.exec(value) ?? /^"(.*)"$/.exec(value);
+  return quoted?.[1] ?? value;
+}
+
+function trimSlash(path: string): string {
+  return path.length > 1 ? path.replace(/\/+$/, "") : path;
+}
+
+/** Enough of a resolver for display: no symlinks, no filesystem. */
+function absolutePath(path: string, cwd?: string): string {
+  const base = path.startsWith("/") || path.startsWith("~") || !cwd
+    ? path
+    : `${trimSlash(cwd)}/${path.replace(/^\.\//, "")}`;
+  const parts: string[] = [];
+  for (const part of trimSlash(base).split("/")) {
+    if (part === "." || part === "") continue;
+    if (part === "..") parts.pop();
+    else parts.push(part);
+  }
+  const joined = parts.join("/");
+  return base.startsWith("/") ? `/${joined}` : joined;
+}
+
+/** The home prefix is inferred from the path itself; the client has no $HOME. */
+function collapseHome(path: string): string {
+  return path.replace(/^\/(?:home|Users)\/[^/]+/, "~");
+}
 
 /** Rendered as a diff or a code block, so it is not JSON to print again. */
 const BLOCK_KEYS = ["edits", "oldText", "old_text", "old", "newText", "new_text", "new", "content"];

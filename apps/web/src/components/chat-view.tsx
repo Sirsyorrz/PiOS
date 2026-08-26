@@ -84,10 +84,10 @@ export function ChatView({ sessionId, session, state, onTrust, onBack }: {
       <div className="transcript scroll-y" ref={transcript.ref} onScroll={transcript.onScroll}>
         {view?.items.map((item) => {
           if (item.kind === "message") {
-            return <MessageBubble key={item.key} message={item.message} tools={view.tools} />;
+            return <MessageBubble key={item.key} message={item.message} tools={view.tools} cwd={session?.cwd} />;
           }
           if (item.kind === "streaming") {
-            return <StreamingBubble key={item.key} partial={item.partial} tools={view.tools} />;
+            return <StreamingBubble key={item.key} partial={item.partial} tools={view.tools} cwd={session?.cwd} />;
           }
           return (
             <div key={item.key} className={`bubble user pending ${item.entry.status}`}>
