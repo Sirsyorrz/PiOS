@@ -11,9 +11,11 @@ interface Listing {
 }
 
 /** Browses the daemon's home directory to pick a session cwd. */
-export function DirectoryPicker({ baseUrl, token, onPick, onCancel }: {
+export function DirectoryPicker({ baseUrl, token, startPath, onPick, onCancel }: {
   baseUrl: string;
   token: string;
+  /** Where to open the browser; the current session's cwd when there is one. */
+  startPath?: string | null;
   onPick: (path: string, trustProject: boolean) => void;
   onCancel: () => void;
 }) {
@@ -25,7 +27,7 @@ export function DirectoryPicker({ baseUrl, token, onPick, onCancel }: {
   const [path, setPath] = useState<string | null>(null);
 
   const load = useCallback(
-    async (target: string | null) => {
+    async (target: string | null, fallbackToRoot = false): Promise<void> => {
       setError(null);
       const url = new URL("/dirs", baseUrl);
       if (target) url.searchParams.set("path", target);
@@ -36,6 +38,9 @@ export function DirectoryPicker({ baseUrl, token, onPick, onCancel }: {
         setListing(next);
         setPath(next.path);
       } catch (cause) {
+        // A session cwd outside the daemon's home is not browsable; the root
+        // listing is still better than an empty picker.
+        if (fallbackToRoot) return await load(null);
         setError(String(cause instanceof Error ? cause.message : cause));
       }
     },
@@ -43,8 +48,8 @@ export function DirectoryPicker({ baseUrl, token, onPick, onCancel }: {
   );
 
   useEffect(() => {
-    void load(null);
-  }, [load]);
+    void load(startPath ?? null, startPath != null);
+  }, [load, startPath]);
 
   return (
     <ModalCard className="picker">

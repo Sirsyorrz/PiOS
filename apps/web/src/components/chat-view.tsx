@@ -6,7 +6,7 @@ import type { SessionView, SupervisorState } from "@pios/client-core";
 import { Banners } from "./banners.tsx";
 import { Composer } from "./composer.tsx";
 import { DialogSheet } from "./dialog-sheet.tsx";
-import { ChevronLeftIcon } from "./icons.tsx";
+import { ChevronLeftIcon, PlusIcon } from "./icons.tsx";
 import { MessageBubble, StreamingBubble } from "./message.tsx";
 
 /** Extension widgets for one slot. pi defaults an unplaced widget above. */
@@ -30,12 +30,13 @@ function widgets(view: SessionView | null, placement: "aboveEditor" | "belowEdit
   );
 }
 
-export function ChatView({ sessionId, session, state, onTrust, onBack }: {
+export function ChatView({ sessionId, session, state, onTrust, onBack, onNewSession }: {
   sessionId: string;
   session: SessionSummary | null;
   state: SupervisorState;
   onTrust: () => void;
   onBack: () => void;
+  onNewSession: () => void;
 }) {
   const client = useClient();
   const view = useSessionView(sessionId);
@@ -79,6 +80,11 @@ export function ChatView({ sessionId, session, state, onTrust, onBack }: {
           {view?.running ? <span className="spinner" /> : null}
           {view?.interrupting ? "stopping" : view?.running ? "running" : (session?.status ?? "")}
         </span>
+        {/* Starts from this session's cwd: a second agent on the same project
+            is the common case, and it is one tap away. */}
+        <button type="button" className="icon ghost" onClick={onNewSession} aria-label="new session">
+          <PlusIcon />
+        </button>
       </header>
 
       <div className="transcript scroll-y" ref={transcript.ref} onScroll={transcript.onScroll}>

@@ -1,9 +1,6 @@
-- fix screen flash white and refresh on pwa load after swapping between different apps
-- plus button in chat header to start new session, opens dir picker in current directory, can easily open new agent current dir
 - decide what to do about steering mode (long-press send, extra square button, split send button, or keep the select in the actions row)
 - compare implementation with paseo, what can we learn/improve, can we relay, rather than tailscale?
 - can we startup in chat view, and choose dir from there instead of being session picking first?
-- move the chat input up on mobile while keyboard is open, so that we can still see chat
-- settings toggle, show/hide thinking by default, expand tool calls
+- settings toggle, show/hide thinking by default
 - tree picker
 - maybe use native confirmation handling in app

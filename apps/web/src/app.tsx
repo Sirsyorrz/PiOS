@@ -81,7 +81,8 @@ function Workspace({ machine, onMachineChange, onForget }: {
     else browserStorage.remove(key);
     setActiveIdState(next);
   }
-  const [picking, setPicking] = useState(false);
+  // Null means "not picking"; a string is the directory to open the picker in.
+  const [picking, setPicking] = useState<string | null>(null);
   const [resuming, setResuming] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   // Session commands are not queued, so a dropped one has to be said out loud.
@@ -126,18 +127,19 @@ function Workspace({ machine, onMachineChange, onForget }: {
     );
   }
 
-  if (picking && base) {
+  if (picking !== null && base) {
     return (
       <DirectoryPicker
         baseUrl={base}
         token={machine.deviceToken}
-        onCancel={() => setPicking(false)}
+        startPath={picking || null}
+        onCancel={() => setPicking(null)}
         onPick={(cwd, trustProject) => {
           // Opened as soon as the daemon names it: starting a session and
           // being left on the list is not what the tap asked for.
           const sent = client.createSession({ cwd, trustProject }, setActiveId);
           setNotice(sent ? null : "Not connected: the session was not started.");
-          setPicking(false);
+          setPicking(null);
         }}
       />
     );
@@ -176,7 +178,7 @@ function Workspace({ machine, onMachineChange, onForget }: {
           sessions={state.sessions.filter((s) => s.status !== "disposed")}
           activeId={activeId}
           onSelect={setActiveId}
-          onCreate={() => setPicking(true)}
+          onCreate={() => setPicking("")}
           onResume={() => setResuming(true)}
           onDispose={(sessionId) => {
             client.disposeSession(sessionId);
@@ -191,6 +193,7 @@ function Workspace({ machine, onMachineChange, onForget }: {
           session={session}
           state={state}
           onBack={() => setActiveId(null)}
+          onNewSession={() => setPicking(session?.cwd ?? "")}
           // pi reads trust at launch, so the daemon relaunches this session in
           // place. Same id, same transcript, nothing to switch to.
           onTrust={() => {
