@@ -12,8 +12,11 @@ import { TranscriptImage } from "./image-view.tsx";
  * leaves the rest blank rather than waiting for a complete pair.
  */
 export function ToolCard({ tool, cwd }: { tool: ToolExecution; cwd?: string }) {
-  const [open, setOpen] = useState(false);
+  // A running tool is the live edge of the turn, so its output is shown while
+  // it is produced and filed away again the moment it stops being news.
+  const [open, setOpen] = useState(tool.status === "running");
   const card = useRef<HTMLDivElement>(null);
+  const wasRunning = useRef(tool.status === "running");
   // Set at the tap, read after the body lands: once expanded the card is no
   // longer at the bottom, so the test has to be made before the layout moves.
   const wasLast = useRef(false);
@@ -28,6 +31,16 @@ export function ToolCard({ tool, cwd }: { tool: ToolExecution; cwd?: string }) {
   useLayoutEffect(() => {
     if (open && wasLast.current) revealInView(card.current);
   }, [open]);
+
+  // Keyed on the transition, not on the status: a manual toggle mid-run is the
+  // reader's decision and is not undone on the next render.
+  const running = tool.status === "running";
+  useLayoutEffect(() => {
+    if (running !== wasRunning.current) {
+      wasRunning.current = running;
+      setOpen(running);
+    }
+  }, [running]);
   const edits = editBlocks(tool.args);
   const rest = leftoverArgs(tool.args);
   const headline = summarise(tool);
