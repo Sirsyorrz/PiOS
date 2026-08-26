@@ -1,4 +1,4 @@
-- make model picker scoped only, we can do all models thru /model
+- plus button in chat header to start new session, opens dir picker in current directory, can easily open new agent current dir
 - fix various scroll height issues in chat
 - thinking level dropdown in input
 - move steering mode to touching and holding on send button / some sub-action of that button
