@@ -1,3 +1,7 @@
+- redesign the show hide icon/text/indicator for thinking
+- dont show tool call usless fields, dont show "command", or "path", just show the actual command
+- render edits and writes calls code blocks
+- render them neatly / in code style, potentially in smaller font, and def in a block
 - plus button in chat header to start new session, opens dir picker in current directory, can easily open new agent current dir
 - thinking level dropdown in input
 - move steering mode to touching and holding on send button / some sub-action of that button
@@ -5,6 +9,4 @@
 - can we startup in chat view, and choose dir from there instead of being session picking first?
 - move the chat input up on mobile while keyboard is open, so that we can still see chat
 - settings toggle, show/hide thinking by default, expand tool calls
-- dont show tool call usless fields, dont show "command", or "path"
 - tree picker
-- render edits and writes calls code blocks
