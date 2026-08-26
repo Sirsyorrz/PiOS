@@ -174,27 +174,28 @@ export function ChatView({
         onDismissNotice={(id) => client.sessions.dismissNotice(sessionId, id)}
       />
 
-      {/* Docked above the input: the agent is blocked, but the transcript it
-          is asking about stays readable. */}
+      {/* The dialog takes the composer's place: the agent is blocked on it, so
+          typing a prompt is not the next action, and the transcript it is
+          asking about stays visible. */}
       {dialog ? (
         <DialogSheet
           key={dialog.id}
           request={dialog}
           onAnswer={(answer) => client.answerDialog(sessionId, dialog.id, answer)}
         />
-      ) : null}
-
-      <Composer
-        sessionId={sessionId}
-        model={session?.model}
-        thinkingLevel={session?.thinkingLevel}
-        thinkingLevels={session?.thinkingLevels}
-        running={view?.running ?? false}
-        interrupting={view?.interrupting ?? false}
-        editorText={view?.presentation.editorText}
-        onSend={send}
-        onInterrupt={() => client.interrupt(sessionId)}
-      />
+      ) : (
+        <Composer
+          sessionId={sessionId}
+          model={session?.model}
+          thinkingLevel={session?.thinkingLevel}
+          thinkingLevels={session?.thinkingLevels}
+          running={view?.running ?? false}
+          interrupting={view?.interrupting ?? false}
+          editorText={view?.presentation.editorText}
+          onSend={send}
+          onInterrupt={() => client.interrupt(sessionId)}
+        />
+      )}
       {widgets(view, "belowEditor")}
       </div>
     </section>
