@@ -1,4 +1,9 @@
-import { TranscriptAssembler, type AgentEvent, type SessionEntry } from "@pios/protocol";
+import {
+  TranscriptAssembler,
+  type AgentEvent,
+  type ExtensionUiRequest,
+  type SessionEntry,
+} from "@pios/protocol";
 import { readVersioned, writeVersioned, type StorageAdapter } from "./storage.ts";
 
 export const SESSION_CACHE_VERSION = 1;
@@ -33,6 +38,12 @@ export class SessionStore {
   private readonly daemonStatus = new Map<string, string>();
   /** Interrupt sent, agent not yet observed stopping. */
   private readonly interrupting = new Set<string>();
+  /**
+   * Open extension dialogs, keyed by request id so a resend on reconnect
+   * collapses onto the one already shown. Never persisted: only the daemon
+   * knows whether one is still waiting.
+   */
+  private readonly dialogs = new Map<string, Map<string, ExtensionUiRequest>>();
   private readonly storage: StorageAdapter | null;
   private readonly listeners = new Set<(sessionId: string) => void>();
 
@@ -153,12 +164,31 @@ export class SessionStore {
     return this.interrupting.has(sessionId);
   }
 
+  openDialog(sessionId: string, request: ExtensionUiRequest): void {
+    const open = this.dialogs.get(sessionId) ?? new Map<string, ExtensionUiRequest>();
+    if (open.get(request.id)) return;
+    open.set(request.id, request);
+    this.dialogs.set(sessionId, open);
+    this.notify(sessionId);
+  }
+
+  closeDialog(sessionId: string, requestId: string): void {
+    if (!this.dialogs.get(sessionId)?.delete(requestId)) return;
+    this.notify(sessionId);
+  }
+
+  /** Oldest first, so answering one at a time follows the order asked. */
+  openDialogs(sessionId: string): ExtensionUiRequest[] {
+    return [...(this.dialogs.get(sessionId)?.values() ?? [])];
+  }
+
   /** Drops everything for a session, for a reset or a dispose. */
   clear(sessionId: string): void {
     this.caches.delete(sessionId);
     this.assemblers.delete(sessionId);
     this.daemonStatus.delete(sessionId);
     this.interrupting.delete(sessionId);
+    this.dialogs.delete(sessionId);
     this.storage?.remove(STORAGE_PREFIX + sessionId);
     this.notify(sessionId);
   }

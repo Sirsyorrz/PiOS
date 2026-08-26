@@ -1,6 +1,7 @@
 import {
   messageText,
   type AgentMessage,
+  type ExtensionUiRequest,
   type PartialMessage,
   type ToolExecution,
   type TranscriptStatus,
@@ -21,6 +22,8 @@ export interface SessionView {
   running: boolean;
   /** Stop was sent and the agent has not stopped yet. */
   interrupting: boolean;
+  /** Extension dialogs blocking the agent, oldest first. */
+  dialogs: ExtensionUiRequest[];
   status: TranscriptStatus;
 }
 
@@ -121,6 +124,7 @@ export function sessionView(
     queue: transcript.queue,
     running,
     interrupting: running && store.isInterrupting(sessionId),
+    dialogs: store.openDialogs(sessionId),
     status: transcript.status,
   };
 }

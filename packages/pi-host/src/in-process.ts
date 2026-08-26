@@ -217,6 +217,14 @@ export class InProcessSession extends BaseSession implements PiSession {
     this.setStatus("idle");
   }
 
+  /**
+   * No extension UI context is installed on the in-process agent, so nothing
+   * can be waiting on an answer here.
+   */
+  answerDialog(): boolean {
+    return false;
+  }
+
   async dispose(): Promise<void> {
     if (this.disposed) return;
     this.disposed = true;

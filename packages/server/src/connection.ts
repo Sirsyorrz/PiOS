@@ -269,10 +269,21 @@ export class Connection {
         return this.ack(frame.commandId);
       }
 
-      case "extension_ui_response":
-        // Dialogs are Phase 8. Answering nothing would hang the agent until
-        // its timeout, so the rejection is explicit.
-        return this.fail(frame.commandId, "bad_request", "extension UI is not implemented");
+      case "extension_ui_response": {
+        const session = this.require(frame.sessionId, frame.commandId);
+        if (!session) return;
+        // A second device, or a retry after the deadline expired, arrives with
+        // an id nobody is waiting on. Acked as a duplicate: the dialog is gone
+        // either way, and failing it would only make clients retry.
+        const delivered = session.answerDialog({
+          type: "extension_ui_response",
+          id: frame.requestId,
+          value: frame.value,
+          confirmed: frame.confirmed,
+          cancelled: frame.cancelled,
+        });
+        return this.ack(frame.commandId, !delivered);
+      }
 
       case "activity":
         // Recorded as a lease later; acked now so clients can send it safely.
@@ -294,6 +305,12 @@ export class Connection {
       this.forward(session, buffered.seq, buffered.event),
     );
     this.subscriptions.set(frame.sessionId, off);
+
+    // Replay only covers what is still in the ring buffer, and a dialog can
+    // outlive it. Clients key on request id, so a resend is harmless.
+    for (const request of session.pendingDialogs) {
+      this.send({ v: WIRE_VERSION, type: "extension_ui_request", sessionId: session.id, request });
+    }
 
     this.send({
       v: WIRE_VERSION,
@@ -377,6 +394,8 @@ function forwardFrame(session: PiSession, seq: number, event: HostEvent): Server
       return { v: WIRE_VERSION, type: "agent_event", sessionId, seq, event: event.event };
     case "extension_ui_request":
       return { v: WIRE_VERSION, type: "extension_ui_request", sessionId, request: event.request };
+    case "extension_ui_closed":
+      return { v: WIRE_VERSION, type: "extension_ui_closed", sessionId, requestId: event.id };
     case "session_recovered":
       return {
         v: WIRE_VERSION,

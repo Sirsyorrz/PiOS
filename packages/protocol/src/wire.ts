@@ -252,6 +252,15 @@ export const ServerFrameSchema = z.discriminatedUnion("type", [
     sessionId: z.string(),
     request: ExtensionUiRequestSchema,
   }),
+  /**
+   * The dialog is resolved and must be dismissed everywhere: answered by
+   * another device, expired on the daemon's deadline, or lost with the agent.
+   */
+  ServerEnvelope({
+    type: z.literal("extension_ui_closed"),
+    sessionId: z.string(),
+    requestId: z.string(),
+  }),
   /** The daemon restarted a crashed pi session and resumed from its JSONL. */
   ServerEnvelope({
     type: z.literal("session_recovered"),

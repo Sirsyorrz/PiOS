@@ -1,4 +1,4 @@
-import type { AgentEvent, ModelOption } from "@pios/protocol";
+import type { AgentEvent, ExtensionUiRequest, ModelOption } from "@pios/protocol";
 import { EventRingBuffer } from "./ring-buffer.ts";
 import type {
   BufferedEvent,
@@ -28,6 +28,12 @@ export abstract class BaseSession {
 
   private readonly buffer: EventRingBuffer;
   private readonly listeners = new Set<(event: BufferedEvent) => void>();
+  /**
+   * Open dialogs belong to the session, not to whoever was connected when they
+   * were asked: a client that reconnects, or a second device, has to be able
+   * to answer one that is already outstanding.
+   */
+  private readonly dialogs = new Map<string, ExtensionUiRequest>();
 
   constructor(args: {
     id: string;
@@ -65,6 +71,26 @@ export abstract class BaseSession {
       updatedAt: this.updatedAt,
       model: this.model,
     };
+  }
+
+  get pendingDialogs(): ExtensionUiRequest[] {
+    return [...this.dialogs.values()];
+  }
+
+  protected trackDialog(request: ExtensionUiRequest): void {
+    this.dialogs.set(request.id, request);
+  }
+
+  /** Announced so every attached client dismisses, not just the answerer. */
+  protected closeDialog(id: string): boolean {
+    if (!this.dialogs.delete(id)) return false;
+    this.publish({ type: "extension_ui_closed", id });
+    return true;
+  }
+
+  /** A dead agent forgets its dialogs; nothing is left to answer them. */
+  protected clearDialogs(): void {
+    for (const id of [...this.dialogs.keys()]) this.closeDialog(id);
   }
 
   subscribe(listener: (event: BufferedEvent) => void): () => void {

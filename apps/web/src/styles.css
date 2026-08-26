@@ -1289,3 +1289,35 @@ button.danger {
   gap: 10px;
   align-items: center;
 }
+
+/* A dialog blocks the agent, so it covers the transcript instead of taking a
+   turn in the layout like the other cards. */
+.screen:has(> .dialog) {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  background: rgba(0, 0, 0, 0.55);
+}
+
+.dialog .row {
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.dialog .primary {
+  background: var(--accent);
+  border-color: transparent;
+  color: var(--on-accent);
+}
+
+.dialog textarea {
+  width: 100%;
+  resize: vertical;
+}
+
+/* No leading glyph here, so the input keeps its normal inset. */
+.dialog .field > input {
+  padding-left: 10px;
+}

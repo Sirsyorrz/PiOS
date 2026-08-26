@@ -2,6 +2,7 @@ import type {
   AgentEvent,
   ModelOption,
   ExtensionUiRequest,
+  ExtensionUiResponse,
   ImageContent,
   SessionEntry,
   StreamingBehavior,
@@ -19,6 +20,7 @@ export type SessionStatus = "starting" | "idle" | "running" | "crashed" | "dispo
 export type HostEvent =
   | { type: "agent_event"; event: AgentEvent }
   | { type: "extension_ui_request"; request: ExtensionUiRequest }
+  | { type: "extension_ui_closed"; id: string }
   | { type: "status"; status: SessionStatus }
   | { type: "session_recovered"; leafId: string | null; reason: string };
 
@@ -86,6 +88,11 @@ export interface PiSession {
 
   interrupt(): Promise<void>;
   dispose(): Promise<void>;
+
+  /** Dialogs waiting on a human, oldest first. Survives client reconnects. */
+  readonly pendingDialogs: ExtensionUiRequest[];
+  /** First answer wins; a stale or unknown id is ignored. */
+  answerDialog(response: ExtensionUiResponse): boolean;
 
   /** The session's model scope, or the whole catalogue when asked for it. */
   listModels(options?: { all?: boolean }): Promise<ModelListing>;

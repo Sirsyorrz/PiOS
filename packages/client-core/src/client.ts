@@ -296,6 +296,29 @@ export class PiosClient {
     return sent;
   }
 
+  /**
+   * Answers an open extension dialog.
+   *
+   * Closed locally on send rather than on the daemon's echo: the agent is
+   * blocked meanwhile, and a sheet that lingers invites a second answer.
+   */
+  answerDialog(
+    sessionId: string,
+    requestId: string,
+    answer: { value?: string; confirmed?: boolean; cancelled?: boolean },
+  ): boolean {
+    const sent = this.supervisor.send({
+      v: WIRE_VERSION,
+      type: "extension_ui_response",
+      commandId: this.generateId(),
+      sessionId,
+      requestId,
+      ...answer,
+    });
+    if (sent) this.sessions.closeDialog(sessionId, requestId);
+    return sent;
+  }
+
   /** Marks a session live: subscribed now and after every reconnect. */
   watch(sessionId: string): void {
     this.subscribed.add(sessionId);
@@ -413,6 +436,12 @@ export class PiosClient {
       case "resumable_sessions":
         this.resumable = frame.sessions;
         for (const handler of [...this.resumableHandlers]) handler(this.resumable);
+        break;
+      case "extension_ui_request":
+        this.sessions.openDialog(frame.sessionId, frame.request);
+        break;
+      case "extension_ui_closed":
+        this.sessions.closeDialog(frame.sessionId, frame.requestId);
         break;
       case "session_recovered":
         if (this.sessions.needsFullRefetch(frame.sessionId, frame.leafId)) {

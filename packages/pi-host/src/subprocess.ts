@@ -195,7 +195,10 @@ export class SubprocessSession extends BaseSession implements PiSession {
 
     const uiRequest = ExtensionUiRequestSchema.safeParse(json);
     if (uiRequest.success) {
-      if (isDialogRequest(uiRequest.data)) this.armDialogTimeout(uiRequest.data.id);
+      if (isDialogRequest(uiRequest.data)) {
+        this.trackDialog(uiRequest.data);
+        this.armDialogTimeout(uiRequest.data.id);
+      }
       this.publish({ type: "extension_ui_request", request: uiRequest.data });
       return;
     }
@@ -264,15 +267,18 @@ export class SubprocessSession extends BaseSession implements PiSession {
   }
 
   /** Fire and forget: pi answers a dialog by id, not with an RPC response. */
-  answerDialog(response: ExtensionUiResponse): void {
+  answerDialog(response: ExtensionUiResponse): boolean {
     this.clearDialogTimeout(response.id);
+    if (!this.closeDialog(response.id)) return false;
     this.proc?.stdin.write(encodeJsonl(response));
+    return true;
   }
 
   private handleExit(code: number | null, signal: string | null): void {
     this.proc = null;
     // A restart replays nothing, so a dialog from the dead child is dead too.
-    for (const id of this.dialogTimers.keys()) this.clearDialogTimeout(id);
+    for (const id of [...this.dialogTimers.keys()]) this.clearDialogTimeout(id);
+    this.clearDialogs();
     for (const [id, waiter] of this.pending) {
       clearTimeout(waiter.timer);
       waiter.resolve({
@@ -372,7 +378,8 @@ export class SubprocessSession extends BaseSession implements PiSession {
   async dispose(): Promise<void> {
     if (this.disposed) return;
     this.disposed = true;
-    for (const id of this.dialogTimers.keys()) this.clearDialogTimeout(id);
+    for (const id of [...this.dialogTimers.keys()]) this.clearDialogTimeout(id);
+    this.clearDialogs();
     const proc = this.proc;
     this.proc = null;
     if (proc) {

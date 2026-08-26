@@ -4,6 +4,7 @@ import { useClient, useSessionView } from "../client-provider.tsx";
 import type { SupervisorState } from "@pios/client-core";
 import { Banners } from "./banners.tsx";
 import { Composer } from "./composer.tsx";
+import { DialogSheet } from "./dialog-sheet.tsx";
 import { ChevronLeftIcon } from "./icons.tsx";
 import { MessageBubble, StreamingBubble } from "./message.tsx";
 
@@ -49,6 +50,10 @@ export function ChatView({ sessionId, session, state, onTrust, onBack }: {
   function send(text: string, images: ImageContent[], behavior?: StreamingBehavior) {
     client.prompt({ sessionId, text, images, streamingBehavior: behavior });
   }
+
+  // One at a time, oldest first: an extension chains its questions, and a
+  // stack of sheets makes it unclear which one is being answered.
+  const dialog = view?.dialogs[0];
 
   return (
     <section className="chat" ref={pane}>
@@ -124,6 +129,14 @@ export function ChatView({ sessionId, session, state, onTrust, onBack }: {
         onInterrupt={() => client.interrupt(sessionId)}
       />
       </div>
+
+      {dialog ? (
+        <DialogSheet
+          key={dialog.id}
+          request={dialog}
+          onAnswer={(answer) => client.answerDialog(sessionId, dialog.id, answer)}
+        />
+      ) : null}
     </section>
   );
 }

@@ -222,11 +222,10 @@ Exit: full v0 scope usable from a phone browser.
 
 1. Inline image rendering via the file HTTP endpoint.
 2. Phone-to-agent images (base64 `ImageContent` on prompt/steer/follow_up).
-3. Extension UI dialogs: `select` / `confirm` / `input` / `editor` as native
-   sheets, reply `extension_ui_response` with matching `id`. Render or ignore
-   `notify` / `setStatus` / `setWidget` / `setTitle`. Document `custom()` as a
-   hard gap. The daemon-side dialog deadline already ships; what is left is
-   pending-dialog state on the session, the response route, and the sheets.
+3. Extension UI: dialogs (`select` / `confirm` / `input` / `editor`) ship, with
+   a daemon-side deadline, pending-dialog state on the session, and redelivery
+   on subscribe. Left: render or ignore `notify` / `setStatus` / `setWidget` /
+   `setTitle`, and document `custom()` as a hard gap.
 4. Activity-lease reporting: 25s report, 45s TTL, carrying
    `visible` / `focused` / `appState` and warm scopes.
 5. `@path` file picker backed by daemon directory listing.
