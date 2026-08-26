@@ -1,8 +1,9 @@
 # PiOS - Implementation Plan
 
-Derived from `spec.md`. Phases are ordered by risk: validate protocol
-assumptions first, UI last. Each phase ends with a concrete artifact that can
-be demoed or thrown away.
+Derived from `spec.md`. Phases 0-5 were ordered by risk: validate protocol
+assumptions first, UI last. From Phase 6 the order flips: the PWA is the
+product, so features, design, and cleanup come before native apps or push.
+Each phase ends with a concrete artifact that can be demoed or thrown away.
 
 Repo layout target (pnpm workspace):
 
@@ -14,7 +15,7 @@ packages/
   client-core/   connection supervisor, outbox, session store (platform-free)
 apps/
   web/           PWA (React + Vite)
-  mobile/        Expo RN app (added in Phase 7)
+  mobile/        Expo RN app (added in Phase 10)
 spikes/          throwaway validation scripts
 ```
 
@@ -193,15 +194,75 @@ Exit: full v0 scope usable from a phone browser.
 
 ---
 
-## Phase 6 - Push + settle notifications
+## Phase 6 - PWA feature completion
 
-1. `agent_settled` -> push. Web push for PWA first; APNs later for native.
+The PWA is the product until it stops being enough. Everything here lands in
+`apps/web` + `client-core`; no native work, no push.
+
+1. Inline image rendering via the file HTTP endpoint.
+2. Phone-to-agent images (base64 `ImageContent` on prompt/steer/follow_up):
+   camera + photo library + paste, through the outbox.
+3. Extension UI. Dialogs (`select` / `confirm` / `input` / `editor`) with a
+   daemon-side deadline, pending-dialog state, and redelivery on subscribe;
+   presentation (`notify` / `setStatus` / `setWidget` / `setTitle` /
+   `set_editor_text`) as snapshotted session state. `custom()` stays a hard
+   gap, documented in spec.md.
+4. `@path` file picker backed by daemon directory listing.
+5. Slash commands with `/` autocomplete.
+6. Session controls: model switching, thinking level, compaction UI,
+   interrupt affordance.
+
+---
+
+## Phase 7 - PWA polish and design pass
+
+Making it feel like an app rather than a page. Driven by real phone use, so
+order inside this phase is expected to churn.
+
+1. Design system pass over `ui.tsx` and the CSS utilities: spacing, type scale,
+   colour tokens, dark mode, one source for rows/cards/scrollers.
+2. Mobile ergonomics: safe areas, keyboard-aware composer, scroll anchoring on
+   stream, pull-to-refresh vs resync, gesture navigation between sessions.
+3. Transcript rendering quality: markdown, code blocks with syntax highlight,
+   collapsible tool cards, better diffs, long-output truncation.
+4. Performance: virtualised transcript, delta rendering cost, cold-start time,
+   bundle size budget.
+5. PWA shell: manifest, icons, install prompt, offline app-shell caching,
+   standalone-mode routing.
+6. Session list quality: naming, ordering, search, archive/delete, unread and
+   busy indicators.
+7. Accessibility and error surfaces: focus order, contrast, every failure has a
+   visible, actionable state.
+8. Activity-lease reporting: 25s report, 45s TTL, carrying
+   `visible` / `focused` / `appState` and warm scopes.
+
+Exit: usable as a daily driver from the phone home screen.
+
+---
+
+## Phase 8 - Cleanup and hardening
+
+1. Prune dead code and duplicated view logic surfaced by Phases 6-7.
+2. Test debt: component tests for the chat view, one end-to-end browser smoke
+   run, fixture-replay coverage for any new events.
+3. Daemon hardening review: auth, path containment, upload limits, token
+   rotation.
+4. Docs: install path, pairing, systemd unit, troubleshooting.
+
+---
+
+## Phase 9 - Push + settle notifications
+
+1. `agent_settled` -> push. Web push for the PWA first; APNs later for native.
 2. Device registration table in the daemon, per-device token.
 3. Notification content: session name, last tool, elapsed.
 
 ---
 
-## Phase 7 - `apps/mobile` (Expo)
+## Phase 10 - `apps/mobile` (Expo)
+
+Only worth starting once the PWA is a daily driver and web push has proven the
+notification model.
 
 1. Expo app reusing `client-core` verbatim; RN storage adapter for the outbox.
 2. `AppState` wiring to the Phase 4 background policy.
@@ -218,31 +279,14 @@ Exit: full v0 scope usable from a phone browser.
 
 ---
 
-## Phase 8 - v1 features
-
-1. Inline image rendering via the file HTTP endpoint.
-2. Phone-to-agent images (base64 `ImageContent` on prompt/steer/follow_up).
-3. Extension UI: done. Dialogs (`select` / `confirm` / `input` / `editor`) with
-   a daemon-side deadline, pending-dialog state, and redelivery on subscribe;
-   presentation (`notify` / `setStatus` / `setWidget` / `setTitle` /
-   `set_editor_text`) as snapshotted session state. `custom()` stays a hard
-   gap, documented in spec.md.
-4. Activity-lease reporting: 25s report, 45s TTL, carrying
-   `visible` / `focused` / `appState` and warm scopes.
-5. `@path` file picker backed by daemon directory listing.
-
----
-
-## Phase 9 - Later
+## Phase 11 - Later
 
 - Raw terminal tab: daemon-owned PTY, separate shell channel (RPC `bash` is not
   a terminal). Renderer decision deferred; xterm.js in a WebView is the cheap
   first cut.
 - Forking and branch browsing (`fork`, `clone`, `get_fork_messages`, `get_tree`).
-- Model switching, thinking level, compaction UI.
 - Text editor
 - Lazygit
-- slash commands, and / autocomplete suggestions
 
 ## Unplanned
 - macOS / Windows daemon (path-handling pass + launchd unit).
