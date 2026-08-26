@@ -1,4 +1,5 @@
 import { Fragment, type ReactNode } from "react";
+import { TranscriptImage } from "./image-view.tsx";
 
 /**
  * A deliberately small CommonMark subset: the shapes an agent actually emits
@@ -150,7 +151,7 @@ function renderBlocks(text: string): ReactNode[] {
 
 // Ordered by precedence: code spans win, so backticks protect their contents.
 const INLINE =
-  /(`+)([\s\S]*?)\1|\*\*([\s\S]+?)\*\*|__([\s\S]+?)__|(?<![*\w])\*([^*\n]+?)\*(?!\*)|(?<![_\w])_([^_\n]+?)_(?!\w)|~~([\s\S]+?)~~|\[([^\]]*)\]\(([^)\s]+)[^)]*\)|(https?:\/\/[^\s<>()]+)/g;
+  /(`+)([\s\S]*?)\1|\*\*([\s\S]+?)\*\*|__([\s\S]+?)__|(?<![*\w])\*([^*\n]+?)\*(?!\*)|(?<![_\w])_([^_\n]+?)_(?!\w)|~~([\s\S]+?)~~|!\[([^\]]*)\]\(([^)\s]+)[^)]*\)|\[([^\]]*)\]\(([^)\s]+)[^)]*\)|(https?:\/\/[^\s<>()]+)/g;
 
 function renderInline(text: string): ReactNode[] {
   const out: ReactNode[] = [];
@@ -164,8 +165,11 @@ function renderInline(text: string): ReactNode[] {
     else if (m[3] ?? m[4]) out.push(<strong key={key}>{renderInline((m[3] ?? m[4])!)}</strong>);
     else if (m[5] ?? m[6]) out.push(<em key={key}>{renderInline((m[5] ?? m[6])!)}</em>);
     else if (m[7]) out.push(<del key={key}>{renderInline(m[7])}</del>);
-    else if (m[9]) out.push(<Link key={key} href={m[9]}>{renderInline(m[8] ?? "")}</Link>);
-    else if (m[10]) out.push(<Link key={key} href={m[10]}>{m[10]}</Link>);
+    // An agent writes `![alt](src/logo.png)` with a path on its own machine,
+    // so the src is resolved by the daemon rather than by the browser.
+    else if (m[9]) out.push(<TranscriptImage key={key} src={m[9]} alt={m[8] ?? ""} />);
+    else if (m[11]) out.push(<Link key={key} href={m[11]}>{renderInline(m[10] ?? "")}</Link>);
+    else if (m[12]) out.push(<Link key={key} href={m[12]}>{m[12]}</Link>);
   }
   if (last < text.length) out.push(text.slice(last));
   return out.map((node, i) => typeof node === "string" ? <Fragment key={i}>{node}</Fragment> : node);

@@ -1,6 +1,7 @@
 import type { ImageContent, SessionSummary, StreamingBehavior } from "@pios/protocol";
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { useClient, useSessionView } from "../client-provider.tsx";
+import { FileAccessContext } from "../files.ts";
 import { useStickToBottom } from "../scroll.ts";
 import type { SessionView, SupervisorState } from "@pios/client-core";
 import { Banners } from "./banners.tsx";
@@ -30,10 +31,22 @@ function widgets(view: SessionView | null, placement: "aboveEditor" | "belowEdit
   );
 }
 
-export function ChatView({ sessionId, session, state, onTrust, onBack, onNewSession }: {
+export function ChatView({
+  sessionId,
+  session,
+  state,
+  baseUrl,
+  deviceToken,
+  onTrust,
+  onBack,
+  onNewSession,
+}: {
   sessionId: string;
   session: SessionSummary | null;
   state: SupervisorState;
+  /** Daemon HTTP origin, for files and uploads. */
+  baseUrl: string | null;
+  deviceToken: string;
   onTrust: () => void;
   onBack: () => void;
   onNewSession: () => void;
@@ -67,7 +80,13 @@ export function ChatView({ sessionId, session, state, onTrust, onBack, onNewSess
   // stack of sheets makes it unclear which one is being answered.
   const dialog = view?.dialogs[0];
 
+  const files = useMemo(
+    () => ({ baseUrl, deviceToken, sessionId }),
+    [baseUrl, deviceToken, sessionId],
+  );
+
   return (
+    <FileAccessContext.Provider value={files}>
     <section className="chat" ref={pane}>
       <header className="chat-header">
         <button type="button" className="back icon ghost" onClick={onBack} aria-label="back to sessions">
@@ -177,5 +196,6 @@ export function ChatView({ sessionId, session, state, onTrust, onBack, onNewSess
         />
       ) : null}
     </section>
+    </FileAccessContext.Provider>
   );
 }

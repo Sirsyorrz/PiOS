@@ -847,6 +847,50 @@ button.danger {
   border-radius: 12px;
 }
 
+.bubble img.attachment {
+  display: block;
+  margin-bottom: 6px;
+  cursor: zoom-in;
+}
+
+/* Reserves the row an image will take, so the transcript does not jump when
+   the bytes arrive from the daemon. */
+.image-loading {
+  display: block;
+  height: 96px;
+  border-radius: 12px;
+  background: var(--hover);
+}
+
+.image-missing {
+  display: block;
+  font-size: 0.85em;
+}
+
+.lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: env(safe-area-inset-top) 12px env(safe-area-inset-bottom);
+  background: rgba(0, 0, 0, 0.85);
+}
+
+.lightbox img {
+  max-width: 100%;
+  max-height: 100%;
+  border-radius: 8px;
+}
+
+.lightbox > button {
+  position: absolute;
+  top: calc(env(safe-area-inset-top) + 8px);
+  right: 8px;
+  color: #fff;
+}
+
 /*
  * Markdown inside a turn. Everything is sized off the body text: an assistant
  * heading marks a section of one answer, not a level of the page.
@@ -1044,6 +1088,17 @@ button.danger {
 .tool-body {
   padding-left: 12px;
   border-left: 2px solid var(--line);
+}
+
+.tool-images {
+  padding: 4px 0 2px 12px;
+}
+
+.tool-images img {
+  max-width: 100%;
+  max-height: 320px;
+  border-radius: 10px;
+  cursor: zoom-in;
 }
 
 /* A shell command is one long line. Clipped to the row, or it stretches the

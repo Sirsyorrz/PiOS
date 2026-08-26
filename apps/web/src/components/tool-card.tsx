@@ -1,7 +1,8 @@
-import type { ToolExecution } from "@pios/protocol";
+import type { ImageContent, ToolExecution } from "@pios/protocol";
 import { useState } from "react";
 import { diffLines, editBlocks } from "../diff.ts";
 import { ChevronRightIcon, ToolIcon } from "./icons.tsx";
+import { TranscriptImage } from "./image-view.tsx";
 
 /**
  * One tool call, correlated on `toolCallId`.
@@ -15,6 +16,7 @@ export function ToolCard({ tool, cwd }: { tool: ToolExecution; cwd?: string }) {
   const edits = editBlocks(tool.args);
   const rest = leftoverArgs(tool.args);
   const headline = summarise(tool);
+  const images = resultImages(tool);
 
   return (
     <div className={`tool ${tool.status} ${tool.isError ? "error" : ""}`}>
@@ -31,6 +33,21 @@ export function ToolCard({ tool, cwd }: { tool: ToolExecution; cwd?: string }) {
         {tool.status === "running" ? <span className="spinner" /> : null}
         <ChevronRightIcon className={`caret ${open ? "open" : ""}`} width={16} height={16} />
       </button>
+
+      {/* Outside the disclosure: when a tool returns an image, the image is
+          the result, not a detail of it. Reading one is how the agent sees a
+          screenshot, and the card is collapsed by default. */}
+      {images.length > 0 ? (
+        <div className="tool-images">
+          {images.map((image, index) => (
+            <TranscriptImage
+              key={index}
+              alt={tool.toolName}
+              src={`data:${image.mimeType};base64,${image.data}`}
+            />
+          ))}
+        </div>
+      ) : null}
 
       {open ? (
         <div className="tool-body">
@@ -151,14 +168,27 @@ function leftoverArgs(args: unknown): string {
 }
 
 
+type ResultPart = { type: string; text?: string; data?: string; mimeType?: string };
+
+function resultParts(tool: ToolExecution): ResultPart[] {
+  const payload = (tool.result ?? tool.partialResult) as { content?: ResultPart[] } | undefined;
+  return payload?.content ?? [];
+}
+
 function resultText(tool: ToolExecution): string {
-  const payload = (tool.result ?? tool.partialResult) as
-    | { content?: { type: string; text?: string }[] }
-    | undefined;
-  if (!payload?.content) return "";
-  return payload.content
-    .map((part) => (part.type === "text" ? (part.text ?? "") : `[${part.type}]`))
+  return resultParts(tool)
+    // Image parts are drawn, so naming their type here would label the picture.
+    .filter((part) => part.type === "text")
+    .map((part) => part.text ?? "")
     .join("\n");
+}
+
+/** Images the tool returned, already inline: nothing is fetched to show them. */
+function resultImages(tool: ToolExecution): ImageContent[] {
+  return resultParts(tool).filter(
+    (part): part is ImageContent =>
+      part.type === "image" && typeof part.data === "string" && typeof part.mimeType === "string",
+  );
 }
 
 function stringify(value: unknown): string {

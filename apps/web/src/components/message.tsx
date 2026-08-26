@@ -1,5 +1,12 @@
-import { messageText, type AgentMessage, type PartialMessage, type ToolExecution } from "@pios/protocol";
+import {
+  messageText,
+  type AgentMessage,
+  type ImageContent,
+  type PartialMessage,
+  type ToolExecution,
+} from "@pios/protocol";
 import { useState } from "react";
+import { TranscriptImage } from "./image-view.tsx";
 import { Markdown } from "./markdown.tsx";
 import { ToolCard } from "./tool-card.tsx";
 
@@ -9,7 +16,15 @@ export function MessageBubble({ message, tools, cwd }: {
   cwd?: string;
 }) {
   if (message.role === "user") {
-    return <div className="bubble user">{messageText(message)}</div>;
+    const text = messageText(message);
+    return (
+      <div className="bubble user">
+        {userImages(message).map((image, index) => (
+          <TranscriptImage key={index} alt="attachment" src={dataUrl(image)} />
+        ))}
+        {text}
+      </div>
+    );
   }
   if (message.role === "bashExecution") {
     return (
@@ -30,7 +45,7 @@ export function MessageBubble({ message, tools, cwd }: {
         if (part.type === "text") return <Markdown key={index} text={part.text} />;
         if (part.type === "thinking") return <Thinking key={index} text={part.thinking} />;
         if (part.type === "image") {
-          return <img key={index} alt="" src={`data:${part.mimeType};base64,${part.data}`} />;
+          return <TranscriptImage key={index} alt="" src={dataUrl(part)} />;
         }
         const tool = tools.get(part.id) ?? {
           toolCallId: part.id,
@@ -69,6 +84,16 @@ export function StreamingBubble({ partial, tools, cwd }: {
       <span className="cursor" />
     </div>
   );
+}
+
+function userImages(message: AgentMessage): ImageContent[] {
+  const content = "content" in message ? message.content : undefined;
+  if (!Array.isArray(content)) return [];
+  return content.filter((part): part is ImageContent => part.type === "image");
+}
+
+function dataUrl(image: { mimeType: string; data: string }): string {
+  return `data:${image.mimeType};base64,${image.data}`;
 }
 
 /**

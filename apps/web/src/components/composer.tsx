@@ -84,10 +84,11 @@ export function Composer({
     browserStorage.remove(DRAFT_PREFIX + sessionId);
   }
 
-  async function attach(files: FileList | null) {
+  async function attach(files: Iterable<File> | null) {
     for (const file of Array.from(files ?? [])) {
-      const data = await readBase64(file);
-      setImages((current) => [...current, { type: "image", data, mimeType: file.type }]);
+      if (!file.type.startsWith("image/")) continue;
+      const image = await readImage(file);
+      if (image) setImages((current) => [...current, image]);
     }
   }
 
@@ -99,6 +100,7 @@ export function Composer({
             <img
               key={index}
               alt="attachment"
+              title="Remove"
               src={`data:${image.mimeType};base64,${image.data}`}
               onClick={() => setImages(images.filter((_, i) => i !== index))}
             />
@@ -112,6 +114,15 @@ export function Composer({
         rows={1}
         placeholder="Message pi"
         onChange={(e) => edit(e.target.value)}
+        // A screenshot is the fastest way to show the agent something, and on
+        // a phone the clipboard is often the only path to one.
+        onPaste={(e) => {
+          const files = Array.from(e.clipboardData.files);
+          if (files.some((file) => file.type.startsWith("image/"))) {
+            e.preventDefault();
+            void attach(files);
+          }
+        }}
         onKeyDown={(e) => {
           if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
             e.preventDefault();
@@ -122,7 +133,17 @@ export function Composer({
 
       <div className="composer-actions">
         <label className="attach ghost icon" title="Attach an image">
-          <input type="file" accept="image/*" multiple onChange={(e) => void attach(e.target.files)} />
+          <input
+            type="file"
+            accept="image/*"
+            multiple
+            onChange={(e) => {
+              void attach(e.target.files);
+              // Same file twice in a row is a real case; without this the
+              // second pick fires no change event.
+              e.target.value = "";
+            }}
+          />
           <PlusIcon />
         </label>
 
@@ -170,6 +191,52 @@ export function Composer({
       </div>
     </div>
   );
+}
+
+// A phone photo is ~4000px and several megabytes; the model gains nothing
+// from that and the outbox has to persist every byte of it as base64.
+const MAX_EDGE = 1568;
+
+async function readImage(file: File): Promise<ImageContent | null> {
+  try {
+    const shrunk = await downscale(file);
+    if (shrunk) return shrunk;
+    return { type: "image", data: await readBase64(file), mimeType: file.type };
+  } catch {
+    return null;
+  }
+}
+
+/** Null when the image is already small enough, or cannot be decoded here. */
+async function downscale(file: File): Promise<ImageContent | null> {
+  if (typeof createImageBitmap !== "function") return null;
+  let bitmap: ImageBitmap;
+  try {
+    bitmap = await createImageBitmap(file);
+  } catch {
+    return null;
+  }
+  const scale = Math.min(1, MAX_EDGE / Math.max(bitmap.width, bitmap.height));
+  if (scale === 1) {
+    bitmap.close();
+    return null;
+  }
+
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.round(bitmap.width * scale);
+  canvas.height = Math.round(bitmap.height * scale);
+  const context = canvas.getContext("2d");
+  if (!context) {
+    bitmap.close();
+    return null;
+  }
+  context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+  bitmap.close();
+
+  // JPEG regardless of the source: a screenshot re-encoded as PNG at this size
+  // is still large, and none of this is archival.
+  const data = canvas.toDataURL("image/jpeg", 0.85).split(",")[1] ?? "";
+  return { type: "image", data, mimeType: "image/jpeg" };
 }
 
 function readBase64(file: File): Promise<string> {

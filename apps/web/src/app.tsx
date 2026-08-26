@@ -192,6 +192,8 @@ function Workspace({ machine, onMachineChange, onForget }: {
           sessionId={activeId}
           session={session}
           state={state}
+          baseUrl={base}
+          deviceToken={machine.deviceToken}
           onBack={() => setActiveId(null)}
           onNewSession={() => setPicking(session?.cwd ?? "")}
           // pi reads trust at launch, so the daemon relaunches this session in
