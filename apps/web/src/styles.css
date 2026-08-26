@@ -922,15 +922,18 @@ button.danger {
 
 .tool pre {
   background: rgba(0, 0, 0, 0.35);
+  border: 1px solid var(--line);
   border-radius: 8px;
-  padding: 10px;
-  font-size: 12px;
+  padding: 8px 10px;
+  font-family: ui-monospace, monospace;
+  font-size: 11.5px;
+  line-height: 1.45;
   margin: 6px 0 0;
-  /* Wrapped, not scrolled sideways: reasoning and command output are prose
-     and long lines, and a horizontal scrollbar per block is unreadable on a
-     phone. Indentation still survives, only the overflow folds. */
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
+  /* Commands, diffs and program output are columnar: folding a long line
+     breaks the alignment that makes it readable, so blocks scroll sideways
+     inside themselves rather than reflowing. */
+  white-space: pre;
+  overflow-x: auto;
 }
 
 /*
@@ -1055,11 +1058,6 @@ button.danger {
 }
 
 .diff {
-  font-family: ui-monospace, monospace;
-  /* A diff is columnar: folding it breaks the alignment that makes it
-     readable, so this one block keeps a scroller. */
-  white-space: pre;
-  overflow-x: auto;
 }
 
 .diff-add {

@@ -1,6 +1,6 @@
 import type { ToolExecution } from "@pios/protocol";
 import { useState } from "react";
-import { diffLines, editArgs } from "../diff.ts";
+import { diffLines, editBlocks } from "../diff.ts";
 import { ChevronRightIcon, ToolIcon } from "./icons.tsx";
 
 /**
@@ -12,7 +12,9 @@ import { ChevronRightIcon, ToolIcon } from "./icons.tsx";
  */
 export function ToolCard({ tool }: { tool: ToolExecution }) {
   const [open, setOpen] = useState(false);
-  const edit = editArgs(tool.args);
+  const edits = editBlocks(tool.args);
+  const rest = leftoverArgs(tool.args);
+  const headline = summarise(tool);
 
   return (
     <div className={`tool ${tool.status} ${tool.isError ? "error" : ""}`}>
@@ -24,17 +26,26 @@ export function ToolCard({ tool }: { tool: ToolExecution }) {
       >
         <ToolIcon name={tool.toolName} className="tool-glyph" width={16} height={16} />
         <span className="tool-name">{tool.toolName}</span>
-        <span className="muted line">{summarise(tool)}</span>
+        <span className="muted line">{headline}</span>
         {tool.isError ? <span className="tool-status">failed</span> : null}
         {tool.status === "running" ? <span className="spinner" /> : null}
         <ChevronRightIcon className={`caret ${open ? "open" : ""}`} width={16} height={16} />
       </button>
 
-      {edit ? <Diff before={edit.oldText} after={edit.newText} /> : null}
-
       {open ? (
         <div className="tool-body">
-          {edit ? null : <pre className="args">{stringify(tool.args)}</pre>}
+          {/* Repeated in full: the row above clips it to one line. */}
+          {headline ? <pre className="code">{headline}</pre> : null}
+          {edits.map((edit, index) =>
+            edit.oldText === null ? (
+              <pre key={index} className="code">
+                {edit.newText}
+              </pre>
+            ) : (
+              <Diff key={index} before={edit.oldText} after={edit.newText} />
+            ),
+          )}
+          {rest ? <pre className="args">{rest}</pre> : null}
           <pre className="result">{resultText(tool) || "(no output yet)"}</pre>
         </div>
       ) : null}
@@ -55,11 +66,35 @@ function Diff({ before, after }: { before: string; after: string }) {
   );
 }
 
+/** Shown on the row itself, so it is never repeated in the expanded body. */
+const HEADLINE_KEYS = ["command", "path", "file_path", "pattern", "query", "url"] as const;
+
+/** Rendered as a diff or a code block, so it is not JSON to print again. */
+const BLOCK_KEYS = ["edits", "oldText", "old_text", "old", "newText", "new_text", "new", "content"];
+
 function summarise(tool: ToolExecution): string {
   const args = tool.args as Record<string, unknown> | undefined;
-  const hint = args?.path ?? args?.command ?? args?.pattern ?? args?.query;
-  return typeof hint === "string" ? hint : "";
+  if (!args) return "";
+  for (const key of HEADLINE_KEYS) {
+    const value = args[key];
+    if (typeof value === "string") return value;
+  }
+  return "";
 }
+
+/**
+ * The arguments no other part of the card shows, as `key: value` lines rather
+ * than a JSON object: the braces and quotes carry nothing on a phone screen.
+ */
+function leftoverArgs(args: unknown): string {
+  if (typeof args !== "object" || args === null) return "";
+  const skip = new Set<string>([...HEADLINE_KEYS, ...BLOCK_KEYS]);
+  return Object.entries(args as Record<string, unknown>)
+    .filter(([key, value]) => value !== undefined && !skip.has(key))
+    .map(([key, value]) => `${key}: ${typeof value === "string" ? value : stringify(value)}`)
+    .join("\n");
+}
+
 
 function resultText(tool: ToolExecution): string {
   const payload = (tool.result ?? tool.partialResult) as

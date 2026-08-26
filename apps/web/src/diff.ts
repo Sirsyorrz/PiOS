@@ -52,17 +52,37 @@ export function diffLines(before: string, after: string): DiffLine[] {
 
 export interface EditArgs {
   path?: string;
-  oldText: string;
+  /** Null for a whole-file write: there is nothing to diff against. */
+  oldText: string | null;
   newText: string;
 }
 
-/** Recognises the edit-shaped tool arguments worth rendering as a diff. */
-export function editArgs(args: unknown): EditArgs | null {
+function one(args: unknown, path?: string): EditArgs | null {
   if (typeof args !== "object" || args === null) return null;
   const record = args as Record<string, unknown>;
   const oldText = record.oldText ?? record.old_text ?? record.old;
   const newText = record.newText ?? record.new_text ?? record.new ?? record.content;
   if (typeof newText !== "string") return null;
+  return {
+    path: typeof record.path === "string" ? record.path : path,
+    oldText: typeof oldText === "string" ? oldText : null,
+    newText,
+  };
+}
+
+/**
+ * Recognises edit- and write-shaped tool arguments.
+ *
+ * Multi-edit calls carry their replacements in `edits[]` and the target path
+ * on the call itself, so the path is threaded down to each block.
+ */
+export function editBlocks(args: unknown): EditArgs[] {
+  if (typeof args !== "object" || args === null) return [];
+  const record = args as Record<string, unknown>;
   const path = typeof record.path === "string" ? record.path : undefined;
-  return { path, oldText: typeof oldText === "string" ? oldText : "", newText };
+  if (Array.isArray(record.edits)) {
+    return record.edits.map((edit) => one(edit, path)).filter((edit): edit is EditArgs => !!edit);
+  }
+  const single = one(record);
+  return single ? [single] : [];
 }
