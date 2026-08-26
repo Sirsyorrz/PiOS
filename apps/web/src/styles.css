@@ -1126,6 +1126,11 @@ button.danger {
   color: var(--error);
 }
 
+/* Not a failure: nobody ever heard back. Stated, not alarmed about. */
+.tool-status.stale {
+  color: var(--muted);
+}
+
 .diff {
 }
 

@@ -53,6 +53,7 @@ export function ToolCard({ tool, cwd }: { tool: ToolExecution; cwd?: string }) {
         <span className="tool-name">{tool.toolName}</span>
         <span className="muted line">{shortenPreview(headline, cwd)}</span>
         {tool.isError ? <span className="tool-status">failed</span> : null}
+        {tool.status === "abandoned" ? <span className="tool-status stale">no result</span> : null}
         {tool.status === "running" ? <span className="spinner" /> : null}
         <ChevronRightIcon className={`caret ${open ? "open" : ""}`} width={16} height={16} />
       </button>
@@ -86,7 +87,7 @@ export function ToolCard({ tool, cwd }: { tool: ToolExecution; cwd?: string }) {
             ),
           )}
           {rest ? <pre className="args">{rest}</pre> : null}
-          <pre className="result">{resultText(tool) || "(no output yet)"}</pre>
+          <pre className="result">{resultText(tool) || placeholder(tool)}</pre>
         </div>
       ) : null}
     </div>
@@ -121,6 +122,11 @@ function revealInView(el: HTMLElement | null) {
   const top = pane.scrollTop + el.getBoundingClientRect().top - pane.getBoundingClientRect().top;
   if (el.offsetHeight >= pane.clientHeight) pane.scrollTop = top;
   else pane.scrollTop = pane.scrollHeight;
+}
+
+/** An abandoned call is not waiting on anything, so it must not say so. */
+function placeholder(tool: ToolExecution): string {
+  return tool.status === "abandoned" ? "(no result: the run ended first)" : "(no output yet)";
 }
 
 function Diff({ before, after }: { before: string; after: string }) {

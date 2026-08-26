@@ -109,6 +109,20 @@ export function sessionView(
     });
   }
 
+  // The daemon is authoritative about the agent being busy. An aborted turn
+  // can end without `agent_settled`, and then the event stream alone would
+  // leave the transcript running for the rest of the session's life.
+  const daemonStatus = store.status(sessionId);
+  const running = transcript.running && daemonStatus !== "idle";
+
+  // A call left mid-flight by a restart has no result and never will. Left as
+  // "running" it spins forever in a session the daemon reports as idle.
+  if (!running) {
+    for (const [id, tool] of tools) {
+      if (tool.status === "running") tools.set(id, { ...tool, status: "abandoned" });
+    }
+  }
+
   if (transcript.streaming) {
     items.push({ kind: "streaming", key: "streaming", partial: transcript.streaming });
   }
@@ -116,12 +130,6 @@ export function sessionView(
     if (entry.sessionId !== sessionId) continue;
     items.push({ kind: "pending", key: `p:${entry.messageId}`, entry });
   }
-
-  // The daemon is authoritative about the agent being busy. An aborted turn
-  // can end without `agent_settled`, and then the event stream alone would
-  // leave the transcript running for the rest of the session's life.
-  const daemonStatus = store.status(sessionId);
-  const running = transcript.running && daemonStatus !== "idle";
 
   return {
     items,

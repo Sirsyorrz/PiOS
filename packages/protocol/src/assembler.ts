@@ -157,7 +157,12 @@ export class MessageAssembler {
   }
 }
 
-export type ToolExecutionStatus = "running" | "done";
+/**
+ * `abandoned` is a call whose result never arrived and whose turn is over:
+ * the agent was killed, or the client left before answering it. It is not
+ * `done`, because there is no result, and not `running`, because nothing is.
+ */
+export type ToolExecutionStatus = "running" | "done" | "abandoned";
 
 export interface ToolExecution {
   toolCallId: string;
