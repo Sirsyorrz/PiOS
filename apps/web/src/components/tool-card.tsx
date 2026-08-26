@@ -26,7 +26,7 @@ export function ToolCard({ tool, cwd }: { tool: ToolExecution; cwd?: string }) {
       >
         <ToolIcon name={tool.toolName} className="tool-glyph" width={16} height={16} />
         <span className="tool-name">{tool.toolName}</span>
-        <span className="muted line">{shortenCwdPrefix(headline, cwd)}</span>
+        <span className="muted line">{shortenPreview(headline, cwd)}</span>
         {tool.isError ? <span className="tool-status">failed</span> : null}
         {tool.status === "running" ? <span className="spinner" /> : null}
         <ChevronRightIcon className={`caret ${open ? "open" : ""}`} width={16} height={16} />
@@ -70,19 +70,29 @@ function Diff({ before, after }: { before: string; after: string }) {
 const HEADLINE_KEYS = ["command", "path", "file_path", "pattern", "query", "url"] as const;
 
 /**
- * `cd /long/absolute/path && cmd` wastes the whole preview line on a path the
- * user already knows. The expanded body still shows the command verbatim.
+ * Absolute paths eat the whole preview line with a prefix the user already
+ * knows. Both the `cd` prefix of a command and a bare path argument (read,
+ * write, edit) are shortened against the session cwd; the expanded body of
+ * the card still shows the argument verbatim.
  */
-function shortenCwdPrefix(command: string, cwd?: string): string {
-  const match = /^cd\s+('[^']*'|"[^"]*"|\S+)\s+&&\s+/.exec(command);
-  if (!match) return command;
-  const rest = command.slice(match[0].length);
-  const target = absolutePath(unquote(match[1] ?? ""), cwd);
-  if (cwd && target === trimSlash(cwd)) return rest;
-  if (cwd && target.startsWith(`${trimSlash(cwd)}/`)) {
-    return `cd ${target.slice(trimSlash(cwd).length + 1)} && ${rest}`;
+function shortenPreview(headline: string, cwd?: string): string {
+  const match = /^cd\s+('[^']*'|"[^"]*"|\S+)\s+&&\s+/.exec(headline);
+  if (match) {
+    const rest = headline.slice(match[0].length);
+    const shown = shortenPath(unquote(match[1] ?? ""), cwd);
+    return shown === "." ? rest : `cd ${shown} && ${rest}`;
   }
-  return `cd ${collapseHome(target)} && ${rest}`;
+  if (/^[~/]/.test(headline) && !/\s/.test(headline)) return shortenPath(headline, cwd);
+  return headline;
+}
+
+/** `.` for the cwd itself, cwd-relative when inside it, else `~`-collapsed. */
+function shortenPath(path: string, cwd?: string): string {
+  const target = absolutePath(path, cwd);
+  const base = cwd ? trimSlash(cwd) : "";
+  if (base && target === base) return ".";
+  if (base && target.startsWith(`${base}/`)) return target.slice(base.length + 1);
+  return collapseHome(target);
 }
 
 function unquote(value: string): string {
