@@ -35,6 +35,15 @@ html[data-keyboard="1"] {
   --safe-bottom: 0px;
 }
 
+/* Installed, there is no browser chrome under the app: only the home
+   indicator, which overlays content and needs a hairline of clearance, not
+   the full inset a scrolling page would want. */
+@media (display-mode: standalone) {
+  html {
+    --safe-bottom: 0px;
+  }
+}
+
 * {
   box-sizing: border-box;
 }
@@ -293,7 +302,7 @@ button.danger {
   height: 100%;
   overflow-y: auto;
   padding: calc(16px + var(--safe-top)) calc(16px + var(--safe-right))
-    calc(16px + var(--safe-bottom)) calc(16px + var(--safe-left));
+    max(16px, var(--safe-bottom)) calc(16px + var(--safe-left));
 }
 
 .centered {
@@ -369,7 +378,7 @@ button.danger {
 
 .sidebar {
   border-right: 1px solid var(--line);
-  padding: calc(12px + var(--safe-top)) 12px calc(12px + var(--safe-bottom))
+  padding: calc(12px + var(--safe-top)) 12px max(12px, var(--safe-bottom))
     calc(12px + var(--safe-left));
   overflow-y: auto;
   display: flex;
@@ -690,7 +699,7 @@ button.danger {
   /* Top inset clears the notch/island, bottom inset the home indicator, so
      the composer never sits under either. */
   padding: calc(12px + var(--safe-top)) calc(16px + var(--safe-right))
-    calc(12px + var(--safe-bottom)) calc(16px + var(--safe-left));
+    max(12px, var(--safe-bottom)) calc(16px + var(--safe-left));
   gap: 8px;
   /* The dock is taken out of flow, so the pane is its containing block. */
   position: relative;
@@ -702,7 +711,7 @@ button.danger {
   position: absolute;
   left: calc(16px + var(--safe-left));
   right: calc(16px + var(--safe-right));
-  bottom: calc(12px + var(--safe-bottom));
+  bottom: max(4px, calc(var(--safe-bottom) - 16px));
   display: flex;
   flex-direction: column;
   gap: 8px;
