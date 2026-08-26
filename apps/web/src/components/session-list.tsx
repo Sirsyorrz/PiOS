@@ -1,5 +1,5 @@
 import type { SessionSummary } from "@pios/protocol";
-import { basename, shortenPath } from "../format.ts";
+import { shortenPath } from "../format.ts";
 import { HistoryIcon, PlusIcon, TrashIcon } from "./icons.tsx";
 import { ListRowButton } from "./ui.tsx";
 
@@ -12,6 +12,11 @@ export function SessionList({ sessions, activeId, onSelect, onCreate, onResume, 
   onDispose: (sessionId: string) => void;
 }) {
   const ordered = [...sessions].sort((a, b) => b.updatedAt - a.updatedAt);
+
+  // The opening message identifies a session far better than its directory,
+  // which every session in a project shares.
+  const sessionLabel = (session: SessionSummary) =>
+    session.name ?? session.preview ?? shortenPath(session.cwd);
 
   return (
     <nav className="sessions">
@@ -40,7 +45,7 @@ export function SessionList({ sessions, activeId, onSelect, onCreate, onResume, 
                 className="session"
                 onClick={() => onSelect(session.sessionId)}
               >
-                <span className="name line">{session.name ?? basename(session.cwd)}</span>
+                <span className="name line">{sessionLabel(session)}</span>
                 <span className="muted line">{shortenPath(session.cwd)}</span>
                 {/* Two lines, fixed: the row is a list entry, so state rides
                     in the corner rather than adding a third line to some
@@ -54,7 +59,7 @@ export function SessionList({ sessions, activeId, onSelect, onCreate, onResume, 
               <button
                 type="button"
                 className="icon ghost dispose"
-                aria-label={`dispose ${session.name ?? session.cwd}`}
+                aria-label={`dispose ${sessionLabel(session)}`}
                 onClick={() => onDispose(session.sessionId)}
               >
                 <TrashIcon width={16} height={16} />

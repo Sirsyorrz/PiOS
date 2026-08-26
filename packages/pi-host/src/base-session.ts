@@ -1,7 +1,9 @@
 import {
   applyPresentation,
   emptyPresentation,
+  messageText,
   type AgentEvent,
+  type SessionEntry,
   type ExtensionUiRequest,
   type ModelOption,
   type SessionPresentation,
@@ -34,6 +36,8 @@ export abstract class BaseSession {
   protected thinkingLevel: string | undefined;
   protected thinkingLevels: string[] = [];
   protected updatedAt = Date.now();
+  /** First user message: what a list row shows when the session has no name. */
+  protected preview: string | undefined;
 
   private readonly buffer: EventRingBuffer;
   private readonly listeners = new Set<(event: BufferedEvent) => void>();
@@ -80,6 +84,7 @@ export abstract class BaseSession {
       leafId: this.leafId,
       lastSeq: this.buffer.lastSeq,
       updatedAt: this.updatedAt,
+      preview: this.preview,
       model: this.model,
       thinkingLevel: this.thinkingLevel,
       thinkingLevels: this.thinkingLevels,
@@ -180,10 +185,31 @@ export abstract class BaseSession {
 
   /** Tracks run state and the durable cursor as events go by. */
   protected observeAgentEvent(event: AgentEvent): void {
+    if (event.type === "message_start" && event.message.role === "user") {
+      this.notePreview(messageText(event.message));
+    }
     if (event.type === "agent_start") this.setStatus("running");
     // Only agent_settled is terminal; agent_end may be followed by a retry,
     // a compaction, or a queued continuation.
     if (event.type === "agent_settled") this.setStatus("idle");
+  }
+
+  /**
+   * A resumed session has its opening message on disk, not in the event
+   * stream, so the first full entry page is the only place to find it.
+   */
+  protected observeEntries(entries: SessionEntry[]): void {
+    if (this.preview) return;
+    const first = entries.find((entry) => entry.message?.role === "user");
+    if (first?.message) this.notePreview(messageText(first.message));
+  }
+
+  /** Published as a status event: list rows on other devices show it too. */
+  private notePreview(text: string): void {
+    const trimmed = text.trim().slice(0, 200);
+    if (!trimmed || this.preview) return;
+    this.preview = trimmed;
+    this.publish({ type: "status", status: this.status });
   }
 
   protected setLeafId(leafId: string | null): void {

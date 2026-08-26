@@ -72,6 +72,8 @@ export interface SessionInfo {
   /** Live cursor: the newest buffered event, including in-flight partials. */
   lastSeq: number;
   updatedAt: number;
+  /** First user message, absent until one is seen. */
+  preview?: string;
   /** Active model, absent until pi resolves one. */
   model?: ModelOption;
   /** Effective thinking level, absent until pi resolves one. */

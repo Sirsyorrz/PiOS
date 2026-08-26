@@ -447,6 +447,7 @@ function toSummary(info: SessionInfo): SessionSummary {
     leafId: info.leafId,
     lastSeq: info.lastSeq,
     updatedAt: info.updatedAt,
+    preview: info.preview,
     model: info.model,
     thinkingLevel: info.thinkingLevel,
     thinkingLevels: info.thinkingLevels,

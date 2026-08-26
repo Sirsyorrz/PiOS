@@ -178,7 +178,9 @@ export class InProcessSession extends BaseSession implements PiSession {
     const manager = this.requireAgent().sessionManager;
     const leafId = manager.getLeafId();
     this.setLeafId(leafId);
-    return sliceEntriesSince(manager.getEntries(), leafId, since);
+    const entries = manager.getEntries();
+    this.observeEntries(entries);
+    return sliceEntriesSince(entries, leafId, since);
   }
 
   async listModels(options: { all?: boolean } = {}): Promise<ModelListing> {

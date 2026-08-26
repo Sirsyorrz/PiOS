@@ -74,11 +74,16 @@ export function ResumePicker({
                 className="session"
                 onClick={() => onResume(session)}
               >
+                {/* The opening message identifies a session far better than
+                    its directory, which its whole project shares. Promoted to
+                    the heading rather than repeated below it. */}
                 <span className="name line">
-                  {session.name ?? basename(session.cwd)}
+                  {session.name ?? (session.preview || basename(session.cwd))}
                 </span>
                 <span className="muted line">{session.cwd}</span>
-                <span className="preview line">{session.preview}</span>
+                {session.name ? (
+                  <span className="preview line">{session.preview}</span>
+                ) : null}
                 <span className="tags">
                   <span className="muted tag">
                     <ClockIcon width={13} height={13} />

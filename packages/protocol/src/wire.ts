@@ -149,6 +149,8 @@ export const SessionSummarySchema = z.object({
    */
   lastSeq: z.number(),
   updatedAt: z.number(),
+  /** First user message, for a row that reads without opening the session. */
+  preview: z.string().optional(),
   /** The model the agent is on right now, absent when pi has not resolved one. */
   model: ModelOptionSchema.optional(),
   /** Effective thinking level, absent when pi has not reported one. */

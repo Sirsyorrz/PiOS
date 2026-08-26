@@ -398,6 +398,7 @@ export class SubprocessSession extends BaseSession implements PiSession {
     if (response.success) {
       const data = GetEntriesDataSchema.parse(response.data);
       this.setLeafId(data.leafId);
+      if (!since) this.observeEntries(data.entries);
       return { entries: data.entries, leafId: data.leafId, reset: false };
     }
     if (isUnknownCursorError(response)) {
