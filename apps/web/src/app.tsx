@@ -17,6 +17,12 @@ import { PairingScreen } from "./components/pairing-screen.tsx";
 import { ResumePicker } from "./components/resume-picker.tsx";
 import { ChevronDownIcon } from "./components/icons.tsx";
 import { SessionList } from "./components/session-list.tsx";
+import { browserStorage } from "./storage.ts";
+
+// iOS evicts a backgrounded PWA and relaunches it from scratch, so the open
+// session has to be remembered somewhere durable or every app switch dumps
+// the user back on the session list.
+const activeSessionKey = (machineId: string) => `pios.active-session.${machineId}`;
 
 export function App() {
   const [store, setStore] = useState<MachineStore>(loadMachines);
@@ -65,12 +71,29 @@ function Workspace({ machine, onMachineChange, onForget }: {
 }) {
   const client = useClient();
   const state = useSupervisorState();
-  const [activeId, setActiveId] = useState<string | null>(null);
+  const [activeId, setActiveIdState] = useState<string | null>(() =>
+    browserStorage.get(activeSessionKey(machine.id)),
+  );
+
+  function setActiveId(next: string | null) {
+    const key = activeSessionKey(machine.id);
+    if (next) browserStorage.set(key, next);
+    else browserStorage.remove(key);
+    setActiveIdState(next);
+  }
   const [picking, setPicking] = useState(false);
   const [resuming, setResuming] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   // Session commands are not queued, so a dropped one has to be said out loud.
   const [notice, setNotice] = useState<string | null>(null);
+
+  // A restored session can be gone by the time the daemon answers; only a
+  // live session list proves that, so nothing is dropped while offline.
+  useEffect(() => {
+    if (!activeId || state.sync !== "synced") return;
+    const known = state.sessions.find((s) => s.sessionId === activeId);
+    if (!known || known.status === "disposed") setActiveId(null);
+  }, [activeId, state.sync, state.sessions]);
 
   const session = useMemo(
     () => state.sessions.find((s) => s.sessionId === activeId) ?? null,

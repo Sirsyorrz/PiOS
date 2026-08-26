@@ -13,7 +13,7 @@
     "allowImportingTsExtensions": true,
     "verbatimModuleSyntax": true,
     "erasableSyntaxOnly": true,
-    "types": [],
+    "types": ["vite/client"],
     "noEmit": true
   },
   "include": ["src/**/*.ts", "src/**/*.tsx", "vite.config.ts"]
