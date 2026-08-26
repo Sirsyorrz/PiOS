@@ -1,5 +1,4 @@
-- can we see running duration exposed by pi theu rpc?
-- when waiting for selection or confirm, dont show "running", show "waiting"
+- can we see running duration exposed by pi thru rpc?
 - decide what to do about steering mode (long-press send, extra square button, split send button, or keep the select in the actions row)
 - compare implementation with paseo, what can we learn/improve, can we relay, rather than tailscale?
 - can we startup in chat view, and choose dir from there instead of being session picking first?
