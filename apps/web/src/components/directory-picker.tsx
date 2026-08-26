@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
-import { ListRowButton, ModalCard } from "./ui.tsx";
+import { ChevronRightIcon, FolderIcon, FolderUpIcon } from "./icons.tsx";
+import { ListRowButton, ModalCard, PickerHeader } from "./ui.tsx";
 
 interface Listing {
   root: string;
@@ -47,15 +48,15 @@ export function DirectoryPicker({ baseUrl, token, onPick, onCancel }: {
 
   return (
     <ModalCard className="picker">
-      <div className="row spread">
-        <button type="button" onClick={onCancel}>
-          Cancel
-        </button>
-        <h1>New session</h1>
-        <button type="button" disabled={!path} onClick={() => path && onPick(path, trust)}>
-          Start here
-        </button>
-      </div>
+      <PickerHeader
+        title="New session"
+        onCancel={onCancel}
+        action={
+          <button type="button" disabled={!path} onClick={() => path && onPick(path, trust)}>
+            Start here
+          </button>
+        }
+      />
       <p className="muted path">{path ?? "loading..."}</p>
       {error ? <p className="error">{error}</p> : null}
 
@@ -69,12 +70,20 @@ export function DirectoryPicker({ baseUrl, token, onPick, onCancel }: {
       <ul className="dirlist scroll-y">
         {listing?.parent ? (
           <li>
-            <ListRowButton onClick={() => void load(listing.parent)}>../</ListRowButton>
+            <ListRowButton icon={<FolderUpIcon />} onClick={() => void load(listing.parent)}>
+              <span className="name line">../</span>
+            </ListRowButton>
           </li>
         ) : null}
         {listing?.entries.map((entry) => (
           <li key={entry.path}>
-            <ListRowButton onClick={() => void load(entry.path)}>{entry.name}/</ListRowButton>
+            <ListRowButton
+              icon={<FolderIcon />}
+              trailing={<ChevronRightIcon />}
+              onClick={() => void load(entry.path)}
+            >
+              <span className="name line">{entry.name}</span>
+            </ListRowButton>
           </li>
         ))}
       </ul>

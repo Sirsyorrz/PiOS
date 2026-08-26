@@ -2,7 +2,8 @@ import type { ResumableSessionWire } from "@pios/protocol";
 import { useEffect, useState } from "react";
 import { useClient } from "../client-provider.tsx";
 import { basename, relativeTime } from "../format.ts";
-import { ListRowButton, ModalCard } from "./ui.tsx";
+import { ClockIcon, MessageIcon } from "./icons.tsx";
+import { ListRowButton, ModalCard, PickerHeader, SearchField } from "./ui.tsx";
 
 /**
  * Sessions that exist on disk, including ones started in the pi TUI.
@@ -49,17 +50,12 @@ export function ResumePicker({
     // Wider than the other steps: these rows carry a path and a preview
     // line, not a single directory name.
     <ModalCard className="picker resume">
-      <header className="row spread">
-        <h2 className="line">Resume a session</h2>
-        <button type="button" onClick={onCancel}>
-          Cancel
-        </button>
-      </header>
+      <PickerHeader title="Resume a session" onCancel={onCancel} />
 
-      <input
+      <SearchField
         value={filter}
         placeholder="Filter by path or text"
-        onChange={(e) => setFilter(e.target.value)}
+        onChange={setFilter}
       />
 
       {!asked ? (
@@ -84,10 +80,14 @@ export function ResumePicker({
                 <span className="muted line">{session.cwd}</span>
                 <span className="preview line">{session.preview}</span>
                 <span className="tags">
-                  <span className="muted">
+                  <span className="muted tag">
+                    <ClockIcon width={13} height={13} />
                     {relativeTime(session.modifiedAt)}
                   </span>
-                  <span className="muted">{session.messageCount} msgs</span>
+                  <span className="muted tag">
+                    <MessageIcon width={13} height={13} />
+                    {session.messageCount}
+                  </span>
                   {/* Already open here: resuming attaches rather than forking. */}
                   {session.live ? (
                     <span className="status running">open</span>
