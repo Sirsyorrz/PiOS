@@ -140,6 +140,14 @@ select {
   min-height: var(--control);
 }
 
+/* Desktop renders the popup with the select's own colors, and a ghost select
+   is transparent: without this the list is muted text on white. */
+select option,
+select optgroup {
+  background: var(--panel);
+  color: var(--text);
+}
+
 input:focus-visible,
 textarea:focus-visible,
 select:focus-visible,
