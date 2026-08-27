@@ -7,6 +7,10 @@ import { ThinkingPicker } from "./thinking-picker.tsx";
 
 const DRAFT_PREFIX = "pios.draft.";
 
+// Mid-turn prompts steer the running agent instead of queueing behind it;
+// waiting for a turn to end is not what anyone means by typing during one.
+const STREAMING_BEHAVIOR: StreamingBehavior = "steer";
+
 /**
  * Composes a prompt and hands it to the outbox.
  *
@@ -41,7 +45,6 @@ export function Composer({
 }) {
   const [text, setText] = useState("");
   const [images, setImages] = useState<ImageContent[]>([]);
-  const [behavior, setBehavior] = useState<StreamingBehavior>("steer");
   const field = useRef<HTMLTextAreaElement>(null);
 
   // One line until there is more to show: a tall empty box eats transcript on
@@ -78,7 +81,7 @@ export function Composer({
     if (!trimmed && images.length === 0) return;
     // Mandatory while the agent streams, ignored otherwise; sending it always
     // is simpler than tracking who won the race with `agent_settled`.
-    onSend(trimmed, images, running ? behavior : undefined);
+    onSend(trimmed, images, running ? STREAMING_BEHAVIOR : undefined);
     setText("");
     setImages([]);
     browserStorage.remove(DRAFT_PREFIX + sessionId);
@@ -147,27 +150,14 @@ export function Composer({
           <PlusIcon />
         </label>
 
-        {running ? (
-          <select
-            className="ghost"
-            value={behavior}
-            onChange={(e) => setBehavior(e.target.value as StreamingBehavior)}
-          >
-            {/* Two words, because this shares the row with the model picker
-                and a phone has no space for a sentence. */}
-            <option value="steer">Steer</option>
-            <option value="followUp">Follow</option>
-          </select>
-        ) : null}
-
         <ModelPicker sessionId={sessionId} current={model} />
 
         <ThinkingPicker sessionId={sessionId} current={thinkingLevel} levels={thinkingLevels ?? []} />
 
         <span className="spacer" />
 
-        {/* Stop sits beside Send, not instead of it: queueing the next turn
-            while the agent runs is the point of the steering selector. */}
+        {/* Stop sits beside Send, not instead of it: the next turn can be
+            queued while the agent still runs. */}
         {running ? (
           <button
             type="button"

@@ -7,3 +7,4 @@ export * from "./subprocess.ts";
 export * from "./registry.ts";
 export * from "./default-factory.ts";
 export * from "./discovery.ts";
+export * from "./session-paths.ts";

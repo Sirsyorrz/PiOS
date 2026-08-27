@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { WIRE_VERSION, type ServerFrame } from "@pios/protocol";
+import { sessionDirName } from "@pios/pi-host";
 import { startHarness, hello, TestClient, type Harness } from "./helpers.ts";
 
 let harness: Harness;
@@ -278,6 +279,26 @@ test("directory listing stays inside the home directory", async () => {
 
   const escape = await fetch(`${harness.baseUrl}/dirs?path=/etc`, { headers: auth });
   assert.equal(escape.status, 404);
+});
+
+test("directories with recent pi sessions sort first", async () => {
+  const auth = { authorization: `Bearer ${harness.deviceToken}` };
+  const before = (await (await fetch(`${harness.baseUrl}/dirs`, { headers: auth })).json()) as {
+    entries: { name: string; path: string }[];
+  };
+  // Needs two real home subdirectories to have an order to change.
+  if (before.entries.length < 2) return;
+  const last = before.entries[before.entries.length - 1]!;
+  mkdirSync(join(harness.dir, "sessions", sessionDirName(last.path)), { recursive: true });
+
+  const after = (await (await fetch(`${harness.baseUrl}/dirs`, { headers: auth })).json()) as {
+    entries: { name: string; lastSessionAt: number | null }[];
+  };
+  assert.equal(after.entries[0]?.name, last.name);
+  assert.ok((after.entries[0]?.lastSessionAt ?? 0) > 0);
+  // Everything without a session keeps alphabetical order.
+  const rest = after.entries.slice(1).map((e) => e.name);
+  assert.deepEqual(rest, [...rest].sort((a, b) => a.localeCompare(b)));
 });
 
 test("an unknown session is refused rather than crashing the socket", async () => {

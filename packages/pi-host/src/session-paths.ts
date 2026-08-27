@@ -7,6 +7,10 @@ import { resolve, join } from "node:path";
  * maps to exactly one directory.
  */
 export function projectSessionDir(cwd: string, root: string): string {
-  const safe = `--${resolve(cwd).replace(/^[/\\]/, "").replace(/[/\\:]/g, "-")}--`;
-  return join(root, safe);
+  return join(root, sessionDirName(cwd));
+}
+
+/** The directory name pi derives from a project cwd. */
+export function sessionDirName(cwd: string): string {
+  return `--${resolve(cwd).replace(/^[/\\]/, "").replace(/[/\\:]/g, "-")}--`;
 }

@@ -7,7 +7,8 @@ interface Listing {
   path: string;
   name: string;
   parent: string | null;
-  entries: { name: string; path: string }[];
+  /** Server-ordered: most recent pi session first, then alphabetical. */
+  entries: { name: string; path: string; lastSessionAt: number | null }[];
 }
 
 /** Browses the daemon's home directory to pick a session cwd. */

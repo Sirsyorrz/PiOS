@@ -1,9 +1,9 @@
 import { createReadStream, statSync } from "node:fs";
-import { mkdir, readdir, writeFile } from "node:fs/promises";
+import { mkdir, readdir, stat, writeFile } from "node:fs/promises";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { homedir } from "node:os";
 import { basename, dirname, extname, join } from "node:path";
-import type { SessionRegistry } from "@pios/pi-host";
+import { sessionDirName, type SessionRegistry } from "@pios/pi-host";
 import { WIRE_VERSION } from "@pios/protocol";
 import { AuthStore, bearerToken } from "./auth.ts";
 import { containedPath } from "./paths.ts";
@@ -56,7 +56,7 @@ export async function handleRequest(
     if (req.method === "GET" && url.pathname === "/sessions") {
       return json(res, 200, { sessions: ctx.registry.list() });
     }
-    if (req.method === "GET" && url.pathname === "/dirs") return await listDirs(url, res);
+    if (req.method === "GET" && url.pathname === "/dirs") return await listDirs(ctx, url, res);
     if (req.method === "GET" && url.pathname === "/file") return serveFile(ctx, url, res);
     if (req.method === "POST" && url.pathname === "/upload") {
       return await upload(ctx, url, req, res);
@@ -93,8 +93,11 @@ async function pair(ctx: RouteContext, req: IncomingMessage, res: ServerResponse
  * Rooted at the home directory: the daemon already runs arbitrary code as the
  * user, but browsing the whole filesystem from a phone is a bigger surface
  * than the feature needs, and `/` is never where a project lives.
+ *
+ * Ordered by the most recent pi session at or below each entry, then by name:
+ * the directory someone wants next is nearly always one they worked in.
  */
-async function listDirs(url: URL, res: ServerResponse): Promise<void> {
+async function listDirs(ctx: RouteContext, url: URL, res: ServerResponse): Promise<void> {
   const root = homedir();
   const requested = url.searchParams.get("path") ?? root;
   const path = containedPath(root, requested);
@@ -107,10 +110,14 @@ async function listDirs(url: URL, res: ServerResponse): Promise<void> {
     return json(res, 404, { error: "not_found" });
   }
 
+  const recency = await sessionRecency(ctx.config.sessionDir);
   const entries = dirents
     .filter((d) => d.isDirectory() && !d.name.startsWith("."))
-    .map((d) => ({ name: d.name, path: join(path, d.name) }))
-    .sort((a, b) => a.name.localeCompare(b.name));
+    .map((d) => {
+      const child = join(path, d.name);
+      return { name: d.name, path: child, lastSessionAt: lastSessionAt(recency, child) };
+    })
+    .sort((a, b) => (b.lastSessionAt ?? 0) - (a.lastSessionAt ?? 0) || a.name.localeCompare(b.name));
 
   json(res, 200, {
     root,
@@ -119,6 +126,44 @@ async function listDirs(url: URL, res: ServerResponse): Promise<void> {
     parent: path === root ? null : dirname(path),
     entries,
   });
+}
+
+/** Session directory name -> last write, for every project pi knows about. */
+async function sessionRecency(sessionDir: string): Promise<Map<string, number>> {
+  const found = new Map<string, number>();
+  let dirents;
+  try {
+    dirents = await readdir(sessionDir, { withFileTypes: true });
+  } catch {
+    return found;
+  }
+  await Promise.all(
+    dirents
+      .filter((d) => d.isDirectory())
+      .map(async (d) => {
+        try {
+          found.set(d.name, (await stat(join(sessionDir, d.name))).mtimeMs);
+        } catch {
+          // A directory that vanished mid-listing simply has no recency.
+        }
+      }),
+  );
+  return found;
+}
+
+/**
+ * Newest session in the subtree, so a parent like `~/Code` sorts by the work
+ * inside it. pi's name encoding is lossy, so a sibling whose name starts with
+ * this one plus `-` can bleed in; that only ever perturbs the ordering.
+ */
+function lastSessionAt(recency: Map<string, number>, cwd: string): number | null {
+  const key = sessionDirName(cwd);
+  const subtree = key.slice(0, -2) + "-";
+  let newest = 0;
+  for (const [name, mtime] of recency) {
+    if (name === key || name.startsWith(subtree)) newest = Math.max(newest, mtime);
+  }
+  return newest || null;
 }
 
 function serveFile(ctx: RouteContext, url: URL, res: ServerResponse): void {
