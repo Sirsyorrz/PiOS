@@ -198,11 +198,11 @@ const HEADLINE_KEYS = ["command", "path", "file_path", "pattern", "query", "url"
  * the card still shows the argument verbatim.
  */
 function shortenPreview(headline: string, cwd?: string): string {
-  const match = /^cd\s+('[^']*'|"[^"]*"|\S+)\s+&&\s+/.exec(headline);
+  const match = /^cd\s+('[^']*'|"[^"]*"|[^\s;&]+)\s*(&&|;)\s*/.exec(headline);
   if (match) {
     const rest = headline.slice(match[0].length);
     const shown = shortenPath(unquote(match[1] ?? ""), cwd);
-    return shown === "." ? rest : `cd ${shown} && ${rest}`;
+    return shown === "." ? rest : `cd ${shown}${match[2] === ";" ? ";" : " &&"} ${rest}`;
   }
   if (/^[~/]/.test(headline) && !/\s/.test(headline)) return shortenPath(headline, cwd);
   return headline;
