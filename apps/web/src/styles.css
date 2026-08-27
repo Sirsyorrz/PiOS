@@ -439,6 +439,70 @@ button.danger {
   max-height: 100%;
 }
 
+/* Scrolls as a whole rather than per section: the endpoints list at the foot
+   is part of the same page of choices. */
+.picker.settings {
+  /* Content-sized, unlike the directory picker: nothing here is walked into,
+     so there are no rows moving under a thumb to hold still. */
+  height: auto;
+  max-height: min(calc(var(--app-height) * 0.9), 760px);
+  overflow-y: auto;
+}
+
+.settings-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.settings-group h3 {
+  margin: 0;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+/* Beats `.card label`, which stacks a label over its control. */
+.card .settings-row {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: var(--control);
+  font-size: 14px;
+  color: var(--text);
+}
+
+.settings-row > input[type="checkbox"] {
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+  min-height: 0;
+}
+
+/* Sized by its longest option: a clipped choice is unreadable, and the label
+   beside it is the part that can afford to shrink. */
+.settings-row > select {
+  flex: 0 0 auto;
+  width: auto;
+  max-width: none;
+}
+
+.settings-label {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  text-align: left;
+  gap: 2px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.settings-label .muted {
+  font-size: 12px;
+}
+
 .workspace {
   display: grid;
   grid-template-columns: 280px 1fr;

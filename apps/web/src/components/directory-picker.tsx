@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useSettings } from "../settings.ts";
 import { ChevronRightIcon, FolderIcon, FolderUpIcon } from "./icons.tsx";
 import { ListRowButton, ModalCard, PickerHeader } from "./ui.tsx";
 
@@ -26,6 +27,14 @@ export function DirectoryPicker({ baseUrl, token, startPath, onPick, onCancel }:
   // not what someone picking their own project directory expects.
   const [trust, setTrust] = useState(true);
   const [path, setPath] = useState<string | null>(null);
+  const sort = useSettings().directorySort;
+  // The server orders by recency; alphabetical is a re-sort here, so switching
+  // the preference does not cost a round trip.
+  const entries = useMemo(() => {
+    const list = listing?.entries ?? [];
+    if (sort !== "alphabetical") return list;
+    return [...list].sort((a, b) => a.name.localeCompare(b.name));
+  }, [listing, sort]);
 
   const load = useCallback(
     async (target: string | null, fallbackToRoot = false): Promise<void> => {
@@ -81,7 +90,7 @@ export function DirectoryPicker({ baseUrl, token, startPath, onPick, onCancel }:
             </ListRowButton>
           </li>
         ) : null}
-        {listing?.entries.map((entry) => (
+        {entries.map((entry) => (
           <li key={entry.path}>
             <ListRowButton
               icon={<FolderIcon />}

@@ -12,11 +12,12 @@ import {
 import { Banners } from "./components/banners.tsx";
 import { ChatView } from "./components/chat-view.tsx";
 import { DirectoryPicker } from "./components/directory-picker.tsx";
-import { EndpointPicker } from "./components/endpoint-picker.tsx";
 import { PairingScreen } from "./components/pairing-screen.tsx";
 import { ResumePicker } from "./components/resume-picker.tsx";
-import { ChevronDownIcon } from "./components/icons.tsx";
+import { SettingsIcon } from "./components/icons.tsx";
 import { SessionList } from "./components/session-list.tsx";
+import { SettingsView } from "./components/settings-view.tsx";
+import { loadSettings, saveSettings, SettingsProvider, type Settings } from "./settings.ts";
 import { browserStorage } from "./storage.ts";
 import { fetchHomeDir } from "./files.ts";
 
@@ -30,10 +31,16 @@ const homeDirKey = (machineId: string) => `pios.home-dir.${machineId}`;
 
 export function App() {
   const [store, setStore] = useState<MachineStore>(loadMachines);
+  const [settings, setSettingsState] = useState<Settings>(loadSettings);
 
   function update(next: MachineStore) {
     saveMachines(next);
     setStore(next);
+  }
+
+  function setSettings(next: Settings) {
+    saveSettings(next);
+    setSettingsState(next);
   }
 
   const machine = activeMachine(store);
@@ -49,8 +56,11 @@ export function App() {
 
   return (
     <ClientProvider url={socketUrl(machine)} token={machine.deviceToken}>
+      <SettingsProvider value={settings}>
       <Workspace
         machine={machine}
+        settings={settings}
+        onSettingsChange={setSettings}
         onMachineChange={(next) =>
           update({
             machines: store.machines.map((m) => (m.id === next.id ? next : m)),
@@ -64,12 +74,15 @@ export function App() {
           })
         }
       />
+      </SettingsProvider>
     </ClientProvider>
   );
 }
 
-function Workspace({ machine, onMachineChange, onForget }: {
+function Workspace({ machine, settings, onSettingsChange, onMachineChange, onForget }: {
   machine: Machine;
+  settings: Settings;
+  onSettingsChange: (settings: Settings) => void;
   onMachineChange: (machine: Machine) => void;
   onForget: () => void;
 }) {
@@ -179,6 +192,19 @@ function Workspace({ machine, onMachineChange, onForget }: {
     );
   }
 
+  if (showSettings) {
+    return (
+      <SettingsView
+        settings={settings}
+        machine={machine}
+        onChange={onSettingsChange}
+        onMachineChange={onMachineChange}
+        onForget={onForget}
+        onClose={() => setShowSettings(false)}
+      />
+    );
+  }
+
   if (resuming) {
     return (
       <ResumePicker
@@ -218,19 +244,24 @@ function Workspace({ machine, onMachineChange, onForget }: {
   return (
     <div className={`workspace ${activeId ? "chatting" : ""}`}>
       <aside className="sidebar">
-        {/* Machine, link state and the disclosure are one control: they are
-            all the same subject, and three of them in a row read as three
-            unrelated things to press. */}
-        <header>
+        {/* Machine and link state are one subject, so they are one control;
+            it opens the same screen the gear does. */}
+        <header className="row">
           <button
             type="button"
             className="ghost machine"
-            aria-expanded={showSettings}
-            onClick={() => setShowSettings(!showSettings)}
+            onClick={() => setShowSettings(true)}
           >
             <span className={`dot ${state.transport}`} title={state.transport} />
             <span className="line">{machine.label}</span>
-            <ChevronDownIcon className={`caret ${showSettings ? "flip" : ""}`} />
+          </button>
+          <button
+            type="button"
+            className="ghost icon"
+            aria-label="settings"
+            onClick={() => setShowSettings(true)}
+          >
+            <SettingsIcon />
           </button>
         </header>
 
@@ -240,9 +271,6 @@ function Workspace({ machine, onMachineChange, onForget }: {
           </p>
         ) : null}
 
-        {showSettings ? (
-          <EndpointPicker machine={machine} onChange={onMachineChange} onForget={onForget} />
-        ) : null}
 
         <SessionList
           sessions={state.sessions.filter((s) => s.status !== "disposed")}

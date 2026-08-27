@@ -1,6 +1,7 @@
 import type { ImageContent, ToolExecution } from "@pios/protocol";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { diffLines, editBlocks } from "../diff.ts";
+import { useSettings } from "../settings.ts";
 import { ChevronRightIcon, ToolIcon } from "./icons.tsx";
 import { TranscriptImage } from "./image-view.tsx";
 
@@ -18,8 +19,10 @@ export function ToolCard({ tool, cwd, blocked }: {
   blocked?: boolean;
 }) {
   // A running tool is the live edge of the turn, so its output is shown while
-  // it is produced and filed away again the moment it stops being news.
-  const [open, setOpen] = useState(tool.status === "running");
+  // it is produced and filed away again the moment it stops being news, unless
+  // the reader asked for open cards.
+  const expandDone = useSettings().expandTools;
+  const [open, setOpen] = useState(expandDone || tool.status === "running");
   const card = useRef<HTMLDivElement>(null);
   const wasRunning = useRef(tool.status === "running");
   // Set at the tap, read after the body lands: once expanded the card is no
@@ -43,9 +46,9 @@ export function ToolCard({ tool, cwd, blocked }: {
   useLayoutEffect(() => {
     if (running !== wasRunning.current) {
       wasRunning.current = running;
-      setOpen(running);
+      setOpen(running || expandDone);
     }
-  }, [running]);
+  }, [running, expandDone]);
   const edits = editBlocks(tool.args);
   const rest = leftoverArgs(tool.args);
   const headline = summarise(tool);

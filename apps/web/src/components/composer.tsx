@@ -1,15 +1,12 @@
 import type { ImageContent, ModelOption, StreamingBehavior } from "@pios/protocol";
 import { useEffect, useRef, useState } from "react";
+import { useSettings } from "../settings.ts";
 import { browserStorage } from "../storage.ts";
 import { PlusIcon, SendIcon, StopIcon } from "./icons.tsx";
 import { ModelPicker } from "./model-picker.tsx";
 import { ThinkingPicker } from "./thinking-picker.tsx";
 
 const DRAFT_PREFIX = "pios.draft.";
-
-// Mid-turn prompts steer the running agent instead of queueing behind it;
-// waiting for a turn to end is not what anyone means by typing during one.
-const STREAMING_BEHAVIOR: StreamingBehavior = "steer";
 
 /**
  * Composes a prompt and hands it to the outbox.
@@ -43,6 +40,7 @@ export function Composer({
   onSend: (text: string, images: ImageContent[], behavior?: StreamingBehavior) => void;
   onInterrupt: () => void;
 }) {
+  const steeringMode = useSettings().steeringMode;
   const [text, setText] = useState("");
   const [images, setImages] = useState<ImageContent[]>([]);
   const field = useRef<HTMLTextAreaElement>(null);
@@ -81,7 +79,7 @@ export function Composer({
     if (!trimmed && images.length === 0) return;
     // Mandatory while the agent streams, ignored otherwise; sending it always
     // is simpler than tracking who won the race with `agent_settled`.
-    onSend(trimmed, images, running ? STREAMING_BEHAVIOR : undefined);
+    onSend(trimmed, images, running ? steeringMode : undefined);
     setText("");
     setImages([]);
     browserStorage.remove(DRAFT_PREFIX + sessionId);

@@ -6,6 +6,7 @@ import {
   type ToolExecution,
 } from "@pios/protocol";
 import { useState } from "react";
+import { useSettings } from "../settings.ts";
 import { TranscriptImage } from "./image-view.tsx";
 import { Markdown } from "./markdown.tsx";
 import { ToolCard } from "./tool-card.tsx";
@@ -104,7 +105,7 @@ function dataUrl(image: { mimeType: string; data: string }): string {
  * The label is the only control: no icon competes with the text it heads.
  */
 function Thinking({ text }: { text: string }) {
-  const [shown, setShown] = useState(true);
+  const [shown, setShown] = useState(useSettings().showThinking);
   // A reasoning part can arrive before any of its text does; heading an empty
   // block would announce thinking that is not on screen yet.
   if (text.trim() === "") return null;
