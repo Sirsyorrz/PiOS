@@ -73,6 +73,8 @@ export function sessionView(
           result: existing?.result,
           isError: existing?.isError ?? false,
           status: existing?.status ?? "running",
+          startedAt: existing?.startedAt,
+          durationMs: existing?.durationMs,
         });
       }
     }
@@ -86,6 +88,10 @@ export function sessionView(
         result: { content: message.content },
         isError: message.isError ?? false,
         status: "done",
+        startedAt: existing?.startedAt,
+        // Absent for a call rebuilt from history: the session file records no
+        // timings, so a resync loses them rather than inventing one.
+        durationMs: existing?.durationMs,
       });
       return;
     }
@@ -106,6 +112,8 @@ export function sessionView(
       args: tool.args ?? historic?.args,
       result: tool.result ?? historic?.result,
       isError: tool.isError || (historic?.isError ?? false),
+      startedAt: tool.startedAt ?? historic?.startedAt,
+      durationMs: tool.durationMs ?? historic?.durationMs,
     });
   }
 

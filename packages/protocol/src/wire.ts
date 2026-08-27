@@ -266,6 +266,11 @@ export const ServerFrameSchema = z.discriminatedUnion("type", [
     sessionId: z.string(),
     /** Ring-buffer sequence, for detecting a gap in a live subscription. */
     seq: z.number(),
+    /**
+     * Daemon epoch ms at publish. The client's only handle on the clock offset
+     * between the two machines, which it needs to age a running tool call.
+     */
+    at: z.number().optional(),
     event: AgentEventSchema,
   }),
   ServerEnvelope({

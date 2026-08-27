@@ -124,3 +124,84 @@ test("going inactive without backgrounding does nothing", () => {
   policy.set("active");
   assert.deepEqual(calls, ["probe"]);
 });
+
+test("a daemon start time is rewritten into the local clock", () => {
+  const store = new SessionStore();
+  // The daemon's clock runs an hour ahead of this one.
+  const skewMs = 3_600_000;
+  const at = Date.now() + skewMs;
+
+  store.applyEvent(
+    "s1",
+    1,
+    {
+      type: "tool_execution_start",
+      toolCallId: "call-1",
+      toolName: "bash",
+      startedAt: at - 5_000,
+    },
+    at,
+  );
+
+  const tool = store.transcript("s1").toolExecutions[0];
+  assert.ok(tool?.startedAt !== undefined);
+  const elapsed = Date.now() - tool.startedAt;
+  assert.ok(elapsed > 4_000 && elapsed < 6_000, `skew was not corrected: ${elapsed}`);
+});
+
+test("a duration survives the trip to the transcript", () => {
+  const store = new SessionStore();
+  store.applyEvent("s1", 1, {
+    type: "tool_execution_start",
+    toolCallId: "call-1",
+    toolName: "bash",
+  });
+  store.applyEvent("s1", 2, {
+    type: "tool_execution_end",
+    toolCallId: "call-1",
+    toolName: "bash",
+    durationMs: 10_042,
+  });
+
+  assert.equal(store.transcript("s1").toolExecutions[0]?.durationMs, 10_042);
+});
+
+test("time spent on a confirmation is not charged to the tool call", async () => {
+  const store = new SessionStore();
+  const at = Date.now();
+  store.applyEvent(
+    "s1",
+    1,
+    { type: "tool_execution_start", toolCallId: "call-1", toolName: "bash", startedAt: at },
+    at,
+  );
+
+  store.openDialog("s1", { type: "extension_ui_request", id: "d1", method: "confirm", title: "Run this?" });
+  await new Promise((resolve) => setTimeout(resolve, 60));
+  store.closeDialog("s1", "d1");
+
+  // The call has been alive for 60ms but has worked for none of them.
+  const tool = store.transcript("s1").toolExecutions[0];
+  assert.ok(tool?.startedAt !== undefined);
+  assert.ok(Date.now() - tool.startedAt < 20, `charged for the wait: ${Date.now() - tool.startedAt}`);
+});
+
+test("a call that starts mid-dialog only loses the rest of the wait", async () => {
+  const store = new SessionStore();
+  store.openDialog("s1", { type: "extension_ui_request", id: "d1", method: "confirm", title: "Run this?" });
+  await new Promise((resolve) => setTimeout(resolve, 60));
+
+  // Started while blocked: the 60ms before it existed are not its to lose.
+  const at = Date.now();
+  store.applyEvent(
+    "s1",
+    1,
+    { type: "tool_execution_start", toolCallId: "call-1", toolName: "bash", startedAt: at },
+    at,
+  );
+  store.closeDialog("s1", "d1");
+
+  const tool = store.transcript("s1").toolExecutions[0];
+  assert.ok(tool?.startedAt !== undefined && tool.startedAt <= Date.now() + 5);
+  assert.ok(Date.now() - tool.startedAt < 20);
+});

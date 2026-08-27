@@ -57,6 +57,11 @@ export class SessionStore {
    * knows whether one is still waiting.
    */
   private readonly dialogs = new Map<string, Map<string, ExtensionUiRequest>>();
+  /**
+   * When the session last became blocked on a dialog. A blocked agent runs
+   * nothing, so this span is discounted from any tool call in flight.
+   */
+  private readonly blockedSince = new Map<string, number>();
   /** Status lines, widgets and title asked for by extensions. */
   private readonly presentations = new Map<string, SessionPresentation>();
   /** Transient extension messages, newest last. Never restored on reconnect. */
@@ -142,11 +147,17 @@ export class SessionStore {
     return !cache.entries.some((entry) => entry.id === leafId);
   }
 
-  /** Live events, applied to the in-memory transcript only. */
-  applyEvent(sessionId: string, seq: number, event: AgentEvent): void {
+  /**
+   * Live events, applied to the in-memory transcript only.
+   *
+   * `at` is the daemon's clock at publish. Daemon timestamps are rewritten
+   * into the local clock here, so nothing downstream has to know that two
+   * machines with two clocks are involved.
+   */
+  applyEvent(sessionId: string, seq: number, event: AgentEvent, at?: number): void {
     const cache = this.get(sessionId);
     cache.lastSeq = Math.max(cache.lastSeq, seq);
-    this.assembler(sessionId).apply(event);
+    this.assembler(sessionId).apply(localise(event, at));
     if (event.type === "agent_settled") this.interrupting.delete(sessionId);
     this.notify(sessionId);
   }
@@ -187,11 +198,13 @@ export class SessionStore {
     if (open.get(request.id)) return;
     open.set(request.id, request);
     this.dialogs.set(sessionId, open);
+    if (open.size === 1) this.blockedSince.set(sessionId, Date.now());
     this.notify(sessionId);
   }
 
   closeDialog(sessionId: string, requestId: string): void {
     if (!this.dialogs.get(sessionId)?.delete(requestId)) return;
+    if (this.dialogs.get(sessionId)?.size === 0) this.unblock(sessionId);
     this.notify(sessionId);
   }
 
@@ -253,6 +266,7 @@ export class SessionStore {
     this.daemonStatus.delete(sessionId);
     this.interrupting.delete(sessionId);
     this.dialogs.delete(sessionId);
+    this.blockedSince.delete(sessionId);
     this.presentations.delete(sessionId);
     this.notices.delete(sessionId);
     this.storage?.remove(STORAGE_PREFIX + sessionId);
@@ -265,6 +279,13 @@ export class SessionStore {
     const cache = this.get(sessionId);
     cache.lastSeq = 0;
     this.persist(cache);
+  }
+
+  private unblock(sessionId: string): void {
+    const since = this.blockedSince.get(sessionId);
+    if (since === undefined) return;
+    this.blockedSince.delete(sessionId);
+    this.assembler(sessionId).excludeSince(since);
   }
 
   private assembler(sessionId: string): TranscriptAssembler {
@@ -286,4 +307,17 @@ export class SessionStore {
   private notify(sessionId: string): void {
     for (const listener of [...this.listeners]) listener(sessionId);
   }
+}
+
+/**
+ * Rewrites a daemon timestamp into the local clock.
+ *
+ * The offset is measured per event from `at`, so it also absorbs transport
+ * latency: a running tool then reads as at-least-this-old rather than
+ * in-the-future, which is the safe direction for a live counter.
+ */
+function localise(event: AgentEvent, at?: number): AgentEvent {
+  if (event.type !== "tool_execution_start" || event.startedAt === undefined) return event;
+  const skew = at === undefined ? 0 : Date.now() - at;
+  return { ...event, startedAt: event.startedAt + skew };
 }

@@ -431,7 +431,7 @@ export class PiosClient {
         if (frame.gap) this.sessions.resetLiveTranscript(frame.sessionId);
         break;
       case "agent_event":
-        this.sessions.applyEvent(frame.sessionId, frame.seq, frame.event);
+        this.sessions.applyEvent(frame.sessionId, frame.seq, frame.event, frame.at);
         break;
       case "session_state": {
         this.trackStatus([frame.summary]);

@@ -98,6 +98,8 @@ export class InProcessSession extends BaseSession implements PiSession {
   }
 
   private async attach(): Promise<void> {
+    // A fresh agent has no memory of the calls the old one had in flight.
+    this.resetToolTimings();
     const agent = await this.factory(this.createOptions);
     this.agent = agent;
     this.sessionFile = agent.sessionFile;

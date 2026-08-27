@@ -10,10 +10,12 @@ import { TranscriptImage } from "./image-view.tsx";
 import { Markdown } from "./markdown.tsx";
 import { ToolCard } from "./tool-card.tsx";
 
-export function MessageBubble({ message, tools, cwd }: {
+export function MessageBubble({ message, tools, cwd, blocked }: {
   message: AgentMessage;
   tools: Map<string, ToolExecution>;
   cwd?: string;
+  /** A dialog is waiting on the user, so running timers must not advance. */
+  blocked?: boolean;
 }) {
   if (message.role === "user") {
     const text = messageText(message);
@@ -54,17 +56,18 @@ export function MessageBubble({ message, tools, cwd }: {
           isError: false,
           status: "running" as const,
         };
-        return <ToolCard key={part.id} tool={tool} cwd={cwd} />;
+        return <ToolCard key={part.id} tool={tool} cwd={cwd} blocked={blocked} />;
       })}
     </div>
   );
 }
 
 /** The in-flight assistant message: same shapes, none of them final. */
-export function StreamingBubble({ partial, tools, cwd }: {
+export function StreamingBubble({ partial, tools, cwd, blocked }: {
   partial: PartialMessage;
   tools: Map<string, ToolExecution>;
   cwd?: string;
+  blocked?: boolean;
 }) {
   return (
     <div className="bubble assistant streaming">
@@ -72,7 +75,7 @@ export function StreamingBubble({ partial, tools, cwd }: {
         if (part.type === "text") return <Markdown key={index} text={part.text} />;
         if (part.type === "thinking") return <Thinking key={index} text={part.thinking} />;
         const tool = part.id ? tools.get(part.id) : undefined;
-        if (tool) return <ToolCard key={part.id} tool={tool} cwd={cwd} />;
+        if (tool) return <ToolCard key={part.id} tool={tool} cwd={cwd} blocked={blocked} />;
         return (
           <div key={index} className="tool running">
             <span className="tool-name">{part.name ?? "tool"}</span>

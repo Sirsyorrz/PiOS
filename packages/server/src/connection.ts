@@ -1,5 +1,6 @@
 import type { WebSocket } from "ws";
 import type {
+  BufferedEvent,
   HostEvent,
   PiSession,
   SessionInfo,
@@ -312,12 +313,12 @@ export class Connection {
     this.unsubscribe(frame.sessionId);
 
     const { events, gap } = session.replay(frame.sinceSeq);
-    for (const buffered of events) this.forward(session, buffered.seq, buffered.event);
+    for (const buffered of events) this.forward(session, buffered);
 
     // Live events start flowing only after the replay, so ordering by seq
     // holds across the handover.
     const off = session.subscribe((buffered) =>
-      this.forward(session, buffered.seq, buffered.event),
+      this.forward(session, buffered),
     );
     this.subscriptions.set(frame.sessionId, off);
 
@@ -343,8 +344,8 @@ export class Connection {
     });
   }
 
-  private forward(session: PiSession, seq: number, event: HostEvent): void {
-    this.send(forwardFrame(session, seq, event));
+  private forward(session: PiSession, buffered: BufferedEvent): void {
+    this.send(forwardFrame(session, buffered.seq, buffered.event, buffered.at));
   }
 
   private unsubscribe(sessionId: string): void {
@@ -408,11 +409,16 @@ export class Connection {
   }
 }
 
-function forwardFrame(session: PiSession, seq: number, event: HostEvent): ServerFrame {
+function forwardFrame(
+  session: PiSession,
+  seq: number,
+  event: HostEvent,
+  at: number,
+): ServerFrame {
   const sessionId = session.id;
   switch (event.type) {
     case "agent_event":
-      return { v: WIRE_VERSION, type: "agent_event", sessionId, seq, event: event.event };
+      return { v: WIRE_VERSION, type: "agent_event", sessionId, seq, at, event: event.event };
     case "extension_ui_request":
       return { v: WIRE_VERSION, type: "extension_ui_request", sessionId, request: event.request };
     case "extension_ui_closed":

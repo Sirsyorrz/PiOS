@@ -100,6 +100,9 @@ export const AgentEventSchema = z.discriminatedUnion("type", [
     toolCallId: z.string(),
     toolName: z.string(),
     args: z.unknown().optional(),
+    // Stamped by the daemon, not by pi, which emits no timings at all. Epoch
+    // ms in the daemon's clock: a client has to correct it before display.
+    startedAt: z.number().optional(),
   }),
   // Optional: a fast tool may go straight from start to end. `partialResult`
   // is cumulative, not a delta, so it replaces rather than appends.
@@ -116,6 +119,9 @@ export const AgentEventSchema = z.discriminatedUnion("type", [
     toolName: z.string(),
     result: ToolResultPayloadSchema.optional(),
     isError: z.boolean().optional(),
+    // Execution only: time spent waiting for a human to answer a confirmation
+    // is excluded, because pi starts the call before it asks.
+    durationMs: z.number().optional(),
   }),
   z.looseObject({
     type: z.literal("queue_update"),

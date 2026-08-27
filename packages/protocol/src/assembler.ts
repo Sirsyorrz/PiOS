@@ -173,6 +173,10 @@ export interface ToolExecution {
   result?: unknown;
   isError: boolean;
   status: ToolExecutionStatus;
+  /** Epoch ms, already corrected into the local clock by the caller. */
+  startedAt?: number;
+  /** Execution time as measured by the daemon, excluding confirmation waits. */
+  durationMs?: number;
 }
 
 /** Long-running conditions the user has to be told about, not just logged. */
@@ -250,6 +254,7 @@ export class TranscriptAssembler {
           args: event.args,
           isError: false,
           status: "running",
+          startedAt: event.startedAt,
         });
         break;
       case "tool_execution_update": {
@@ -262,6 +267,7 @@ export class TranscriptAssembler {
         tool.result = event.result;
         tool.isError = event.isError ?? false;
         tool.status = "done";
+        tool.durationMs = event.durationMs;
         break;
       }
       case "queue_update":
@@ -312,6 +318,23 @@ export class TranscriptAssembler {
         extensionErrors: [...this.status.extensionErrors],
       },
     };
+  }
+
+  /**
+   * Discounts a span during which nothing could run, by moving the start of
+   * every in-flight call forward past it.
+   *
+   * The daemon does the same to the duration it reports, so without this the
+   * live counter would climb past the final number while a confirmation sat
+   * unanswered and then jump backwards when it landed.
+   */
+  excludeSince(since: number, until = Date.now()): void {
+    for (const tool of this.tools.values()) {
+      if (tool.status !== "running" || tool.startedAt === undefined) continue;
+      // A call that began mid-block only loses the part of the block it saw.
+      const from = Math.max(since, tool.startedAt);
+      if (until > from) tool.startedAt += until - from;
+    }
   }
 
   private tool(toolCallId: string, toolName: string): ToolExecution {

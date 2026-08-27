@@ -1,5 +1,5 @@
 import type { ImageContent, ToolExecution } from "@pios/protocol";
-import { useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { diffLines, editBlocks } from "../diff.ts";
 import { ChevronRightIcon, ToolIcon } from "./icons.tsx";
 import { TranscriptImage } from "./image-view.tsx";
@@ -11,7 +11,12 @@ import { TranscriptImage } from "./image-view.tsx";
  * persisted transcript instead), so the row renders whatever is known and
  * leaves the rest blank rather than waiting for a complete pair.
  */
-export function ToolCard({ tool, cwd }: { tool: ToolExecution; cwd?: string }) {
+export function ToolCard({ tool, cwd, blocked }: {
+  tool: ToolExecution;
+  cwd?: string;
+  /** A dialog is open, so this call is waiting on a human, not working. */
+  blocked?: boolean;
+}) {
   // A running tool is the live edge of the turn, so its output is shown while
   // it is produced and filed away again the moment it stops being news.
   const [open, setOpen] = useState(tool.status === "running");
@@ -54,6 +59,7 @@ export function ToolCard({ tool, cwd }: { tool: ToolExecution; cwd?: string }) {
         <span className="muted line">{shortenPreview(headline, cwd)}</span>
         {tool.isError ? <span className="tool-status">failed</span> : null}
         {tool.status === "abandoned" ? <span className="tool-status stale">no result</span> : null}
+        <Duration tool={tool} blocked={blocked} />
         {tool.status === "running" ? <span className="spinner" /> : null}
         <ChevronRightIcon className={`caret ${open ? "open" : ""}`} width={16} height={16} />
       </button>
@@ -92,6 +98,46 @@ export function ToolCard({ tool, cwd }: { tool: ToolExecution; cwd?: string }) {
       ) : null}
     </div>
   );
+}
+
+/** Below this, the number is noise: every tool call takes some milliseconds. */
+const DURATION_FLOOR_MS = 1000;
+const TICK_MS = 500;
+
+/**
+ * How long the call took, or has been taking.
+ *
+ * A finished call shows the daemon's measurement, which excludes time spent
+ * waiting for a confirmation. A running one is counted locally from the
+ * daemon's start time, corrected into this clock on the way in, and is frozen
+ * while a dialog blocks it so that it cannot overshoot the final number.
+ */
+function Duration({ tool, blocked }: { tool: ToolExecution; blocked?: boolean }) {
+  const running = tool.status === "running";
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    if (!running || blocked || tool.startedAt === undefined) return;
+    const timer = setInterval(() => setNow(Date.now()), TICK_MS);
+    return () => clearInterval(timer);
+  }, [running, blocked, tool.startedAt]);
+
+  if (blocked && running) return <span className="tool-status stale">waiting for approval</span>;
+
+  const elapsed = running
+    ? tool.startedAt === undefined
+      ? undefined
+      : now - tool.startedAt
+    : tool.durationMs;
+  if (elapsed === undefined || elapsed < DURATION_FLOOR_MS) return null;
+  return <span className="tool-duration">{formatDuration(elapsed)}</span>;
+}
+
+/** Seconds up to a minute, then `m s`: no tool call needs hours. */
+function formatDuration(ms: number): string {
+  const seconds = Math.round(ms / 1000);
+  if (seconds < 60) return `${seconds}s`;
+  return `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
 }
 
 /** Within this much of the transcript's end still counts as the last card. */

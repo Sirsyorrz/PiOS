@@ -64,6 +64,9 @@ function addEntry(message: unknown): Entry {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+/** How long the `SLOW_TOOL` fixture pretends to work, once approved. */
+const TOOL_WORK_MS = 120;
+
 // Mirrors pi: a dialog blocks the turn until the host answers by id, and no
 // timer is armed unless the extension asked for one.
 let answerDialog: ((response: Record<string, unknown>) => void) | null = null;
@@ -96,6 +99,22 @@ async function runTurn(text: string) {
       statusText: "YOLO",
     });
     write({ type: "extension_ui_request", id: `${sessionId}-note`, method: "notify", message: "heads up" });
+  }
+
+  // Mirrors pi's ordering exactly: the call is announced, *then* permission is
+  // asked for, and only then does any work happen.
+  if (text.includes("SLOW_TOOL")) {
+    const toolCallId = `${sessionId}-call`;
+    write({ type: "tool_execution_start", toolCallId, toolName: "bash", args: { command: "sleep" } });
+    await askDialog(`${sessionId}-tool-dialog`);
+    await sleep(TOOL_WORK_MS);
+    write({
+      type: "tool_execution_end",
+      toolCallId,
+      toolName: "bash",
+      result: { content: [{ type: "text", text: "hello" }] },
+      isError: false,
+    });
   }
 
   const answer = text.includes("ASK_DIALOG") ? await askDialog(`${sessionId}-dialog`) : null;

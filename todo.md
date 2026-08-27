@@ -1,8 +1,8 @@
-- can we see running duration exposed by pi thru rpc?
 - decide what to do about steering mode (long-press send, extra square button, split send button, or keep the select in the actions row)
 - compare implementation with paseo, what can we learn/improve, can we relay, rather than tailscale?
 - can we startup in chat view, and choose dir from there instead of being session picking first?
 - settings toggle, show/hide thinking by default
 - toggleable expand tools by default
+- can we nicely render tools pre-emptively, rather than waiting for a clean json shape?
 - tree picker
 - maybe use native confirmation handling in app

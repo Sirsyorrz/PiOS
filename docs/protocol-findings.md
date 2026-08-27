@@ -144,6 +144,13 @@ same test suite.
   session store must map that to a full refetch (Phase 4 step 4).
 - `tool_execution_update` is optional. Phase 5 tool cards render from
   `start` + `end`, treating `update` as a bonus.
+- **pi emits no timings anywhere.** No event carries a duration, and only
+  `turn_start` carries a timestamp. Worse, `tool_execution_start` is emitted
+  *before* `prepareToolCall`, which is where a confirmation dialog is raised,
+  so wall time between `start` and `end` includes however long the human took
+  to approve. The daemon measures it instead, subtracting dialog-open spans,
+  and adds `startedAt` / `durationMs` to those two events. Session JSONL keeps
+  neither, so a resync loses the timings rather than showing a wrong one.
 - `message_start` resets the content accumulator. Phase 1's `MessageAssembler`
   keys partials per message, not per session.
 - The in-process host must implement `since` slicing itself; that logic belongs

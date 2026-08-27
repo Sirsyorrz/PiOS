@@ -9,6 +9,7 @@ import {
   type SessionPresentation,
 } from "@pios/protocol";
 import { EventRingBuffer } from "./ring-buffer.ts";
+import { ToolTimer } from "./tool-timing.ts";
 import type {
   BufferedEvent,
   HostEvent,
@@ -49,6 +50,9 @@ export abstract class BaseSession {
   private readonly dialogs = new Map<string, ExtensionUiRequest>();
   /** Last-value-wins state from the non-blocking half of the extension UI. */
   private presentationState: SessionPresentation = emptyPresentation();
+  /** The one owner of tool timings: only here are agent events and dialog
+   *  lifecycle visible together. */
+  private readonly toolTimer = new ToolTimer();
 
   constructor(args: {
     id: string;
@@ -112,12 +116,14 @@ export abstract class BaseSession {
   protected trackDialog(request: ExtensionUiRequest): void {
     if (this.dialogs.has(request.id)) return;
     this.dialogs.set(request.id, request);
+    this.toolTimer.block();
     this.publish({ type: "status", status: this.status });
   }
 
   /** Announced so every attached client dismisses, not just the answerer. */
   protected closeDialog(id: string): boolean {
     if (!this.dialogs.delete(id)) return false;
+    this.toolTimer.unblock();
     this.publish({ type: "extension_ui_closed", id });
     this.publish({ type: "status", status: this.status });
     return true;
@@ -126,6 +132,7 @@ export abstract class BaseSession {
   /** A dead agent forgets its dialogs; nothing is left to answer them. */
   protected clearDialogs(): void {
     for (const id of [...this.dialogs.keys()]) this.closeDialog(id);
+    this.resetToolTimings();
   }
 
   subscribe(listener: (event: BufferedEvent) => void): () => void {
@@ -138,6 +145,7 @@ export abstract class BaseSession {
   }
 
   protected publish(event: HostEvent): BufferedEvent {
+    if (event.type === "agent_event") this.timeTool(event.event);
     const buffered = this.buffer.push(event);
     this.updatedAt = buffered.at;
     for (const listener of [...this.listeners]) {
@@ -219,6 +227,24 @@ export abstract class BaseSession {
 
   protected setLeafId(leafId: string | null): void {
     this.leafId = leafId;
+  }
+
+  /**
+   * Stamps timings on the way through, before buffering, so a replaying
+   * client sees the same numbers as a live one.
+   */
+  private timeTool(event: AgentEvent): void {
+    if (event.type === "tool_execution_start") {
+      event.startedAt = this.toolTimer.begin(event.toolCallId);
+    } else if (event.type === "tool_execution_end") {
+      const durationMs = this.toolTimer.end(event.toolCallId);
+      if (durationMs !== undefined) event.durationMs = durationMs;
+    }
+  }
+
+  /** A replaced agent forgets its in-flight calls; so must their timers. */
+  protected resetToolTimings(): void {
+    this.toolTimer.reset();
   }
 
   protected clearListeners(): void {

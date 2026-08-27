@@ -1131,6 +1131,15 @@ button.danger {
   color: var(--muted);
 }
 
+/* Tabular figures: a ticking counter must not shuffle the row it sits in. */
+.tool-duration {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  flex: 0 0 auto;
+}
+
 .diff {
 }
 
