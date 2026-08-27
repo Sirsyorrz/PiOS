@@ -998,6 +998,35 @@ button.danger {
   margin: 16px 0;
 }
 
+/* A table is a grid, not prose: it scrolls sideways rather than collapsing
+   into columns one word wide on a phone. */
+.md-table-wrap {
+  margin: 0 0 12px;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+.md-table {
+  border-collapse: collapse;
+  font-size: 0.95em;
+  line-height: 1.4;
+}
+
+.md-table th,
+.md-table td {
+  padding: 5px 10px;
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.15));
+  text-align: left;
+  vertical-align: top;
+}
+
+.md-table th {
+  font-weight: 650;
+  background: rgba(255, 255, 255, 0.04);
+  white-space: nowrap;
+}
+
 .md-inline-code {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 0.9em;

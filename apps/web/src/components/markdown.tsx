@@ -17,7 +17,10 @@ type Block =
   | { kind: "list"; ordered: boolean; items: string[] }
   | { kind: "quote"; text: string }
   | { kind: "rule" }
+  | { kind: "table"; align: Align[]; header: string[]; rows: string[][] }
   | { kind: "para"; text: string };
+
+type Align = "left" | "center" | "right" | null;
 
 const FENCE = /^\s{0,3}(`{3,}|~{3,})\s*(\S*)/;
 const HEADING = /^\s{0,3}(#{1,6})\s+(.*)$/;
@@ -25,6 +28,53 @@ const BULLET = /^\s{0,3}[-*+]\s+(.*)$/;
 const NUMBER = /^\s{0,3}\d{1,9}[.)]\s+(.*)$/;
 const QUOTE = /^\s{0,3}>\s?(.*)$/;
 const RULE = /^\s{0,3}([-*_])(\s*\1){2,}\s*$/;
+const TABLE_ROW = /^\s{0,3}\|.*$|^\s{0,3}[^|\n]*\|/;
+const TABLE_DELIM = /^\s{0,3}\|?\s*:?-{1,}:?\s*(\|\s*:?-{1,}:?\s*)*\|?\s*$/;
+
+// Pipes inside code spans belong to the cell, not to the table grid, and a
+// backslash escapes a literal pipe.
+function splitRow(line: string): string[] {
+  const cells: string[] = [];
+  let cell = "";
+  let fence = 0;
+  const trimmed = line.trim().replace(/^\|/, "").replace(/(?<!\\)\|\s*$/, "");
+  for (let i = 0; i < trimmed.length; i++) {
+    const ch = trimmed[i]!;
+    if (ch === "\\" && trimmed[i + 1] === "|") {
+      cell += "|";
+      i++;
+      continue;
+    }
+    if (ch === "`") {
+      let run = 0;
+      while (trimmed[i + run] === "`") run++;
+      if (!fence) fence = run;
+      else if (fence === run) fence = 0;
+      cell += "`".repeat(run);
+      i += run - 1;
+      continue;
+    }
+    if (ch === "|" && !fence) {
+      cells.push(cell.trim());
+      cell = "";
+      continue;
+    }
+    cell += ch;
+  }
+  cells.push(cell.trim());
+  return cells;
+}
+
+function parseAlign(line: string): Align[] {
+  return splitRow(line).map((spec) => {
+    const left = spec.startsWith(":");
+    const right = spec.endsWith(":");
+    if (left && right) return "center";
+    if (right) return "right";
+    if (left) return "left";
+    return null;
+  });
+}
 
 function parseBlocks(text: string): Block[] {
   const lines = text.split("\n");
@@ -90,6 +140,31 @@ function parseBlocks(text: string): Block[] {
       continue;
     }
 
+    // A table is only a table once its delimiter row has arrived; mid-stream
+    // the header alone stays a paragraph rather than flickering into a grid.
+    const delim = lines[i + 1] ?? "";
+    if (
+      line.includes("|") && TABLE_ROW.test(line) &&
+      delim.includes("|") && TABLE_DELIM.test(delim)
+    ) {
+      const header = splitRow(line);
+      const align = parseAlign(delim);
+      if (align.length === header.length) {
+        flush();
+        const rows: string[][] = [];
+        for (i += 2; i < lines.length; i++) {
+          const next = lines[i]!;
+          if (!next.trim() || !next.includes("|")) break;
+          const cells = splitRow(next);
+          cells.length = header.length;
+          rows.push(Array.from(cells, (c) => c ?? ""));
+        }
+        i--;
+        blocks.push({ kind: "table", align, header, rows });
+        continue;
+      }
+    }
+
     const quote = QUOTE.exec(line);
     if (quote) {
       flush();
@@ -141,6 +216,33 @@ function renderBlocks(text: string): ReactNode[] {
               {block.items.map((item, n) => <li key={n}>{renderInline(item)}</li>)}
             </ul>
           );
+      case "table":
+        return (
+          <div key={index} className="md-table-wrap">
+            <table className="md-table">
+              <thead>
+                <tr>
+                  {block.header.map((cell, n) => (
+                    <th key={n} style={{ textAlign: block.align[n] ?? undefined }}>
+                      {renderInline(cell)}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {block.rows.map((row, r) => (
+                  <tr key={r}>
+                    {row.map((cell, n) => (
+                      <td key={n} style={{ textAlign: block.align[n] ?? undefined }}>
+                        {renderInline(cell)}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        );
       case "quote":
         return <blockquote key={index} className="md-quote">{renderInline(block.text)}</blockquote>;
       case "para":
