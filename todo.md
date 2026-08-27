@@ -1,4 +1,3 @@
-- can we startup in chat view, and choose dir from there instead of being session picking first?
 - settings toggle, show/hide thinking by default
 - toggleable expand tools by default
 - can we nicely render tools pre-emptively, rather than waiting for a clean json shape?

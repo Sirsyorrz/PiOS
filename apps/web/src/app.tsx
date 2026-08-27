@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ClientProvider, useClient, useSupervisorState } from "./client-provider.tsx";
 import {
   activeMachine,
@@ -18,6 +18,7 @@ import { ResumePicker } from "./components/resume-picker.tsx";
 import { ChevronDownIcon } from "./components/icons.tsx";
 import { SessionList } from "./components/session-list.tsx";
 import { browserStorage } from "./storage.ts";
+import { fetchHomeDir } from "./files.ts";
 
 // iOS evicts a backgrounded PWA and relaunches it from scratch, so the open
 // session has to be remembered somewhere durable or every app switch dumps
@@ -74,12 +75,25 @@ function Workspace({ machine, onMachineChange, onForget }: {
   const [activeId, setActiveIdState] = useState<string | null>(() =>
     browserStorage.get(activeSessionKey(machine.id)),
   );
+  // Launching into the session list is a dead end: the app is a chat client,
+  // so a launch that is not resuming a session opens one in the home
+  // directory instead. Once per launch only.
+  const autoOpened = useRef(false);
 
   function setActiveId(next: string | null) {
+    // Leaving a chat is a deliberate move to the session list; the launch
+    // auto-open must not drag the user straight back into a chat.
+    autoOpened.current = true;
     const key = activeSessionKey(machine.id);
     if (next) browserStorage.set(key, next);
     else browserStorage.remove(key);
     setActiveIdState(next);
+  }
+
+  /** Drops a session the user did not close, leaving auto-open free to run. */
+  function clearActive() {
+    browserStorage.remove(activeSessionKey(machine.id));
+    setActiveIdState(null);
   }
   // Null means "not picking"; a string is the directory to open the picker in.
   const [picking, setPicking] = useState<string | null>(null);
@@ -93,13 +107,32 @@ function Workspace({ machine, onMachineChange, onForget }: {
   useEffect(() => {
     if (!activeId || state.sync !== "synced") return;
     const known = state.sessions.find((s) => s.sessionId === activeId);
-    if (!known || known.status === "disposed") setActiveId(null);
+    if (!known || known.status === "disposed") clearActive();
   }, [activeId, state.sync, state.sessions]);
 
   const session = useMemo(
     () => state.sessions.find((s) => s.sessionId === activeId) ?? null,
     [state.sessions, activeId],
   );
+  const base = httpBase(machine);
+
+  useEffect(() => {
+    if (autoOpened.current || activeId || state.transport !== "connected" || !base) return;
+    autoOpened.current = true;
+    let live = true;
+    void (async () => {
+      const home = await fetchHomeDir(base, machine.deviceToken);
+      if (!live || !home) return;
+      // An existing session in the same directory is the one the user means;
+      // a fresh one per launch would pile up empty transcripts.
+      const existing = state.sessions.find((s) => s.status !== "disposed" && s.cwd === home);
+      if (existing) return setActiveId(existing.sessionId);
+      client.createSession({ cwd: home, trustProject: true }, setActiveId);
+    })();
+    return () => {
+      live = false;
+    };
+  }, [activeId, state.transport, base, client, machine.deviceToken]);
 
   // A rejected session command has no other place to appear: it is not queued
   // and it does not make the transcript stale.
@@ -107,7 +140,6 @@ function Workspace({ machine, onMachineChange, onForget }: {
     () => client.onCommandError((error) => setNotice(`Rejected by the daemon: ${error.message}`)),
     [client],
   );
-  const base = httpBase(machine);
 
   if (resuming) {
     return (
