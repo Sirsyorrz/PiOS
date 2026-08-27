@@ -1,5 +1,6 @@
 import {
   messageText,
+  parsePartialJson,
   type AgentMessage,
   type ImageContent,
   type PartialMessage,
@@ -75,15 +76,17 @@ export function StreamingBubble({ partial, tools, cwd, blocked }: {
       {partial.content.map((part, index) => {
         if (part.type === "text") return <Markdown key={index} text={part.text} />;
         if (part.type === "thinking") return <Thinking key={index} text={part.thinking} />;
-        const tool = part.id ? tools.get(part.id) : undefined;
-        if (tool) return <ToolCard key={part.id} tool={tool} cwd={cwd} blocked={blocked} />;
-        return (
-          <div key={index} className="tool running">
-            <span className="tool-name">{part.name ?? "tool"}</span>
-            {/* Arguments stream as raw text and are not valid JSON yet. */}
-            <pre className="args">{part.argsText}</pre>
-          </div>
-        );
+        // The card is drawn from the first delta: arguments are re-parsed on
+        // every one, so a path or a command fills in as it is typed instead of
+        // appearing whole once the closing brace lands.
+        const tool: ToolExecution = (part.id ? tools.get(part.id) : undefined) ?? {
+          toolCallId: part.id ?? `pending-${index}`,
+          toolName: part.name ?? "tool",
+          args: part.arguments ?? parsePartialJson(part.argsText),
+          isError: false,
+          status: "running",
+        };
+        return <ToolCard key={index} tool={tool} cwd={cwd} blocked={blocked} />;
       })}
       <span className="cursor" />
     </div>

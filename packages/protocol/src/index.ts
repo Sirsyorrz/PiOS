@@ -5,5 +5,6 @@ export * from "./events.ts";
 export * from "./presentation.ts";
 export * from "./commands.ts";
 export * from "./assembler.ts";
+export * from "./partial-json.ts";
 export * from "./wire.ts";
 export * from "./parse.ts";
