@@ -1237,23 +1237,23 @@ button.danger {
   gap: 4px;
 }
 
+/* Every picker gets the same share of the row: their labels change with the
+   model and the turn, and a row that reflows on each pick is unaimable. */
 .composer-actions select {
   min-height: 32px;
   font-size: 13px;
   border-radius: 999px;
-}
-
-/* The row also holds the steering selector while the agent runs, so the
-   model label is the part that gives way. */
-.model-select {
+  flex: 1 1 0;
   min-width: 0;
-  flex: 0 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   color: var(--muted);
 }
 
-.thinking-select {
-  flex: 0 0 auto;
-  color: var(--muted);
+/* The pickers already fill the row, so the spacer is only a gap here. */
+.composer-actions .spacer {
+  flex: 0 0 4px;
 }
 
 /* The one filled control on the screen: it is the primary action. */
