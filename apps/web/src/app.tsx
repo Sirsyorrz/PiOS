@@ -152,6 +152,14 @@ function Workspace({ machine, settings, onSettingsChange, onMachineChange, onFor
     if (open) setSeen(markSeen(machine.id, activeId, open.updatedAt));
   }, [activeId, machine.id, state.sessions]);
 
+  /** pi reads trust at launch, so the daemon relaunches this session in
+   *  place. Same id, same transcript, nothing to switch to. */
+  function trustActive() {
+    if (!session) return;
+    const sent = client.setSessionTrust(session.sessionId, true);
+    setNotice(sent ? null : "Not connected: the directory was not trusted.");
+  }
+
   // Null means "not picking"; a string is the directory to open the picker in.
   const [picking, setPicking] = useState<string | null>(null);
   const [resuming, setResuming] = useState(false);
@@ -364,13 +372,18 @@ function Workspace({ machine, settings, onSettingsChange, onMachineChange, onFor
           deviceToken={machine.deviceToken}
           onBack={() => setActiveId(null)}
           onNewSession={() => setPicking(session?.cwd ?? "")}
-          // pi reads trust at launch, so the daemon relaunches this session in
-          // place. Same id, same transcript, nothing to switch to.
-          onTrust={() => {
-            if (!session) return;
-            const sent = client.setSessionTrust(session.sessionId, true);
-            setNotice(sent ? null : "Not connected: the directory was not trusted.");
-          }}
+          // pi's terminal commands that map to a screen this app already has.
+          // Named as pi names them, so what is learned there works here.
+          nativeCommands={[
+            { name: "new", description: "Start a new session", run: () => setPicking(session?.cwd ?? "") },
+            { name: "resume", description: "Pick from previous sessions", run: () => setResuming(true) },
+            { name: "sessions", description: "Back to the session list", run: () => setActiveId(null) },
+            { name: "settings", description: "Machine, notifications, delivery", run: () => setShowSettings(true) },
+            ...(session && !session.trusted
+              ? [{ name: "trust", description: "Trust this directory", run: () => trustActive() }]
+              : []),
+          ]}
+          onTrust={trustActive}
         />
       ) : (
         <section className="empty">

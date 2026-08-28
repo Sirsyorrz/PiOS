@@ -1,3 +1,4 @@
+import type { RefObject } from "react";
 import { useClient } from "../client-provider.tsx";
 
 /**
@@ -7,10 +8,12 @@ import { useClient } from "../client-provider.tsx";
  * which ones exist depends on the loaded model, and pi clamps the active one
  * when the model changes.
  */
-export function ThinkingPicker({ sessionId, current, levels }: {
+export function ThinkingPicker({ sessionId, current, levels, selectRef }: {
   sessionId: string;
   current?: string;
   levels: string[];
+  /** Lets `/think` open the same control the dock shows. */
+  selectRef?: RefObject<HTMLSelectElement | null>;
 }) {
   const client = useClient();
 
@@ -20,6 +23,7 @@ export function ThinkingPicker({ sessionId, current, levels }: {
 
   return (
     <select
+      ref={selectRef}
       className="ghost thinking-select"
       aria-label="thinking level"
       value={current && levels.includes(current) ? current : ""}

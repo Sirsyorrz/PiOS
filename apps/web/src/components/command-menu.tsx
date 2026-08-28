@@ -1,6 +1,7 @@
 import type { CommandOption } from "@pios/protocol";
 import { useEffect, useState } from "react";
 import { useClient } from "../client-provider.tsx";
+import type { NativeCommand } from "./native-commands.ts";
 import { ListRowButton } from "./ui.tsx";
 
 /** The prefix being completed, or null when the text is not a bare `/name`. */
@@ -9,14 +10,27 @@ export function slashQuery(text: string): string | null {
   return match ? match[1]! : null;
 }
 
+export interface MenuEntry {
+  name: string;
+  description?: string;
+  /** Where it comes from: an app screen, or one of pi's own sources. */
+  badge: string;
+  /** Set for a command this client runs itself instead of prompting with. */
+  run?: () => void;
+}
+
 /**
- * Slash commands matching what is typed.
+ * Commands matching what is typed: this client's own, then pi's.
  *
- * The list is asked for per session and never persisted: extensions, prompt
+ * pi's list is asked for per session and never persisted: extensions, prompt
  * templates and skills can be reloaded under the daemon, so a cached answer
  * would offer commands that no longer exist.
  */
-export function useSlashCommands(sessionId: string, query: string | null): CommandOption[] {
+export function useSlashCommands(
+  sessionId: string,
+  query: string | null,
+  native: NativeCommand[],
+): MenuEntry[] {
   const client = useClient();
   const [commands, setCommands] = useState<CommandOption[]>(() => client.getCommands(sessionId));
 
@@ -39,37 +53,48 @@ export function useSlashCommands(sessionId: string, query: string | null): Comma
 
   if (query === null) return [];
   const needle = query.toLowerCase();
-  return commands
-    .filter((command) => command.name.toLowerCase().includes(needle))
+  const entries: MenuEntry[] = [
+    ...native.map((command) => ({
+      name: command.name,
+      description: command.description,
+      badge: "app",
+      run: command.run,
+    })),
+    ...commands.map((command) => ({
+      name: command.name,
+      description: command.description,
+      badge: command.source ?? "pi",
+    })),
+  ];
+  return entries
+    .filter((entry) => entry.name.toLowerCase().includes(needle))
     .sort((a, b) => rank(a, needle) - rank(b, needle));
 }
 
-/** Prefix matches first: typing `re` means `/review` before `/pre-commit`. */
-function rank(command: CommandOption, needle: string): number {
-  return command.name.toLowerCase().startsWith(needle) ? 0 : 1;
+/** Prefix matches first: typing `re` means `/resume` before `/pre-commit`. */
+function rank(entry: MenuEntry, needle: string): number {
+  return entry.name.toLowerCase().startsWith(needle) ? 0 : 1;
 }
 
-/** Completion list above the composer. Picking one never sends. */
-export function CommandMenu({ commands, active, onPick }: {
-  commands: CommandOption[];
+/** Completion list above the composer. Completing one never sends. */
+export function CommandMenu({ entries, active, onPick }: {
+  entries: MenuEntry[];
   /** Index the keyboard is on; the pointer can still pick any row. */
   active: number;
-  onPick: (command: CommandOption) => void;
+  onPick: (entry: MenuEntry) => void;
 }) {
-  if (commands.length === 0) return null;
+  if (entries.length === 0) return null;
   return (
     <div className="command-menu scroll-y" role="listbox">
-      {commands.map((command, index) => (
+      {entries.map((entry, index) => (
         <ListRowButton
-          key={command.name}
+          key={`${entry.badge}/${entry.name}`}
           className={index === active ? "active" : undefined}
-          trailing={command.source ? <span className="muted">{command.source}</span> : undefined}
-          onClick={() => onPick(command)}
+          trailing={<span className="muted">{entry.badge}</span>}
+          onClick={() => onPick(entry)}
         >
-          <span className="line">/{command.name}</span>
-          {command.description ? (
-            <span className="line muted">{command.description}</span>
-          ) : null}
+          <span className="line">/{entry.name}</span>
+          {entry.description ? <span className="line muted">{entry.description}</span> : null}
         </ListRowButton>
       ))}
     </div>

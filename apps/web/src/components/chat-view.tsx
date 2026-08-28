@@ -7,6 +7,7 @@ import { useStickToBottom } from "../scroll.ts";
 import type { SessionView, SupervisorState } from "@pios/client-core";
 import { Banners } from "./banners.tsx";
 import { Composer } from "./composer.tsx";
+import type { NativeCommand } from "./native-commands.ts";
 import { sessionState } from "../session-status.ts";
 import { DialogSheet } from "./dialog-sheet.tsx";
 import { ChevronLeftIcon, PlusIcon } from "./icons.tsx";
@@ -42,6 +43,7 @@ export function ChatView({
   onTrust,
   onBack,
   onNewSession,
+  nativeCommands,
 }: {
   sessionId: string;
   session: SessionSummary | null;
@@ -52,6 +54,8 @@ export function ChatView({
   onTrust: () => void;
   onBack: () => void;
   onNewSession: () => void;
+  /** Commands this client runs itself, offered beside pi's own. */
+  nativeCommands: NativeCommand[];
 }) {
   const client = useClient();
   const view = useSessionView(sessionId);
@@ -202,6 +206,7 @@ export function ChatView({
           running={view?.running ?? false}
           interrupting={view?.interrupting ?? false}
           editorText={view?.presentation.editorText}
+          nativeCommands={nativeCommands}
           onSend={send}
           onInterrupt={() => client.interrupt(sessionId)}
         />

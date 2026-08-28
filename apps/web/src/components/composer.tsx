@@ -2,8 +2,9 @@ import type { ImageContent, ModelOption, StreamingBehavior } from "@pios/protoco
 import { useEffect, useRef, useState } from "react";
 import { useSettings } from "../settings.ts";
 import { browserStorage } from "../storage.ts";
-import { CommandMenu, slashQuery, useSlashCommands } from "./command-menu.tsx";
+import { CommandMenu, slashQuery, useSlashCommands, type MenuEntry } from "./command-menu.tsx";
 import { PlusIcon, SendIcon, StopIcon } from "./icons.tsx";
+import { openSelect, type NativeCommand } from "./native-commands.ts";
 import { ModelPicker } from "./model-picker.tsx";
 import { ThinkingPicker } from "./thinking-picker.tsx";
 
@@ -24,6 +25,7 @@ export function Composer({
   running,
   interrupting,
   editorText,
+  nativeCommands = [],
   onSend,
   onInterrupt,
 }: {
@@ -38,6 +40,8 @@ export function Composer({
   running: boolean;
   /** Stop was sent and the agent has not stopped yet. */
   interrupting: boolean;
+  /** App-level commands, e.g. `/new`. The dock's own are added here. */
+  nativeCommands?: NativeCommand[];
   onSend: (text: string, images: ImageContent[], behavior?: StreamingBehavior) => void;
   onInterrupt: () => void;
 }) {
@@ -46,10 +50,26 @@ export function Composer({
   const [images, setImages] = useState<ImageContent[]>([]);
   const [active, setActive] = useState(0);
   const field = useRef<HTMLTextAreaElement>(null);
+  const modelSelect = useRef<HTMLSelectElement>(null);
+  const thinkingSelect = useRef<HTMLSelectElement>(null);
 
-  // A slash command is an ordinary prompt; the menu only helps write one.
+  // The dock's own controls, named as pi names them, so `/model` does here
+  // what it does in the terminal instead of reaching the model as text.
+  const dockCommands: NativeCommand[] = [
+    { name: "model", description: "Switch models", run: () => openSelect(modelSelect.current) },
+  ];
+  if ((thinkingLevels?.length ?? 0) > 1) {
+    dockCommands.push({
+      name: "think",
+      description: "Set the thinking level",
+      run: () => openSelect(thinkingSelect.current),
+    });
+  }
+
+  // A pi command is an ordinary prompt; the menu only helps write one. A
+  // native command never becomes text at all.
   const query = slashQuery(text);
-  const matches = useSlashCommands(sessionId, query);
+  const matches = useSlashCommands(sessionId, query, [...nativeCommands, ...dockCommands]);
 
   // One line until there is more to show: a tall empty box eats transcript on
   // a phone. The height has to be reset before it is read, or it only grows.
@@ -81,10 +101,15 @@ export function Composer({
     browserStorage.set(DRAFT_PREFIX + sessionId, value);
   }
 
-  /** Completes without sending: most commands take arguments. */
-  function complete(name: string) {
-    edit(`/${name} `);
-    field.current?.focus();
+  /** Runs a native command, or completes a pi one: most take arguments. */
+  function choose(entry: MenuEntry) {
+    if (!entry.run) {
+      edit(`/${entry.name} `);
+      field.current?.focus();
+      return;
+    }
+    edit("");
+    entry.run();
   }
 
   function send() {
@@ -108,11 +133,7 @@ export function Composer({
 
   return (
     <div className="composer">
-      <CommandMenu
-        commands={matches}
-        active={active}
-        onPick={(command) => complete(command.name)}
-      />
+      <CommandMenu entries={matches} active={active} onPick={choose} />
 
       {images.length > 0 ? (
         <div className="attachments">
@@ -155,7 +176,7 @@ export function Composer({
             // rarely what was meant, and sending an unknown one just errors.
             if (e.key === "Tab" || e.key === "Enter") {
               e.preventDefault();
-              complete(matches[Math.min(active, matches.length - 1)]!.name);
+              choose(matches[Math.min(active, matches.length - 1)]!);
               return;
             }
           }
@@ -182,9 +203,14 @@ export function Composer({
           <PlusIcon />
         </label>
 
-        <ModelPicker sessionId={sessionId} current={model} />
+        <ModelPicker sessionId={sessionId} current={model} selectRef={modelSelect} />
 
-        <ThinkingPicker sessionId={sessionId} current={thinkingLevel} levels={thinkingLevels ?? []} />
+        <ThinkingPicker
+          sessionId={sessionId}
+          current={thinkingLevel}
+          levels={thinkingLevels ?? []}
+          selectRef={thinkingSelect}
+        />
 
         <span className="spacer" />
 
