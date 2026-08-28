@@ -1,6 +1,11 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { SettingsManager } from "@earendil-works/pi-coding-agent";
-import type { ExtensionUiResponse, ImageContent, ModelOption } from "@pios/protocol";
+import type {
+  CommandOption,
+  ExtensionUiResponse,
+  ImageContent,
+  ModelOption,
+} from "@pios/protocol";
 import {
   AgentEventSchema,
   ExtensionUiRequestSchema,
@@ -344,6 +349,13 @@ export class SubprocessSession extends BaseSession implements PiSession {
     return { models, all: true };
   }
 
+  async listCommands(): Promise<CommandOption[]> {
+    const response = await this.request({ type: "get_commands" });
+    if (!response.success) throw new Error(response.error ?? "get_commands failed");
+    const commands = (response.data as { commands?: RpcSlashCommand[] } | undefined)?.commands ?? [];
+    return commands.filter((command) => command?.name).map(toCommandOption);
+  }
+
   private scopePatterns(): string[] {
     try {
       return (
@@ -497,6 +509,26 @@ function inScope(model: ModelOption, patterns: string[]): boolean {
 function toModelOption(model: RpcModel | undefined): ModelOption | undefined {
   if (!model?.id || !model.provider) return undefined;
   return { provider: model.provider, modelId: model.id, name: model.name ?? model.id, scoped: false };
+}
+
+interface RpcSlashCommand {
+  name: string;
+  description?: string;
+  source?: "extension" | "prompt" | "skill";
+  /** Current pi. Older builds sent `location` and `path` at the top level. */
+  sourceInfo?: { path?: string; scope?: string };
+  location?: string;
+  path?: string;
+}
+
+function toCommandOption(command: RpcSlashCommand): CommandOption {
+  return {
+    name: command.name,
+    description: command.description,
+    source: command.source,
+    scope: command.sourceInfo?.scope ?? command.location,
+    path: command.sourceInfo?.path ?? command.path,
+  };
 }
 
 function toResult(response: RpcResponse): PromptResult {

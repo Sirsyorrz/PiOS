@@ -1,4 +1,10 @@
-import type { AgentEvent, ImageContent, ModelOption, SessionEntry } from "@pios/protocol";
+import type {
+  AgentEvent,
+  CommandOption,
+  ImageContent,
+  ModelOption,
+  SessionEntry,
+} from "@pios/protocol";
 import { AgentEventSchema } from "@pios/protocol";
 import { BaseSession } from "./base-session.ts";
 import { sliceEntriesSince } from "./entries.ts";
@@ -24,6 +30,15 @@ export interface AgentModelLike {
   provider: string;
 }
 
+/** Extension command, prompt template, or skill, as pi exposes them. */
+export interface CommandSourceLike {
+  /** Extension commands carry a collision-suffixed invocation name. */
+  invocationName?: string;
+  name?: string;
+  description?: string;
+  sourceInfo?: { path?: string; scope?: string };
+}
+
 export interface AgentSessionLike {
   readonly isStreaming: boolean;
   readonly model?: AgentModelLike;
@@ -34,6 +49,14 @@ export interface AgentSessionLike {
     getModel(provider: string, modelId: string): AgentModelLike | undefined;
   };
   setModel?(model: AgentModelLike): Promise<void>;
+  /** Slash command sources. All optional: a stub session has none of them. */
+  readonly extensionRunner?: {
+    getRegisteredCommands(): readonly CommandSourceLike[];
+  };
+  readonly promptTemplates?: readonly CommandSourceLike[];
+  readonly resourceLoader?: {
+    getSkills(): { skills: readonly CommandSourceLike[] };
+  };
   readonly thinkingLevel?: string;
   setThinkingLevel?(level: string): void;
   getAvailableThinkingLevels?(): string[];
@@ -204,6 +227,23 @@ export class InProcessSession extends BaseSession implements PiSession {
     };
   }
 
+  /**
+   * Mirrors what pi's own RPC mode assembles: extensions, then templates,
+   * then skills. Built-in TUI commands are deliberately absent; they would
+   * not execute if sent as a prompt.
+   */
+  async listCommands(): Promise<CommandOption[]> {
+    const agent = this.requireAgent();
+    const extensions = agent.extensionRunner?.getRegisteredCommands() ?? [];
+    const templates = agent.promptTemplates ?? [];
+    const skills = agent.resourceLoader?.getSkills().skills ?? [];
+    return [
+      ...extensions.map((command) => toCommandOption(command, "extension")),
+      ...templates.map((template) => toCommandOption(template, "prompt")),
+      ...skills.map((skill) => toCommandOption(skill, "skill", "skill:")),
+    ].filter((command) => command.name.length > 0);
+  }
+
   async setModel(provider: string, modelId: string): Promise<void> {
     const agent = this.requireAgent();
     if (!agent.setModel) throw new Error("this host cannot switch models");
@@ -308,6 +348,20 @@ export class InProcessSession extends BaseSession implements PiSession {
       return { accepted: false, error: messageOf(error) };
     }
   }
+}
+
+function toCommandOption(
+  command: CommandSourceLike,
+  source: CommandOption["source"],
+  prefix = "",
+): CommandOption {
+  return {
+    name: prefix + (command.invocationName ?? command.name ?? ""),
+    description: command.description,
+    source,
+    scope: command.sourceInfo?.scope,
+    path: command.sourceInfo?.path,
+  };
 }
 
 function key(provider: string, modelId: string): string {

@@ -24,6 +24,21 @@ export class FakeAgentSession implements AgentSessionLike {
     getModel: (provider: string, id: string) =>
       CATALOGUE.find((model) => model.provider === provider && model.id === id),
   };
+  readonly extensionRunner = {
+    getRegisteredCommands: () => [
+      {
+        invocationName: "review:1",
+        description: "Review the diff",
+        sourceInfo: { path: "/ext/review.ts", scope: "user" },
+      },
+    ],
+  };
+  readonly promptTemplates = [
+    { name: "fix-tests", sourceInfo: { path: "/proj/fix-tests.md", scope: "project" } },
+  ];
+  readonly resourceLoader = {
+    getSkills: () => ({ skills: [{ name: "search" }] }),
+  };
   readonly sessionId: string;
   readonly sessionFile: string;
   private entries: SessionEntry[] = [];

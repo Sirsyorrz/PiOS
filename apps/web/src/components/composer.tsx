@@ -2,6 +2,7 @@ import type { ImageContent, ModelOption, StreamingBehavior } from "@pios/protoco
 import { useEffect, useRef, useState } from "react";
 import { useSettings } from "../settings.ts";
 import { browserStorage } from "../storage.ts";
+import { CommandMenu, slashQuery, useSlashCommands } from "./command-menu.tsx";
 import { PlusIcon, SendIcon, StopIcon } from "./icons.tsx";
 import { ModelPicker } from "./model-picker.tsx";
 import { ThinkingPicker } from "./thinking-picker.tsx";
@@ -43,7 +44,12 @@ export function Composer({
   const steeringMode = useSettings().steeringMode;
   const [text, setText] = useState("");
   const [images, setImages] = useState<ImageContent[]>([]);
+  const [active, setActive] = useState(0);
   const field = useRef<HTMLTextAreaElement>(null);
+
+  // A slash command is an ordinary prompt; the menu only helps write one.
+  const query = slashQuery(text);
+  const matches = useSlashCommands(sessionId, query);
 
   // One line until there is more to show: a tall empty box eats transcript on
   // a phone. The height has to be reset before it is read, or it only grows.
@@ -71,7 +77,14 @@ export function Composer({
 
   function edit(value: string) {
     setText(value);
+    setActive(0);
     browserStorage.set(DRAFT_PREFIX + sessionId, value);
+  }
+
+  /** Completes without sending: most commands take arguments. */
+  function complete(name: string) {
+    edit(`/${name} `);
+    field.current?.focus();
   }
 
   function send() {
@@ -95,6 +108,12 @@ export function Composer({
 
   return (
     <div className="composer">
+      <CommandMenu
+        commands={matches}
+        active={active}
+        onPick={(command) => complete(command.name)}
+      />
+
       {images.length > 0 ? (
         <div className="attachments">
           {images.map((image, index) => (
@@ -125,6 +144,21 @@ export function Composer({
           }
         }}
         onKeyDown={(e) => {
+          if (matches.length > 0) {
+            if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+              e.preventDefault();
+              const step = e.key === "ArrowDown" ? 1 : matches.length - 1;
+              setActive((index) => (index + step) % matches.length);
+              return;
+            }
+            // Tab and Enter complete rather than send: a bare `/name` is
+            // rarely what was meant, and sending an unknown one just errors.
+            if (e.key === "Tab" || e.key === "Enter") {
+              e.preventDefault();
+              complete(matches[Math.min(active, matches.length - 1)]!.name);
+              return;
+            }
+          }
           if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
             e.preventDefault();
             send();

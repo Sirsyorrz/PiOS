@@ -1315,6 +1315,20 @@ button.danger {
   border-radius: 20px;
 }
 
+/* Sits inside the composer surface, above the field: the list is about what
+   is being typed, so it must not read as a separate panel. Bounded so a long
+   list scrolls instead of pushing the transcript off screen. */
+.command-menu {
+  flex: none;
+  max-height: min(40vh, 260px);
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 4px;
+}
+
+.command-menu .list-row.active {
+  background: var(--hover);
+}
+
 .composer:focus-within {
   border-color: #43433e;
 }

@@ -74,6 +74,8 @@ export const ClientFrameSchema = z.discriminatedUnion("type", [
    * catalogue is hundreds of rows, and asking for it is a deliberate act.
    */
   Envelope({ type: z.literal("list_models"), sessionId: z.string(), all: z.boolean().default(false) }),
+  /** Slash commands this session can invoke, for composer completion. */
+  Envelope({ type: z.literal("list_commands"), sessionId: z.string() }),
   Envelope({
     type: z.literal("set_model"),
     sessionId: z.string(),
@@ -133,6 +135,23 @@ export const ModelOptionSchema = z.object({
   scoped: z.boolean().default(false),
 });
 export type ModelOption = z.infer<typeof ModelOptionSchema>;
+
+/**
+ * A slash command, invoked by sending `/name args` as an ordinary prompt.
+ * Loose: pi has grown the provenance fields more than once, and an unknown
+ * field must not cost the client the whole list.
+ */
+export const CommandOptionSchema = z.looseObject({
+  /** Without the leading slash. May carry a collision suffix like `review:1`. */
+  name: z.string(),
+  description: z.string().optional(),
+  source: z.enum(["extension", "prompt", "skill"]).optional(),
+  /** Provenance. `location` is the older shape, `sourceInfo` the current one. */
+  location: z.string().optional(),
+  scope: z.string().optional(),
+  path: z.string().optional(),
+});
+export type CommandOption = z.infer<typeof CommandOptionSchema>;
 
 export const SessionSummarySchema = z.object({
   sessionId: z.string(),
@@ -244,6 +263,11 @@ export const ServerFrameSchema = z.discriminatedUnion("type", [
      * picker and calls it a scope.
      */
     all: z.boolean().default(false),
+  }),
+  ServerEnvelope({
+    type: z.literal("commands"),
+    sessionId: z.string(),
+    commands: z.array(CommandOptionSchema),
   }),
   ServerEnvelope({
     type: z.literal("session_state"),

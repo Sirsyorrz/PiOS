@@ -153,6 +153,20 @@ for (const harness of harnesses) {
       assert.equal(session.info.model?.provider, target.provider);
     });
 
+    test("slash commands are listed with their provenance", async () => {
+      const commands = await session.listCommands();
+      assert.deepEqual(
+        commands.map((command) => [command.name, command.source]),
+        [
+          ["review:1", "extension"],
+          ["fix-tests", "prompt"],
+          ["skill:search", "skill"],
+        ],
+      );
+      assert.equal(commands[0]?.scope, "user");
+      assert.equal(commands[1]?.path, "/proj/fix-tests.md");
+    });
+
     test("replay returns the tail after a seq and flags nothing missing", async () => {
       const before = session.replay();
       assert.equal(before.gap, false);

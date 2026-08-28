@@ -2,6 +2,7 @@ import {
   WIRE_VERSION,
   isDialogRequest,
   type ImageContent,
+  type CommandOption,
   type ModelOption,
   type ResumableSessionWire,
   type SessionSummary,
@@ -72,6 +73,11 @@ export class PiosClient {
   /** Model lists by session, from the last `listModels`. */
   private readonly models = new Map<string, ModelListing>();
   private readonly modelHandlers = new Set<(sessionId: string, listing: ModelListing) => void>();
+  /** Slash commands by session, from the last `listCommands`. Never persisted. */
+  private readonly commands = new Map<string, CommandOption[]>();
+  private readonly commandHandlers = new Set<
+    (sessionId: string, commands: CommandOption[]) => void
+  >();
   /** Failures of one-off commands, for the UI to say out loud. */
   private readonly commandErrorHandlers = new Set<(error: { commandId?: string; message: string }) => void>();
   private lastTransport: SupervisorState["transport"] = "idle";
@@ -214,6 +220,31 @@ export class PiosClient {
     return this.models.get(sessionId) ?? { models: [], all: false };
   }
 
+  /**
+   * Asks which slash commands this session can invoke.
+   *
+   * Not queued, for the same reason as `listModels`: extensions, templates and
+   * skills can be reloaded under the daemon, so a stale answer is worse than
+   * no answer and the list is re-asked rather than replayed.
+   */
+  listCommands(sessionId: string): boolean {
+    return this.supervisor.send({
+      v: WIRE_VERSION,
+      type: "list_commands",
+      commandId: this.generateId(),
+      sessionId,
+    });
+  }
+
+  getCommands(sessionId: string): CommandOption[] {
+    return this.commands.get(sessionId) ?? [];
+  }
+
+  onCommands(handler: (sessionId: string, commands: CommandOption[]) => void): () => void {
+    this.commandHandlers.add(handler);
+    return () => this.commandHandlers.delete(handler);
+  }
+
   onModels(handler: (sessionId: string, listing: ModelListing) => void): () => void {
     this.modelHandlers.add(handler);
     return () => this.modelHandlers.delete(handler);
@@ -303,6 +334,7 @@ export class PiosClient {
   disposeSession(sessionId: string): boolean {
     this.subscribed.delete(sessionId);
     this.models.delete(sessionId);
+    this.commands.delete(sessionId);
     this.sessions.clear(sessionId);
     this.supervisor.forgetSession(sessionId);
     return this.supervisor.send({
@@ -469,6 +501,12 @@ export class PiosClient {
       case "sessions":
         this.trackStatus(frame.sessions);
         break;
+      case "commands": {
+        this.commands.set(frame.sessionId, frame.commands);
+        for (const handler of [...this.commandHandlers])
+          handler(frame.sessionId, frame.commands);
+        break;
+      }
       case "models": {
         const listing = { models: frame.models, all: frame.all };
         this.models.set(frame.sessionId, listing);

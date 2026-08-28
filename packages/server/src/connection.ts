@@ -211,6 +211,18 @@ export class Connection {
         });
       }
 
+      case "list_commands": {
+        const session = this.require(frame.sessionId, frame.commandId);
+        if (!session) return;
+        return this.send({
+          v: WIRE_VERSION,
+          type: "commands",
+          commandId: frame.commandId,
+          sessionId: frame.sessionId,
+          commands: await session.listCommands(),
+        });
+      }
+
       case "set_model": {
         const session = this.require(frame.sessionId, frame.commandId);
         if (!session) return;

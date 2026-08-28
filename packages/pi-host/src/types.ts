@@ -1,5 +1,6 @@
 import type {
   AgentEvent,
+  CommandOption,
   ModelOption,
   ExtensionUiRequest,
   ExtensionUiResponse,
@@ -107,6 +108,8 @@ export interface PiSession {
 
   /** The session's model scope, or the whole catalogue when asked for it. */
   listModels(options?: { all?: boolean }): Promise<ModelListing>;
+  /** Slash commands invokable via `prompt`; excludes built-in TUI commands. */
+  listCommands(): Promise<CommandOption[]>;
   setModel(provider: string, modelId: string): Promise<void>;
   setThinkingLevel(level: string): Promise<void>;
 

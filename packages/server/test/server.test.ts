@@ -421,6 +421,21 @@ test("the model list and a model switch cross the wire", async () => {
   client.close();
 });
 
+test("the slash command list crosses the wire", async () => {
+  const client = await hello(harness);
+  const cwd = join(harness.dir, "commands");
+  mkdirSync(cwd, { recursive: true });
+
+  const sessionId = await createSession(client, cwd);
+  const listed = await client.waitForCommand(client.send({ type: "list_commands", sessionId }));
+  assert.equal(listed.type, "commands");
+  assert.ok(listed.type === "commands" && listed.commands.length > 0);
+  assert.ok(
+    listed.type === "commands" && listed.commands.some((command) => command.source === "skill"),
+  );
+  client.close();
+});
+
 test("a device registers a push subscription and takes it back", async () => {
   const key = await fetch(`${harness.baseUrl}/push/key`, {
     headers: { authorization: `Bearer ${harness.deviceToken}` },

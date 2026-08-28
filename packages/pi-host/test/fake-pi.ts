@@ -186,6 +186,27 @@ function handle(command: Record<string, any>) {
         },
       });
 
+    case "get_commands":
+      return respond({
+        success: true,
+        data: {
+          commands: [
+            {
+              name: "review:1",
+              description: "Review the diff",
+              source: "extension",
+              sourceInfo: { path: "/ext/review.ts", scope: "user" },
+            },
+            {
+              name: "fix-tests",
+              source: "prompt",
+              sourceInfo: { path: "/proj/fix-tests.md", scope: "project" },
+            },
+            { name: "skill:search", source: "skill" },
+          ],
+        },
+      });
+
     case "get_available_models":
       return respond({ success: true, data: { models: catalogue } });
 

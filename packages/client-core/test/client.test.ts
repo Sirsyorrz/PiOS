@@ -323,3 +323,27 @@ test("only blocking dialogs become sheets; presentation requests are not", async
   // Closed on send: the sheet must not linger while the agent unblocks.
   assert.deepEqual(client.sessions.openDialogs("s1"), []);
 });
+
+test("slash commands are asked for and cached per session", async () => {
+  const { transports, client } = setup();
+  await flush();
+  transports.last.acceptHello([summary({ sessionId: "s1" })]);
+
+  client.listCommands("s1");
+  assert.equal(transports.last.sentOfType("list_commands").length, 1);
+
+  transports.last.emit({
+    v: WIRE_VERSION,
+    type: "commands",
+    sessionId: "s1",
+    commands: [{ name: "review:1", source: "extension" }],
+  });
+  assert.deepEqual(
+    client.getCommands("s1").map((command) => command.name),
+    ["review:1"],
+  );
+  assert.deepEqual(client.getCommands("s2"), [], "another session has its own list");
+
+  client.disposeSession("s1");
+  assert.deepEqual(client.getCommands("s1"), [], "a disposed session keeps nothing");
+});
