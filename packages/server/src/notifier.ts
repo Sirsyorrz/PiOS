@@ -1,5 +1,9 @@
 import type { BufferedEvent, PiSession } from "@pios/pi-host";
+import { messageText } from "@pios/protocol";
 import type { PushMessage } from "./push.ts";
+
+/** Kept short: a lock screen shows two lines and iOS truncates the rest. */
+const BODY_LIMIT = 180;
 
 /**
  * Turns `agent_settled` into one push per session.
@@ -29,7 +33,8 @@ export interface NotifierDeps {
 
 interface TurnState {
   startedAt: number | null;
-  lastTool: string | null;
+  /** What the agent actually said last, which is the point of the alert. */
+  lastText: string | null;
   errored: boolean;
 }
 
@@ -67,19 +72,23 @@ export class SettleNotifier {
   private onEvent(session: PiSession, buffered: BufferedEvent): void {
     if (buffered.event.type !== "agent_event") return;
     const event = buffered.event.event;
-    const turn = this.turns.get(session.id) ?? { startedAt: null, lastTool: null, errored: false };
+    const turn = this.turns.get(session.id) ?? { startedAt: null, lastText: null, errored: false };
     this.turns.set(session.id, turn);
 
     switch (event.type) {
       case "agent_start":
         turn.startedAt ??= this.now();
-        turn.lastTool = null;
+        turn.lastText = null;
         turn.errored = false;
         return;
-      case "tool_execution_start":
-      case "tool_execution_end":
-        turn.lastTool = event.toolName;
+      case "message_end": {
+        // Only the assistant's prose: a tool call or a thinking block is not
+        // what the agent came back to say.
+        if (event.message.role !== "assistant") return;
+        const text = messageText(event.message).trim();
+        if (text) turn.lastText = text;
         return;
+      }
       case "agent_end":
         if (event.reason && event.reason !== "done") turn.errored = true;
         return;
@@ -101,27 +110,48 @@ export class SettleNotifier {
 
 function compose(session: PiSession, turn: TurnState, now: number): PushMessage {
   const info = session.info;
-  const name = info.name?.trim() || basename(info.cwd);
   const elapsed = turn.startedAt === null ? null : formatElapsed(now - turn.startedAt);
 
-  const parts = [
-    info.awaitingInput ? "needs input" : turn.errored ? "stopped" : "done",
-    turn.lastTool ? `last: ${turn.lastTool}` : null,
-    elapsed,
-  ].filter((part): part is string => Boolean(part));
-
   return {
-    title: name,
-    body: parts.join(" - "),
+    // The same label the session list shows, so the notification and the row
+    // it opens name the same thing.
+    title: info.name?.trim() || info.preview?.trim() || shortenPath(info.cwd),
+    body: turn.lastText
+      ? summarise(turn.lastText)
+      : [info.awaitingInput ? "Needs input" : turn.errored ? "Stopped" : "Finished", elapsed]
+          .filter((part): part is string => Boolean(part))
+          .join(" - "),
     url: `/?session=${encodeURIComponent(session.id)}`,
     // One live notification per session: a second settle replaces the first.
     tag: `session:${session.id}`,
   };
 }
 
-function basename(path: string): string {
-  const trimmed = path.replace(/\/+$/, "");
-  return trimmed.slice(trimmed.lastIndexOf("/") + 1) || path;
+/**
+ * Opening of the agent's closing message.
+ *
+ * Markdown reads badly in a notification, so the heaviest markers are
+ * stripped and the text is flattened to one paragraph.
+ */
+function summarise(text: string): string {
+  const flat = text
+    .replace(/```[\s\S]*?```/g, " ")
+    .replace(/^#{1,6}\s+/gm, "")
+    .replace(/^\s*[-*]\s+/gm, "")
+    .replace(/[*_`>]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (flat.length <= BODY_LIMIT) return flat || "Finished";
+  // Cut on a word so the ellipsis does not land mid-identifier.
+  const clipped = flat.slice(0, BODY_LIMIT);
+  const lastSpace = clipped.lastIndexOf(" ");
+  return `${clipped.slice(0, lastSpace > 80 ? lastSpace : BODY_LIMIT).trimEnd()}...`;
+}
+
+/** Mirrors the session list: the last two path segments are enough to place it. */
+function shortenPath(path: string): string {
+  const parts = path.split("/").filter(Boolean);
+  return parts.length <= 2 ? path : `.../${parts.slice(-2).join("/")}`;
 }
 
 function formatElapsed(ms: number): string {

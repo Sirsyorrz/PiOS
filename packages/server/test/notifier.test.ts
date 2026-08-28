@@ -38,6 +38,14 @@ function fakeSession(overrides: Partial<SessionInfo> = {}) {
   return { session, emit, info };
 }
 
+/** A finished assistant turn, as pi reports it. */
+function assistantMessage(text: string): AgentEvent {
+  return {
+    type: "message_end",
+    message: { role: "assistant", content: [{ type: "text", text }] },
+  } as AgentEvent;
+}
+
 function collector() {
   const sent: Notification[] = [];
   return {
@@ -57,13 +65,14 @@ test("one notification per settled turn", () => {
 
   emit({ type: "agent_start" } as AgentEvent);
   emit({ type: "tool_execution_start", toolCallId: "1", toolName: "bash" } as AgentEvent);
+  emit(assistantMessage("The **tests** pass now."));
   emit({ type: "agent_end", reason: "done" } as AgentEvent);
   emit({ type: "agent_settled" } as AgentEvent);
 
   assert.equal(sent.length, 1);
   assert.equal(sent[0]!.message.title, "demo");
-  assert.match(sent[0]!.message.body, /done/);
-  assert.match(sent[0]!.message.body, /last: bash/);
+  // What the agent said, not how it spent its time.
+  assert.equal(sent[0]!.message.body, "The tests pass now.");
   assert.equal(sent[0]!.message.url, "/?session=s1");
 });
 
@@ -85,7 +94,7 @@ test("a session waiting on the user says so", () => {
 
   emit({ type: "agent_start" } as AgentEvent);
   emit({ type: "agent_settled" } as AgentEvent);
-  assert.match(sent[0]!.message.body, /needs input/);
+  assert.match(sent[0]!.message.body, /Needs input/);
 });
 
 test("devices watching the session are skipped", () => {
@@ -112,4 +121,57 @@ test("a released session stops notifying", () => {
   emit({ type: "agent_start" } as AgentEvent);
   emit({ type: "agent_settled" } as AgentEvent);
   assert.equal(sent.length, 0);
+});
+
+test("the title falls back the way the session list does", () => {
+  const { sent, deps } = collector();
+  const notifier = new SettleNotifier(deps);
+  const { session, emit } = fakeSession({ name: undefined, preview: "fix the flaky test" });
+  notifier.attach(session);
+
+  emit({ type: "agent_start" } as AgentEvent);
+  emit({ type: "agent_settled" } as AgentEvent);
+  assert.equal(sent[0]!.message.title, "fix the flaky test");
+});
+
+test("with neither a name nor a preview the directory places it", () => {
+  const { sent, deps } = collector();
+  const notifier = new SettleNotifier(deps);
+  const { session, emit } = fakeSession({ name: undefined, preview: undefined });
+  notifier.attach(session);
+
+  emit({ type: "agent_start" } as AgentEvent);
+  emit({ type: "agent_settled" } as AgentEvent);
+  assert.equal(sent[0]!.message.title, ".../Code/demo");
+});
+
+test("a long answer is clipped on a word", () => {
+  const { sent, deps } = collector();
+  const notifier = new SettleNotifier(deps);
+  const { session, emit } = fakeSession();
+  notifier.attach(session);
+
+  emit({ type: "agent_start" } as AgentEvent);
+  emit(assistantMessage(`${"alpha bravo ".repeat(40)}end`));
+  emit({ type: "agent_settled" } as AgentEvent);
+
+  const body = sent[0]!.message.body;
+  assert.ok(body.length <= 184, body.length.toString());
+  assert.match(body, /\.\.\.$/);
+  assert.equal(body.includes("  "), false);
+});
+
+test("tool output and thinking are not the answer", () => {
+  const { sent, deps } = collector();
+  const notifier = new SettleNotifier(deps);
+  const { session, emit } = fakeSession();
+  notifier.attach(session);
+
+  emit({ type: "agent_start" } as AgentEvent);
+  emit({
+    type: "message_end",
+    message: { role: "toolResult", content: [{ type: "text", text: "raw tool output" }] },
+  } as AgentEvent);
+  emit({ type: "agent_settled" } as AgentEvent);
+  assert.match(sent[0]!.message.body, /^Finished/);
 });
