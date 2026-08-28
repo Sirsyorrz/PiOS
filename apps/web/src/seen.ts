@@ -40,8 +40,34 @@ export function markSeen(machineId: string, sessionId: string, updatedAt: number
   return next;
 }
 
+/**
+ * Records sessions this client has never heard of at their current state.
+ *
+ * Without this, first contact with a machine marks every session in its
+ * history as unread, which is noise about work the user finished days ago.
+ * "Complete" means finished since you last looked, and before the first look
+ * there is nothing to have missed.
+ */
+export function seedSeen(
+  machineId: string,
+  sessions: readonly { sessionId: string; updatedAt: number }[],
+): SeenMap {
+  const seen = loadSeen(machineId);
+  let changed = false;
+  const next = { ...seen };
+  for (const s of sessions) {
+    if (next[s.sessionId] === undefined) {
+      next[s.sessionId] = s.updatedAt;
+      changed = true;
+    }
+  }
+  if (!changed) return seen;
+  browserStorage.set(key(machineId), JSON.stringify(next));
+  return next;
+}
+
 export function isUnseen(seen: SeenMap, sessionId: string, updatedAt: number): boolean {
   const at = seen[sessionId];
-  // Never opened counts as unseen: the row is still news to the user.
-  return at === undefined || at < updatedAt;
+  // Unknown means not yet seeded, not new work; treat it as read.
+  return at !== undefined && at < updatedAt;
 }

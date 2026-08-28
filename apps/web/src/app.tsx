@@ -18,7 +18,7 @@ import { SettingsIcon } from "./components/icons.tsx";
 import { SessionList } from "./components/session-list.tsx";
 import { SettingsView } from "./components/settings-view.tsx";
 import { loadSettings, saveSettings, SettingsProvider, type Settings } from "./settings.ts";
-import { loadSeen, markSeen } from "./seen.ts";
+import { loadSeen, markSeen, seedSeen } from "./seen.ts";
 import { browserStorage } from "./storage.ts";
 import { fetchHomeDir } from "./files.ts";
 
@@ -117,6 +117,13 @@ function Workspace({ machine, settings, onSettingsChange, onMachineChange, onFor
     setActiveIdState(null);
   }
   const [seen, setSeen] = useState(() => loadSeen(machine.id));
+  // Sessions this client has never seen start out read, so first contact with
+  // a machine does not flag its whole history as freshly finished work.
+  useEffect(() => {
+    if (state.sync !== "synced") return;
+    setSeen(seedSeen(machine.id, state.sessions));
+  }, [machine.id, state.sync, state.sessions]);
+
   // An open session is being read as it moves, so it is never unread. Marking
   // on every update keeps the badge honest the moment the user leaves.
   useEffect(() => {
