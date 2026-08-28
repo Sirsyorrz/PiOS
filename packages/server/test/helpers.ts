@@ -38,6 +38,9 @@ export async function startHarness(lister?: SessionLister): Promise<Harness> {
       requestTimeoutMs: 5_000,
     }),
     piVersion: "fake",
+    // The API is the subject here; serving the repo's built PWA would turn
+    // every unknown path into an app shell.
+    webDir: null,
   });
   await server.listen();
 

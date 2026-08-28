@@ -253,9 +253,25 @@ Exit: usable as a daily driver from the phone home screen.
 
 ## Phase 9 - Push + settle notifications
 
+Web push shipped ahead of the phases above: `PushStore` (VAPID keys and
+subscriptions, 0600, versioned), `SettleNotifier`, `/push/key`,
+`/push/subscribe`, `/push/unsubscribe`, service-worker `push` and
+`notificationclick` handlers, and a Settings toggle.
+
+Two things worth carrying forward:
+
+- iOS only exposes `PushManager` to a home-screen web app, and only asks for
+  permission from a user gesture, so the toggle spells out `needs-install`
+  rather than failing silently in a tab.
+- Suppression needs attention, not a subscription: `activity` reports (25s,
+  45s TTL on the daemon) now carry `visible` / `appState` / `sessionIds`, and
+  a device watching the session is skipped.
+
 1. `agent_settled` -> push. Web push for the PWA first; APNs later for native.
-2. Device registration table in the daemon, per-device token.
+2. Device registration table in the daemon, per-device token. `revoke` drops
+   the device's push subscriptions with its token.
 3. Notification content: session name, last tool, elapsed.
+4. Remaining: APNs for native (Phase 10), and richer content than one line.
 
 ---
 

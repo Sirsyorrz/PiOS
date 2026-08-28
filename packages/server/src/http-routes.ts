@@ -2,11 +2,12 @@ import { createReadStream, statSync } from "node:fs";
 import { mkdir, readdir, stat, writeFile } from "node:fs/promises";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { homedir } from "node:os";
-import { basename, dirname, extname, join } from "node:path";
+import { basename, dirname, extname, join, sep } from "node:path";
 import { sessionDirName, type SessionRegistry } from "@pios/pi-host";
 import { WIRE_VERSION } from "@pios/protocol";
 import { AuthStore, bearerToken } from "./auth.ts";
 import { containedPath } from "./paths.ts";
+import type { PushStore } from "./push.ts";
 import { SERVER_VERSION, type ServerConfig } from "./config.ts";
 
 const CONTENT_TYPES: Record<string, string> = {
@@ -20,12 +21,35 @@ const CONTENT_TYPES: Record<string, string> = {
   ".json": "application/json",
   ".md": "text/markdown; charset=utf-8",
   ".txt": "text/plain; charset=utf-8",
+  ".html": "text/html; charset=utf-8",
+  ".js": "text/javascript; charset=utf-8",
+  ".css": "text/css; charset=utf-8",
+  ".webmanifest": "application/manifest+json",
+  ".ico": "image/x-icon",
+  ".woff2": "font/woff2",
 };
+
+/** Everything the daemon answers itself; the rest may be the PWA. */
+const API_PATHS = new Set([
+  // A GET that never upgraded must not be answered with the app shell: a
+  // client would parse HTML as a socket failure it cannot explain.
+  "/ws",
+  "/pair",
+  "/health",
+  "/sessions",
+  "/dirs",
+  "/file",
+  "/upload",
+  "/push/key",
+  "/push/subscribe",
+  "/push/unsubscribe",
+]);
 
 export interface RouteContext {
   config: ServerConfig;
   auth: AuthStore;
   registry: SessionRegistry;
+  push: PushStore;
 }
 
 export async function handleRequest(
@@ -50,11 +74,32 @@ export async function handleRequest(
       return json(res, 200, { ok: true, serverVersion: SERVER_VERSION, wireVersion: WIRE_VERSION });
     }
 
+    // The app shell itself is public: a browser cannot put a bearer token on
+    // the document request that bootstraps it, and the bundle holds no
+    // secrets. Everything it then asks for is authenticated.
+    if (req.method === "GET" && !API_PATHS.has(url.pathname) && ctx.config.webDir) {
+      return serveApp(ctx.config.webDir, url, res);
+    }
+
     const device = ctx.auth.verify(bearerToken(req.headers.authorization));
     if (!device) return json(res, 401, { error: "unauthorized" });
 
     if (req.method === "GET" && url.pathname === "/sessions") {
       return json(res, 200, { sessions: ctx.registry.list() });
+    }
+    // The VAPID public key is a public value by design: it identifies the
+    // sender to the push service and authorises nothing on its own.
+    if (req.method === "GET" && url.pathname === "/push/key") {
+      return json(res, 200, { publicKey: ctx.push.publicKey });
+    }
+    if (req.method === "POST" && url.pathname === "/push/subscribe") {
+      return await pushSubscribe(ctx, device.id, req, res);
+    }
+    if (req.method === "POST" && url.pathname === "/push/unsubscribe") {
+      const body = await readJson(req, 8 * 1024);
+      const endpoint = typeof body?.endpoint === "string" ? body.endpoint : undefined;
+      if (!endpoint) return json(res, 400, { error: "bad_request" });
+      return json(res, 200, { removed: ctx.push.unsubscribe(endpoint) });
     }
     if (req.method === "GET" && url.pathname === "/dirs") return await listDirs(ctx, url, res);
     if (req.method === "GET" && url.pathname === "/file") return serveFile(ctx, url, res);
@@ -66,6 +111,38 @@ export async function handleRequest(
     console.error("[pios] request failed", error);
     json(res, 500, { error: "internal" });
   }
+}
+
+/**
+ * Static file serving for the built PWA.
+ *
+ * Unknown paths fall back to `index.html` so a deep link like
+ * `/?session=...` from a notification survives a cold launch. Content-hashed
+ * assets are immutable; the document and the service worker never are, or a
+ * new build would never reach an installed app.
+ */
+function serveApp(webDir: string, url: URL, res: ServerResponse): void {
+  const requested = url.pathname === "/" ? "index.html" : url.pathname.slice(1);
+  const candidate = containedPath(webDir, requested);
+  const path =
+    candidate && statSync(candidate, { throwIfNoEntry: false })?.isFile()
+      ? candidate
+      : join(webDir, "index.html");
+
+  let stat;
+  try {
+    stat = statSync(path);
+  } catch {
+    return json(res, 404, { error: "not_found" });
+  }
+
+  const immutable = path.includes(`${sep}assets${sep}`);
+  res.writeHead(200, {
+    "content-type": CONTENT_TYPES[extname(path).toLowerCase()] ?? "application/octet-stream",
+    "content-length": stat.size,
+    "cache-control": immutable ? "public, max-age=31536000, immutable" : "no-cache",
+  });
+  createReadStream(path).pipe(res);
 }
 
 async function pair(ctx: RouteContext, req: IncomingMessage, res: ServerResponse): Promise<void> {
@@ -85,6 +162,32 @@ async function pair(ctx: RouteContext, req: IncomingMessage, res: ServerResponse
     serverVersion: SERVER_VERSION,
     wireVersion: WIRE_VERSION,
   });
+}
+
+/**
+ * Registers a Web Push subscription against the calling device.
+ *
+ * Only the endpoint and the two client keys are stored: the daemon is the
+ * sender, so it needs nothing else, and holding less means a leaked file wakes
+ * fewer phones.
+ */
+async function pushSubscribe(
+  ctx: RouteContext,
+  deviceId: string,
+  req: IncomingMessage,
+  res: ServerResponse,
+): Promise<void> {
+  const body = await readJson(req, 8 * 1024);
+  const endpoint = typeof body?.endpoint === "string" ? body.endpoint : undefined;
+  const keys = body?.keys as { p256dh?: unknown; auth?: unknown } | undefined;
+  const p256dh = typeof keys?.p256dh === "string" ? keys.p256dh : undefined;
+  const auth = typeof keys?.auth === "string" ? keys.auth : undefined;
+  if (!endpoint || !p256dh || !auth || !/^https:\/\//.test(endpoint)) {
+    return json(res, 400, { error: "bad_request" });
+  }
+
+  const record = ctx.push.subscribe(deviceId, { endpoint, keys: { p256dh, auth } });
+  json(res, 200, { id: record.id });
 }
 
 /**

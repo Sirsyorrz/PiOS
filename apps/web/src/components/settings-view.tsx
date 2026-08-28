@@ -1,5 +1,6 @@
-import type { ReactNode } from "react";
-import type { Machine } from "../machine.ts";
+import { useEffect, useState, type ReactNode } from "react";
+import { httpBase, type Machine } from "../machine.ts";
+import { disablePush, enablePush, pushState, type PushState } from "../push.ts";
 import type { Settings } from "../settings.ts";
 import { EndpointPicker } from "./endpoint-picker.tsx";
 import { ModalCard, PickerHeader } from "./ui.tsx";
@@ -66,8 +67,69 @@ export function SettingsView({ settings, machine, onChange, onMachineChange, onF
         />
       </div>
 
+      <div className="settings-group">
+        <h3>Notifications</h3>
+        <Notifications machine={machine} />
+      </div>
+
       <EndpointPicker machine={machine} onChange={onMachineChange} onForget={onForget} />
     </ModalCard>
+  );
+}
+
+/**
+ * Push on `agent_settled`.
+ *
+ * Permission can only be asked for from a gesture, and on iOS only from an
+ * installed web app, so every state the browser can be in is spelled out here
+ * rather than hidden behind a toggle that silently does nothing.
+ */
+function Notifications({ machine }: { machine: Machine }) {
+  const [state, setState] = useState<PushState | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const base = httpBase(machine);
+
+  useEffect(() => {
+    let live = true;
+    void pushState().then((next) => live && setState(next));
+    return () => {
+      live = false;
+    };
+  }, []);
+
+  if (state === null) return <p className="muted">Checking...</p>;
+  if (state === "needs-install") {
+    return <p className="muted">Add PiOS to the home screen to enable notifications.</p>;
+  }
+  if (state === "unsupported") return <p className="muted">This browser has no Web Push.</p>;
+  if (state === "denied") {
+    return <p className="muted">Notifications are blocked in the browser settings.</p>;
+  }
+
+  const toggle = (wanted: boolean) => {
+    if (!base) return setError("No endpoint selected.");
+    setBusy(true);
+    setError(null);
+    void (wanted
+      ? enablePush(base, machine.deviceToken)
+      : disablePush(base, machine.deviceToken)
+    )
+      .then(setState)
+      .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : "failed"))
+      .finally(() => setBusy(false));
+  };
+
+  return (
+    <>
+      <Toggle
+        label="Notify when an agent settles"
+        hint="One notification per turn, skipped while you are watching."
+        checked={state === "on"}
+        onChange={busy ? () => {} : toggle}
+      />
+      {error ? <p className="muted">{error}</p> : null}
+    </>
   );
 }
 

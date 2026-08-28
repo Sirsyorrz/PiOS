@@ -1,3 +1,2 @@
 - tree picker
-- compare implementation with paseo, what can we learn/improve, can we relay, rather than tailscale?
-- decide what to do about steering mode (long-press send, extra square button, split send button, or keep the select in the actions row)
+- reference paseo, what can we learn/improve, can we relay, rather than tailscale?

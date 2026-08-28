@@ -43,6 +43,7 @@ export class Connection {
   private device: DeviceRecord | null = null;
   private readonly subscriptions = new Map<string, () => void>();
   private helloTimer: NodeJS.Timeout | null = null;
+  private activity: { sessionIds: Set<string>; foreground: boolean; at: number } | null = null;
 
   constructor(socket: WebSocket, deps: ConnectionDeps) {
     this.socket = socket;
@@ -302,7 +303,11 @@ export class Connection {
       }
 
       case "activity":
-        // Recorded as a lease later; acked now so clients can send it safely.
+        this.activity = {
+          sessionIds: new Set(frame.sessionIds),
+          foreground: frame.visible && frame.appState === "active",
+          at: Date.now(),
+        };
         return this.ack(frame.commandId);
     }
   }
@@ -360,6 +365,25 @@ export class Connection {
       return undefined;
     }
     return session;
+  }
+
+  /** Device on this socket, once it has authenticated. */
+  get deviceId(): string | null {
+    return this.device?.id ?? null;
+  }
+
+  /**
+   * Whether this client is looking at a session right now.
+   *
+   * A subscription alone is not attention: a backgrounded PWA keeps its
+   * socket for a while. Reports are periodic, so a stale one is ignored and
+   * the device gets pushed to instead of silently missing the turn.
+   */
+  watching(sessionId: string, ttlMs: number, now = Date.now()): boolean {
+    const activity = this.activity;
+    if (!activity || !activity.foreground) return false;
+    if (now - activity.at > ttlMs) return false;
+    return activity.sessionIds.has(sessionId);
   }
 
   /** Pushes the current session list, unprompted. Ignored before `hello`. */

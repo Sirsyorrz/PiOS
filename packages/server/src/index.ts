@@ -5,4 +5,6 @@ export * from "./endpoints.ts";
 export * from "./paths.ts";
 export * from "./connection.ts";
 export * from "./http-routes.ts";
+export * from "./notifier.ts";
+export * from "./push.ts";
 export * from "./server.ts";

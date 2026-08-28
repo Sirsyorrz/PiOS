@@ -81,3 +81,11 @@ test("loopback is only chosen when nothing else exists", () => {
   assert.equal(pairingEndpoint(only)?.kind, "loopback");
   assert.equal(pairingEndpoint([]), undefined);
 });
+
+test("a proxied public origin outranks every discovered address", () => {
+  const endpoints = advertisedEndpoints(4111, "box.tail1234.ts.net", "https://box.ts.net/");
+  const chosen = pairingEndpoint(endpoints);
+  assert.equal(chosen?.kind, "public");
+  // Trailing slash dropped: the URL is joined against, not concatenated.
+  assert.equal(chosen?.url, "https://box.ts.net");
+});

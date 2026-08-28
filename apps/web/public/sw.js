@@ -71,3 +71,45 @@ self.addEventListener("fetch", (event) => {
     );
   }
 });
+
+/*
+ * Settle notifications.
+ *
+ * The daemon pushes when a session settles. Safari requires a visible
+ * notification for every push, so a malformed or empty payload still shows
+ * something rather than costing the app its push permission.
+ */
+self.addEventListener("push", (event) => {
+  let data = {};
+  try {
+    data = event.data ? event.data.json() : {};
+  } catch {
+    data = {};
+  }
+  const title = data.title || "PiOS";
+  event.waitUntil(
+    self.registration.showNotification(title, {
+      body: data.body || "Agent settled.",
+      tag: data.tag || "pios",
+      // A later settle for the same session replaces the earlier one silently.
+      renotify: false,
+      data: { url: data.url || "/" },
+    }),
+  );
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const target = new URL(event.notification.data?.url || "/", self.location.origin);
+  event.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clients) => {
+      // Reusing the open window keeps the socket, the outbox, and the
+      // transcript; a second window would resync everything from scratch.
+      for (const client of clients) {
+        if (new URL(client.url).origin !== target.origin) continue;
+        return client.focus().then((focused) => focused.navigate(target.href));
+      }
+      return self.clients.openWindow(target.href);
+    }),
+  );
+});

@@ -269,6 +269,31 @@ export class PiosClient {
     });
   }
 
+  /**
+   * Reports what this client is looking at.
+   *
+   * The daemon uses it to decide whether a settled session needs a push: a
+   * phone already showing the transcript does not. Advisory and fire and
+   * forget, so it is never queued or retried; a lost report costs at most one
+   * redundant notification.
+   */
+  reportActivity(activity: {
+    visible: boolean;
+    focused: boolean;
+    appState: "active" | "inactive" | "background";
+    sessionIds?: string[];
+  }): boolean {
+    return this.supervisor.send({
+      v: WIRE_VERSION,
+      type: "activity",
+      commandId: this.generateId(),
+      visible: activity.visible,
+      focused: activity.focused,
+      appState: activity.appState,
+      sessionIds: activity.sessionIds ?? [...this.subscribed],
+    });
+  }
+
   /** Notifies on a rejected one-off command. Returns an unsubscribe. */
   onCommandError(handler: (error: { commandId?: string; message: string }) => void): () => void {
     this.commandErrorHandlers.add(handler);

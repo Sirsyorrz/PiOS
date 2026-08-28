@@ -46,10 +46,19 @@ test("health is public and says nothing about sessions", async () => {
 });
 
 test("every other route rejects an unauthenticated caller", async () => {
-  for (const path of ["/sessions", "/dirs", "/file?session=x&path=y", "/upload?session=x"]) {
+  const posts = new Set(["/upload?session=x", "/push/subscribe", "/push/unsubscribe"]);
+  for (const path of [
+    "/sessions",
+    "/dirs",
+    "/file?session=x&path=y",
+    "/upload?session=x",
+    "/push/key",
+    "/push/subscribe",
+    "/push/unsubscribe",
+  ]) {
     const res = await fetch(`${harness.baseUrl}${path}`, {
-      method: path.startsWith("/upload") ? "POST" : "GET",
-      body: path.startsWith("/upload") ? "x" : undefined,
+      method: posts.has(path) ? "POST" : "GET",
+      body: posts.has(path) ? "{}" : undefined,
     });
     assert.equal(res.status, 401, path);
   }
@@ -410,4 +419,38 @@ test("the model list and a model switch cross the wire", async () => {
     target.modelId,
   );
   client.close();
+});
+
+test("a device registers a push subscription and takes it back", async () => {
+  const key = await fetch(`${harness.baseUrl}/push/key`, {
+    headers: { authorization: `Bearer ${harness.deviceToken}` },
+  });
+  assert.equal(key.status, 200);
+  assert.ok(((await key.json()) as { publicKey: string }).publicKey.length > 0);
+
+  const bad = await fetch(`${harness.baseUrl}/push/subscribe`, {
+    method: "POST",
+    headers: { authorization: `Bearer ${harness.deviceToken}` },
+    body: JSON.stringify({ endpoint: "http://push.example/1" }),
+  });
+  assert.equal(bad.status, 400);
+
+  const ok = await fetch(`${harness.baseUrl}/push/subscribe`, {
+    method: "POST",
+    headers: { authorization: `Bearer ${harness.deviceToken}` },
+    body: JSON.stringify({
+      endpoint: "https://push.example/1",
+      keys: { p256dh: "a", auth: "b" },
+    }),
+  });
+  assert.equal(ok.status, 200);
+  assert.equal(harness.server.push.list().length, 1);
+
+  const gone = await fetch(`${harness.baseUrl}/push/unsubscribe`, {
+    method: "POST",
+    headers: { authorization: `Bearer ${harness.deviceToken}` },
+    body: JSON.stringify({ endpoint: "https://push.example/1" }),
+  });
+  assert.equal(gone.status, 200);
+  assert.equal(harness.server.push.list().length, 0);
 });

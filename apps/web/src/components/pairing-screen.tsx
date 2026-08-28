@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { pairWithMachine, type Machine } from "../machine.ts";
+import { pairWithMachine, probeEndpoint, type Machine } from "../machine.ts";
 import { ModalCard } from "./ui.tsx";
 
 const DEFAULT_PORT = 4111;
@@ -13,17 +13,26 @@ function takePairingTokenFromHash(): string | null {
   return token;
 }
 
-function guessDaemonUrl(): string {
-  const { protocol, hostname, port } = window.location;
-  // The PWA is usually served by the dev server on another port, so the page
-  // origin is a hint about the host, never about the daemon's port.
-  const daemonPort = port === String(DEFAULT_PORT) ? port : String(DEFAULT_PORT);
-  return `${protocol}//${hostname}:${daemonPort}`;
+/**
+ * Where the daemon probably is.
+ *
+ * The page origin comes first: in the packaged setup the daemon serves this
+ * app itself, possibly behind a TLS proxy on 443, and pinning the default
+ * port would produce an address that cannot exist. A dev server on another
+ * port falls back to the daemon's own port on the same host.
+ */
+function candidateDaemonUrls(): string[] {
+  const { origin, protocol, hostname } = window.location;
+  const samePort = `${protocol}//${hostname}:${DEFAULT_PORT}`;
+  return origin === samePort ? [origin] : [origin, samePort];
 }
 
 export function PairingScreen({ onPaired }: { onPaired: (machine: Machine) => void }) {
   const [token, setToken] = useState("");
-  const [url, setUrl] = useState(guessDaemonUrl);
+  const [url, setUrl] = useState(() => candidateDaemonUrls()[0]!);
+  // A guess that was typed over is the user's, and must not be overwritten by
+  // a probe that finishes later.
+  const [edited, setEdited] = useState(false);
   const [label, setLabel] = useState("phone");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -32,6 +41,23 @@ export function PairingScreen({ onPaired }: { onPaired: (machine: Machine) => vo
     const fromHash = takePairingTokenFromHash();
     if (fromHash) setToken(fromHash);
   }, []);
+
+  // Only a successful probe proves an address; the first candidate is shown
+  // meanwhile so the field is never empty.
+  useEffect(() => {
+    let live = true;
+    void (async () => {
+      for (const candidate of candidateDaemonUrls()) {
+        if (await probeEndpoint(candidate)) {
+          if (live && !edited) setUrl(candidate);
+          return;
+        }
+      }
+    })();
+    return () => {
+      live = false;
+    };
+  }, [edited]);
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
@@ -70,7 +96,14 @@ export function PairingScreen({ onPaired }: { onPaired: (machine: Machine) => vo
 
         <label>
           Daemon URL
-          <input value={url} onChange={(e) => setUrl(e.target.value)} inputMode="url" />
+          <input
+            value={url}
+            onChange={(e) => {
+              setEdited(true);
+              setUrl(e.target.value);
+            }}
+            inputMode="url"
+          />
         </label>
         <label>
           Pairing token

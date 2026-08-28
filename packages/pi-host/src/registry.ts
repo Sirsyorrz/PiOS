@@ -17,6 +17,9 @@ export interface RegistryOptions {
   restartDelayMs?: number;
   now?: () => number;
   sleep?: (ms: number) => Promise<void>;
+  /** Observer for every session this registry owns, live and restarted. */
+  onCreate?: (session: RestartableSession) => void;
+  onDispose?: (id: string) => void;
 }
 
 const DEFAULT_MAX_RESTARTS = 3;
@@ -46,7 +49,8 @@ export class SessionRegistry {
   private readonly sessions = new Map<string, RestartableSession>();
   private readonly restarts = new Map<string, number>();
   private readonly startedAt = new Map<string, number>();
-  private readonly options: Required<RegistryOptions>;
+  private readonly options: Required<Omit<RegistryOptions, "onCreate" | "onDispose">> &
+    Pick<RegistryOptions, "onCreate" | "onDispose">;
   private readonly host: SessionHost;
 
   constructor(host: SessionHost, options: RegistryOptions = {}) {
@@ -56,6 +60,8 @@ export class SessionRegistry {
       restartDelayMs: options.restartDelayMs ?? DEFAULT_RESTART_DELAY_MS,
       now: options.now ?? Date.now,
       sleep: options.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms))),
+      onCreate: options.onCreate,
+      onDispose: options.onDispose,
     };
   }
 
@@ -70,6 +76,7 @@ export class SessionRegistry {
         void this.recover(session.id, `pi exited (code ${info.code}, signal ${info.signal})`),
       );
     }
+    this.options.onCreate?.(session);
     return session;
   }
 
@@ -100,6 +107,7 @@ export class SessionRegistry {
     this.sessions.delete(id);
     this.restarts.delete(id);
     this.startedAt.delete(id);
+    this.options.onDispose?.(id);
     await session.dispose();
   }
 

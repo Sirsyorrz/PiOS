@@ -21,6 +21,22 @@ import { loadSettings, saveSettings, SettingsProvider, type Settings } from "./s
 import { loadSeen, markSeen, seedSeen } from "./seen.ts";
 import { browserStorage } from "./storage.ts";
 import { fetchHomeDir } from "./files.ts";
+import { refreshPush } from "./push.ts";
+
+/**
+ * Session a notification tap asked for.
+ *
+ * Consumed once and stripped from the URL, so a relaunch from the home screen
+ * does not keep reopening whatever was tapped days ago.
+ */
+function deepLinkedSession(): string | null {
+  const requested = new URL(window.location.href).searchParams.get("session");
+  if (!requested) return null;
+  const url = new URL(window.location.href);
+  url.searchParams.delete("session");
+  window.history.replaceState(null, "", url.pathname + url.search + url.hash);
+  return requested;
+}
 
 // iOS evicts a backgrounded PWA and relaunches it from scratch, so the open
 // session has to be remembered somewhere durable or every app switch dumps
@@ -89,9 +105,13 @@ function Workspace({ machine, settings, onSettingsChange, onMachineChange, onFor
 }) {
   const client = useClient();
   const state = useSupervisorState();
-  const [activeId, setActiveIdState] = useState<string | null>(() =>
-    browserStorage.get(activeSessionKey(machine.id)),
-  );
+  const [activeId, setActiveIdState] = useState<string | null>(() => {
+    const linked = deepLinkedSession();
+    // Remembered like any other opened session: iOS may relaunch this app cold
+    // moments later, and the query string is already gone by then.
+    if (linked) browserStorage.set(activeSessionKey(machine.id), linked);
+    return linked ?? browserStorage.get(activeSessionKey(machine.id));
+  });
   // Launching into the session list is a dead end: the app is a chat client,
   // so a launch that is not resuming a session opens one in the home
   // directory instead. Once per launch only.
@@ -183,6 +203,38 @@ function Workspace({ machine, settings, onSettingsChange, onMachineChange, onFor
       if (!opened) autoOpened.current = false;
     };
   }, [activeId, state.transport, base, client, machine.deviceToken, machine.id]);
+
+  // Attention reporting. The daemon suppresses a notification for a session
+  // this client is visibly on, so the report has to be fresh (25s, under the
+  // daemon's 45s TTL) and immediate on every visibility change.
+  useEffect(() => {
+    const report = () => {
+      const visible = document.visibilityState === "visible";
+      client.reportActivity({
+        visible,
+        focused: visible && document.hasFocus(),
+        appState: visible ? "active" : "background",
+        sessionIds: activeId ? [activeId] : [],
+      });
+    };
+    report();
+    const timer = setInterval(report, 25_000);
+    document.addEventListener("visibilitychange", report);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", report);
+    };
+  }, [client, activeId, state.transport]);
+
+  // A push subscription can be dropped by the browser at any time, and the
+  // daemon's copy can outlive its data dir, so the endpoint is re-registered
+  // once per launch instead of only when the toggle is touched.
+  useEffect(() => {
+    if (!base) return;
+    void refreshPush(base, machine.deviceToken).catch(() => {
+      // Notifications are best effort; a failure here must not block the app.
+    });
+  }, [base, machine.deviceToken]);
 
   // An unreachable daemon must not hold the splash forever: the session list
   // still offers settings, pairing and the offline banners.

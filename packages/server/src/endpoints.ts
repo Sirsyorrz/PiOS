@@ -11,11 +11,25 @@ import { networkInterfaces } from "node:os";
 export interface Endpoint {
   key: string;
   url: string;
-  kind: "loopback" | "lan" | "tailscale-ip" | "tailscale-magicdns";
+  kind: "public" | "loopback" | "lan" | "tailscale-ip" | "tailscale-magicdns";
 }
 
-export function advertisedEndpoints(port: number, hostname?: string): Endpoint[] {
+/**
+ * @param publicUrl A reverse proxy in front of the daemon, e.g. `tailscale
+ * serve`. It outranks every discovered address: it is usually the only origin
+ * with TLS, and service workers, Web Push, and installing to an iOS home
+ * screen all require a secure context.
+ */
+export function advertisedEndpoints(
+  port: number,
+  hostname?: string,
+  publicUrl?: string | null,
+): Endpoint[] {
   const endpoints: Endpoint[] = [];
+  if (publicUrl) {
+    const url = publicUrl.replace(/\/+$/, "");
+    endpoints.push({ key: `public:${url}`, url, kind: "public" });
+  }
   const interfaces = networkInterfaces();
 
   for (const [name, addresses] of Object.entries(interfaces)) {
@@ -47,7 +61,13 @@ export function advertisedEndpoints(port: number, hostname?: string): Endpoint[]
 
 /** The endpoint to print for pairing: reachable from a phone, not loopback. */
 export function pairingEndpoint(endpoints: Endpoint[]): Endpoint | undefined {
-  const order: Endpoint["kind"][] = ["tailscale-magicdns", "tailscale-ip", "lan", "loopback"];
+  const order: Endpoint["kind"][] = [
+    "public",
+    "tailscale-magicdns",
+    "tailscale-ip",
+    "lan",
+    "loopback",
+  ];
   for (const kind of order) {
     const match = endpoints.find((e) => e.kind === kind);
     if (match) return match;

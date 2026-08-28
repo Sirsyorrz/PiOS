@@ -2,7 +2,8 @@
 import { hostname } from "node:os";
 import { execFileSync } from "node:child_process";
 import { AuthStore } from "./auth.ts";
-import { authStorePath, defaultConfig } from "./config.ts";
+import { authStorePath, defaultConfig, pushStorePath } from "./config.ts";
+import { PushStore } from "./push.ts";
 import { pairingEndpoint } from "./endpoints.ts";
 import { advertisedEndpoints } from "./endpoints.ts";
 import { PiosServer } from "./server.ts";
@@ -50,7 +51,7 @@ function pair(): void {
   const auth = new AuthStore(authStorePath(config));
   const { token, code, expiresAt } = auth.createPairing();
 
-  const endpoint = pairingEndpoint(advertisedEndpoints(port, hostname()));
+  const endpoint = pairingEndpoint(advertisedEndpoints(port, hostname(), config.publicUrl));
   const base = endpoint?.url ?? `http://localhost:${port}`;
 
   // The token goes in the fragment: a fragment is never sent to a server and
@@ -82,7 +83,11 @@ function revoke(deviceId: string | undefined): void {
     console.error("usage: pios-server revoke <deviceId>");
     process.exit(2);
   }
-  const auth = new AuthStore(authStorePath(defaultConfig({ port })));
+  const config = defaultConfig({ port });
+  const auth = new AuthStore(authStorePath(config));
+  // A revoked device must also stop being reachable by push: the endpoint is a
+  // capability that outlives the token otherwise.
+  new PushStore(pushStorePath(config), config.pushSubject).removeDevice(deviceId);
   console.log(auth.revoke(deviceId) ? `revoked ${deviceId}` : `no device ${deviceId}`);
 }
 

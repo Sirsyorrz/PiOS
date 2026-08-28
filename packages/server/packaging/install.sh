@@ -22,6 +22,15 @@ fi
 
 mkdir -p "${bin_dir}" "${unit_dir}"
 
+# The daemon serves the PWA from apps/web/dist on its own origin. Service
+# workers, Web Push, and installing to the iOS home screen all need one secure
+# origin, and a separate dev server is neither built nor secure.
+if command -v pnpm >/dev/null; then
+  (cd "${repo_root}" && pnpm -F @pios/web build)
+else
+  echo "warning: pnpm not found; run 'pnpm -F @pios/web build' to serve the app" >&2
+fi
+
 cat > "${bin_dir}/pios-server" <<EOF
 #!/usr/bin/env bash
 export PATH="${tool_path}:\${PATH}"
@@ -46,3 +55,6 @@ fi
 echo
 echo "Installed. Pair a device with:"
 echo "  pios-server pair"
+echo
+echo "For push on iOS the app must be installed from an HTTPS origin:"
+echo "  tailscale serve --bg 4111"
