@@ -630,6 +630,12 @@ button.danger {
   color: var(--warn);
 }
 
+/* Finished and unread. Warm like `waiting`, because it asks the same thing of
+   the user: this row wants attention, and the label says which kind. */
+.badge.complete {
+  color: var(--warn);
+}
+
 .badge.crashed {
   color: var(--error);
 }
@@ -797,6 +803,10 @@ button.danger {
 
 /* Blocked on an answer, not working: warm, so it is never read as progress. */
 .status.waiting {
+  color: var(--warn);
+}
+
+.status.complete {
   color: var(--warn);
 }
 

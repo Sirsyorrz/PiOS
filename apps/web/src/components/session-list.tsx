@@ -1,5 +1,6 @@
 import type { SessionSummary } from "@pios/protocol";
 import { shortenPath } from "../format.ts";
+import { isUnseen } from "../seen.ts";
 import { sessionState } from "../session-status.ts";
 import { HistoryIcon, PlusIcon, TrashIcon } from "./icons.tsx";
 import { ListRowButton } from "./ui.tsx";
@@ -8,14 +9,16 @@ import { ListRowButton } from "./ui.tsx";
  * The row's state, worded and coloured exactly as the open session's header
  * does it: a session waiting on a dialog has to be findable from the list.
  */
-function SessionBadge({ session }: { session: SessionSummary }) {
-  const state = sessionState(session);
+function SessionBadge({ session, unseen }: { session: SessionSummary; unseen: boolean }) {
+  const state = sessionState(session, { unseen });
   return <span className={`badge ${state.tone}`}>{state.label}</span>;
 }
 
-export function SessionList({ sessions, activeId, onSelect, onCreate, onResume, onDispose }: {
+export function SessionList({ sessions, activeId, seen, onSelect, onCreate, onResume, onDispose }: {
   sessions: SessionSummary[];
   activeId: string | null;
+  /** Last `updatedAt` the user saw, by session id. */
+  seen: Record<string, number>;
   onSelect: (sessionId: string) => void;
   onCreate: () => void;
   onResume: () => void;
@@ -60,7 +63,10 @@ export function SessionList({ sessions, activeId, onSelect, onCreate, onResume, 
                 {/* Two lines, fixed: the row is a list entry, so state rides
                     in the corner rather than adding a third line to some
                     rows and not others. */}
-                <SessionBadge session={session} />
+                <SessionBadge
+                  session={session}
+                  unseen={isUnseen(seen, session.sessionId, session.updatedAt)}
+                />
               </ListRowButton>
               {/* Over the row, not beside it: a sibling column made every row
                   wider than the sidebar could afford. */}

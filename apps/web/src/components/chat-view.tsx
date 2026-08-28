@@ -2,6 +2,7 @@ import type { ImageContent, SessionSummary, StreamingBehavior } from "@pios/prot
 import { useEffect, useMemo, useRef } from "react";
 import { useClient, useSessionView } from "../client-provider.tsx";
 import { FileAccessContext } from "../files.ts";
+import { collapseHome } from "../format.ts";
 import { useStickToBottom } from "../scroll.ts";
 import type { SessionView, SupervisorState } from "@pios/client-core";
 import { Banners } from "./banners.tsx";
@@ -101,7 +102,7 @@ export function ChatView({
           <ChevronLeftIcon />
         </button>
         <span className="title line">
-          {view?.presentation.title ?? session?.name ?? session?.cwd ?? sessionId}
+          {view?.presentation.title ?? session?.name ?? (session ? collapseHome(session.cwd) : undefined) ?? sessionId}
         </span>
         {/* One source for the word and its colour, shared with the list. */}
         <span className={`status ${rowState.tone}`}>

@@ -1,5 +1,6 @@
 import type { ImageContent, ToolExecution } from "@pios/protocol";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { collapseHome } from "../format.ts";
 import { diffLines, editBlocks } from "../diff.ts";
 import { useSettings } from "../settings.ts";
 import { ChevronRightIcon, ToolIcon } from "./icons.tsx";
@@ -245,10 +246,6 @@ function absolutePath(path: string, cwd?: string): string {
 }
 
 /** The home prefix is inferred from the path itself; the client has no $HOME. */
-function collapseHome(path: string): string {
-  return path.replace(/^\/(?:home|Users)\/[^/]+/, "~");
-}
-
 /** Rendered as a diff or a code block, so it is not JSON to print again. */
 const BLOCK_KEYS = ["edits", "oldText", "old_text", "old", "newText", "new_text", "new", "content"];
 

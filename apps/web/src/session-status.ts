@@ -15,7 +15,7 @@ export interface SessionState {
 
 export function sessionState(
   session: SessionSummary | undefined,
-  live?: { running?: boolean; interrupting?: boolean; blocked?: boolean },
+  live?: { running?: boolean; interrupting?: boolean; blocked?: boolean; unseen?: boolean },
 ): SessionState {
   // Untrusted comes first: nothing else the session reports is meaningful
   // until the user decides whether its project may load code.
@@ -26,5 +26,8 @@ export function sessionState(
   if (live?.interrupting) return { tone: "running", label: "stopping" };
   if (live?.running) return { tone: "running", label: "running" };
   const status = session?.status ?? "idle";
+  // Work that ended while the user was elsewhere. Idle and complete are the
+  // same session state to the daemon; only the unread one asks to be opened.
+  if (status === "idle" && live?.unseen) return { tone: "complete", label: "complete" };
   return { tone: status, label: status };
 }

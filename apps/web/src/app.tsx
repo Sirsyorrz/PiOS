@@ -18,6 +18,7 @@ import { SettingsIcon } from "./components/icons.tsx";
 import { SessionList } from "./components/session-list.tsx";
 import { SettingsView } from "./components/settings-view.tsx";
 import { loadSettings, saveSettings, SettingsProvider, type Settings } from "./settings.ts";
+import { loadSeen, markSeen } from "./seen.ts";
 import { browserStorage } from "./storage.ts";
 import { fetchHomeDir } from "./files.ts";
 
@@ -115,6 +116,15 @@ function Workspace({ machine, settings, onSettingsChange, onMachineChange, onFor
     browserStorage.remove(activeSessionKey(machine.id));
     setActiveIdState(null);
   }
+  const [seen, setSeen] = useState(() => loadSeen(machine.id));
+  // An open session is being read as it moves, so it is never unread. Marking
+  // on every update keeps the badge honest the moment the user leaves.
+  useEffect(() => {
+    if (!activeId) return;
+    const open = state.sessions.find((s) => s.sessionId === activeId);
+    if (open) setSeen(markSeen(machine.id, activeId, open.updatedAt));
+  }, [activeId, machine.id, state.sessions]);
+
   // Null means "not picking"; a string is the directory to open the picker in.
   const [picking, setPicking] = useState<string | null>(null);
   const [resuming, setResuming] = useState(false);
@@ -275,6 +285,7 @@ function Workspace({ machine, settings, onSettingsChange, onMachineChange, onFor
         <SessionList
           sessions={state.sessions.filter((s) => s.status !== "disposed")}
           activeId={activeId}
+          seen={seen}
           onSelect={setActiveId}
           onCreate={() => setPicking("")}
           onResume={() => setResuming(true)}

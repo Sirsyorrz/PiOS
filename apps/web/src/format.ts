@@ -3,6 +3,11 @@ export function basename(path: string): string {
   return path.split("/").filter(Boolean).at(-1) ?? path;
 }
 
+/** Home prefix as `~`: the leading `/home/<user>` is noise on a phone. */
+export function collapseHome(path: string): string {
+  return path.replace(/^\/(?:home|Users)\/[^/]+/, "~");
+}
+
 export function shortenPath(path: string): string {
   const parts = path.split("/").filter(Boolean);
   return parts.length <= 2 ? path : `.../${parts.slice(-2).join("/")}`;
