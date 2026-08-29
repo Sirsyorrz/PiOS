@@ -36,13 +36,15 @@ export function useStickToBottom<T>(marker: T) {
     setAtBottom(stuck.current);
   }, []);
 
-  /** Reader-driven jump back to the tail, which re-pins the scroller. */
+  /**
+   * Reader-driven glide back to the tail. `stuck` is left alone: a hard pin
+   * mid-animation would cancel it, and the scroll handler flips it as soon as
+   * the animation actually arrives.
+   */
   const scrollToBottom = useCallback(() => {
     const el = ref.current;
     if (!el) return;
-    stuck.current = true;
     el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
-    setAtBottom(true);
   }, []);
 
   // Layout effect, not effect: the pin has to land in the same frame as the

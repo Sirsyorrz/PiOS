@@ -876,10 +876,9 @@ button.danger {
 button.scroll-bottom {
   align-self: center;
   border-radius: 50%;
-  background: color-mix(in srgb, var(--panel) 88%, transparent);
-  backdrop-filter: blur(16px) saturate(1.4);
-  -webkit-backdrop-filter: blur(16px) saturate(1.4);
-  box-shadow: 0 2px 8px rgb(0 0 0 / 0.35);
+  /* Transparent: the transcript reads straight through it, so it never hides
+     the line it is offering to scroll to. */
+  background: transparent;
 }
 
 /* Status lives at the bottom of the pane, beside the composer, whether or not
