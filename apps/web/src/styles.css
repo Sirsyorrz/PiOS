@@ -379,6 +379,15 @@ button.danger {
     max(16px, var(--safe-bottom)) calc(16px + var(--safe-left));
 }
 
+/* Over the chat rather than in the dock's flow: the card is taller than the
+   composer and must not push the transcript around while it is open. */
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  background: color-mix(in srgb, var(--bg) 78%, transparent);
+}
+
 .centered {
   display: grid;
   /* minmax(0,1fr), not the default auto: an auto track is floored at the
@@ -589,6 +598,7 @@ button.danger {
 .sessions ul,
 .dirlist,
 .resumable,
+.models-list,
 .endpoints ul {
   list-style: none;
   margin: 0;
@@ -1461,7 +1471,13 @@ button.scroll-bottom {
 }
 
 
-.resumable > li {
+/* Same as the resume list: a filter sits above rows that scroll. */
+.picker.models .models-list {
+  margin-top: 4px;
+}
+
+.resumable > li,
+.models-list > li {
   min-width: 0;
 }
 

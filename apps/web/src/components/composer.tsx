@@ -5,6 +5,7 @@ import { browserStorage } from "../storage.ts";
 import { CommandMenu, slashQuery, useSlashCommands, type MenuEntry } from "./command-menu.tsx";
 import { PlusIcon, SendIcon, StopIcon } from "./icons.tsx";
 import { nativeCommandFor, openSelect, type NativeCommand } from "./native-commands.ts";
+import { ModelDialog } from "./model-dialog.tsx";
 import { ModelPicker } from "./model-picker.tsx";
 import { ThinkingPicker } from "./thinking-picker.tsx";
 
@@ -50,13 +51,15 @@ export function Composer({
   const [images, setImages] = useState<ImageContent[]>([]);
   const [active, setActive] = useState(0);
   const field = useRef<HTMLTextAreaElement>(null);
-  const modelSelect = useRef<HTMLSelectElement>(null);
   const thinkingSelect = useRef<HTMLSelectElement>(null);
+  const [modelDialog, setModelDialog] = useState(false);
 
   // The dock's own controls, named as pi names them, so `/model` does here
   // what it does in the terminal instead of reaching the model as text.
+  // `/model` is the whole catalogue, which needs a search field, so it opens
+  // a dialog rather than the dock's scoped select.
   const dockCommands: NativeCommand[] = [
-    { name: "model", description: "Switch models", run: () => openSelect(modelSelect.current) },
+    { name: "model", description: "Switch models", run: () => setModelDialog(true) },
   ];
   if ((thinkingLevels?.length ?? 0) > 1) {
     dockCommands.push({
@@ -146,6 +149,10 @@ export function Composer({
 
   return (
     <div className="composer">
+      {modelDialog ? (
+        <ModelDialog sessionId={sessionId} current={model} onClose={() => setModelDialog(false)} />
+      ) : null}
+
       <CommandMenu entries={matches} active={highlighted} onPick={choose} />
 
       {images.length > 0 ? (
@@ -218,7 +225,7 @@ export function Composer({
           <PlusIcon />
         </label>
 
-        <ModelPicker sessionId={sessionId} current={model} selectRef={modelSelect} />
+        <ModelPicker sessionId={sessionId} current={model} />
 
         <ThinkingPicker
           sessionId={sessionId}

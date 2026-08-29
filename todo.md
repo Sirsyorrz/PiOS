@@ -1,4 +1,3 @@
-- /model should be all, not scoped, probably worth showing our own modal rather than the native picker which we use for the input component
 - add missing native commands
 - show claude usage
 - when we reach the bottom of chat scroll, the arrow dissapears (correct), but then the scroll jumps

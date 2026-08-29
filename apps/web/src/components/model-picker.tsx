@@ -1,6 +1,6 @@
 import type { ModelListing } from "@pios/client-core";
 import type { ModelOption } from "@pios/protocol";
-import { useEffect, useState, type RefObject } from "react";
+import { useEffect, useState } from "react";
 import { useClient } from "../client-provider.tsx";
 
 /**
@@ -10,11 +10,9 @@ import { useClient } from "../client-provider.tsx";
  * can choose from, and it fits a native select. The full catalogue stays
  * behind `/model`, where a search field makes it usable.
  */
-export function ModelPicker({ sessionId, current, selectRef }: {
+export function ModelPicker({ sessionId, current }: {
   sessionId: string;
   current?: ModelOption;
-  /** Lets `/model` open the same control the dock shows. */
-  selectRef?: RefObject<HTMLSelectElement | null>;
 }) {
   const client = useClient();
   const [listing, setListing] = useState<ModelListing>(() => client.getModels(sessionId));
@@ -34,7 +32,11 @@ export function ModelPicker({ sessionId, current, selectRef }: {
     client.listModels(sessionId, { all: false });
   }, [client, sessionId]);
 
-  const models = [...listing.models];
+  // `/model` replaces the cached listing with the whole catalogue; the dock
+  // stays short by keeping only the scope out of it. A session without a
+  // configured scope has nothing marked, so there the catalogue is the list.
+  const scoped = listing.models.filter((m) => m.scoped);
+  const models = scoped.length > 0 ? scoped : [...listing.models];
   // The active model can sit outside the scope, e.g. picked through `/model`.
   // Without this the select would silently show something that is not running.
   if (current && !models.some((m) => m.provider === current.provider && m.modelId === current.modelId)) {
@@ -50,7 +52,6 @@ export function ModelPicker({ sessionId, current, selectRef }: {
 
   return (
     <select
-      ref={selectRef}
       className="ghost model-select"
       aria-label="model"
       value={value}

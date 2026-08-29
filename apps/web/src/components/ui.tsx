@@ -9,14 +9,16 @@ function withBase(base: string, className?: string): string {
  * A full-screen step: one card, centered. Every pre-chat screen (pairing,
  * pickers) is one of these, so they stay visually identical by construction.
  */
-export function ModalCard({ className, onSubmit, children }: {
+export function ModalCard({ className, overlay, onSubmit, children }: {
   className?: string;
+  /** Floats above the chat instead of replacing it, for in-session steps. */
+  overlay?: boolean;
   onSubmit?: (event: FormEvent) => void;
   children: ReactNode;
 }) {
   const cls = withBase("card", className);
   return (
-    <div className="screen centered">
+    <div className={overlay ? "screen centered overlay" : "screen centered"}>
       {onSubmit ? (
         <form className={cls} onSubmit={onSubmit}>
           {children}
