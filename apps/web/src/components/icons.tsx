@@ -34,6 +34,23 @@ export function EyeIcon(props: SVGProps<SVGSVGElement>) {
   );
 }
 
+export function CopyIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Svg {...props}>
+      <rect x="9" y="9" width="11" height="11" rx="2" />
+      <path d="M5 15a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2" />
+    </Svg>
+  );
+}
+
+export function CheckIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Svg {...props}>
+      <path d="M4.5 12.5 9.5 17.5 19.5 6.5" />
+    </Svg>
+  );
+}
+
 export function EyeOffIcon(props: SVGProps<SVGSVGElement>) {
   return (
     <Svg {...props}>

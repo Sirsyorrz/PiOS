@@ -1045,11 +1045,28 @@ button.danger {
   padding: 1px 5px;
 }
 
+.md-code-wrap {
+  position: relative;
+  margin: 0 0 12px;
+}
+
+/* The button sits outside the scroller so sideways scrolling never moves it. */
+.md-code-copy {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  /* Opaque enough that code scrolling underneath stays out of the glyph. */
+  background: var(--panel);
+}
+
 .md-code {
   background: rgba(0, 0, 0, 0.35);
   border-radius: 8px;
   padding: 10px 12px;
-  margin: 0 0 12px;
+  margin: 0;
   font-size: 12.5px;
   line-height: 1.5;
   /* Code is the one place indentation carries meaning, so it scrolls

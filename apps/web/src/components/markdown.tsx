@@ -1,5 +1,6 @@
-import { Fragment, type ReactNode } from "react";
+import { Fragment, type ReactNode, useEffect, useRef, useState } from "react";
 import { TranscriptImage } from "./image-view.tsx";
+import { CheckIcon, CopyIcon } from "./icons.tsx";
 
 /**
  * A deliberately small CommonMark subset: the shapes an agent actually emits
@@ -193,11 +194,7 @@ function renderBlocks(text: string): ReactNode[] {
   return parseBlocks(text).map((block, index) => {
     switch (block.kind) {
       case "code":
-        return (
-          <pre key={index} className="md-code" data-lang={block.lang || undefined}>
-            <code>{block.code}</code>
-          </pre>
-        );
+        return <CodeBlock key={index} lang={block.lang} code={block.code} />;
       case "heading": {
         const Tag = `h${Math.min(block.level + 2, 6)}` as "h3";
         return <Tag key={index} className="md-heading">{renderInline(block.text)}</Tag>;
@@ -275,6 +272,39 @@ function renderInline(text: string): ReactNode[] {
   }
   if (last < text.length) out.push(text.slice(last));
   return out.map((node, i) => typeof node === "string" ? <Fragment key={i}>{node}</Fragment> : node);
+}
+
+function CodeBlock({ lang, code }: { lang: string; code: string }) {
+  const [copied, setCopied] = useState(false);
+  const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  useEffect(() => () => clearTimeout(timer.current), []);
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(code);
+    } catch {
+      return;
+    }
+    setCopied(true);
+    clearTimeout(timer.current);
+    timer.current = setTimeout(() => setCopied(false), 1500);
+  };
+
+  return (
+    <div className="md-code-wrap">
+      <pre className="md-code" data-lang={lang || undefined}>
+        <code>{code}</code>
+      </pre>
+      <button
+        type="button"
+        className="icon sm ghost md-code-copy"
+        onClick={copy}
+        aria-label={copied ? "Copied" : "Copy code"}
+      >
+        {copied ? <CheckIcon width="15" height="15" /> : <CopyIcon width="15" height="15" />}
+      </button>
+    </div>
+  );
 }
 
 function Link({ href, children }: { href: string; children: ReactNode }) {
