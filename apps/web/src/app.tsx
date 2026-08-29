@@ -15,6 +15,7 @@ import { DirectoryPicker } from "./components/directory-picker.tsx";
 import { PairingScreen } from "./components/pairing-screen.tsx";
 import { ResumePicker } from "./components/resume-picker.tsx";
 import { SettingsIcon } from "./components/icons.tsx";
+import type { NativeCommand } from "./components/native-commands.ts";
 import { SessionList } from "./components/session-list.tsx";
 import { SettingsView } from "./components/settings-view.tsx";
 import { loadSettings, saveSettings, SettingsProvider, type Settings } from "./settings.ts";
@@ -158,6 +159,27 @@ function Workspace({ machine, settings, onSettingsChange, onMachineChange, onFor
     if (!session) return;
     const sent = client.setSessionTrust(session.sessionId, true);
     setNotice(sent ? null : "Not connected: the directory was not trusted.");
+  }
+
+  /**
+   * pi's terminal commands that map to a screen this app already has, named
+   * as pi names them so what is learned there works here.
+   */
+  function screenCommands(): NativeCommand[] {
+    const commands: NativeCommand[] = [
+      { name: "new", description: "Start a new session", run: () => setPicking(session?.cwd ?? "") },
+      { name: "resume", description: "Pick from previous sessions", run: () => setResuming(true) },
+      { name: "sessions", description: "Back to the session list", run: () => setActiveId(null) },
+      {
+        name: "settings",
+        description: "Machine, notifications, delivery",
+        run: () => setShowSettings(true),
+      },
+    ];
+    if (session && !session.trusted) {
+      commands.push({ name: "trust", description: "Trust this directory", run: trustActive });
+    }
+    return commands;
   }
 
   // Null means "not picking"; a string is the directory to open the picker in.
@@ -372,17 +394,7 @@ function Workspace({ machine, settings, onSettingsChange, onMachineChange, onFor
           deviceToken={machine.deviceToken}
           onBack={() => setActiveId(null)}
           onNewSession={() => setPicking(session?.cwd ?? "")}
-          // pi's terminal commands that map to a screen this app already has.
-          // Named as pi names them, so what is learned there works here.
-          nativeCommands={[
-            { name: "new", description: "Start a new session", run: () => setPicking(session?.cwd ?? "") },
-            { name: "resume", description: "Pick from previous sessions", run: () => setResuming(true) },
-            { name: "sessions", description: "Back to the session list", run: () => setActiveId(null) },
-            { name: "settings", description: "Machine, notifications, delivery", run: () => setShowSettings(true) },
-            ...(session && !session.trusted
-              ? [{ name: "trust", description: "Trust this directory", run: () => trustActive() }]
-              : []),
-          ]}
+          nativeCommands={screenCommands()}
           onTrust={trustActive}
         />
       ) : (

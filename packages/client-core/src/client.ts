@@ -21,6 +21,12 @@ import {
   type SupervisorState,
 } from "./supervisor.ts";
 
+/** A one-off command the daemon refused, with the id that identified it. */
+export interface CommandError {
+  commandId?: string;
+  message: string;
+}
+
 export interface ModelListing {
   models: ModelOption[];
   /** The full catalogue rather than the session's scope. */
@@ -79,7 +85,7 @@ export class PiosClient {
     (sessionId: string, commands: CommandOption[]) => void
   >();
   /** Failures of one-off commands, for the UI to say out loud. */
-  private readonly commandErrorHandlers = new Set<(error: { commandId?: string; message: string }) => void>();
+  private readonly commandErrorHandlers = new Set<(error: CommandError) => void>();
   private lastTransport: SupervisorState["transport"] = "idle";
 
   constructor(options: PiosClientOptions) {
@@ -326,7 +332,7 @@ export class PiosClient {
   }
 
   /** Notifies on a rejected one-off command. Returns an unsubscribe. */
-  onCommandError(handler: (error: { commandId?: string; message: string }) => void): () => void {
+  onCommandError(handler: (error: CommandError) => void): () => void {
     this.commandErrorHandlers.add(handler);
     return () => this.commandErrorHandlers.delete(handler);
   }

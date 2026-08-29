@@ -12,6 +12,21 @@ export interface NativeCommand {
   run: () => void;
 }
 
+/**
+ * The command a finished line invokes, or undefined when it is a prompt.
+ *
+ * One rule for both paths into a command: completing it in the menu and
+ * sending the typed line must not disagree about what `/settings` means.
+ */
+export function nativeCommandFor(
+  text: string,
+  commands: NativeCommand[],
+): NativeCommand | undefined {
+  const match = /^\/(\S+)$/.exec(text.trim());
+  if (!match) return undefined;
+  return commands.find((command) => command.name === match[1]);
+}
+
 /** Opens a native select from a command, since there is nothing to tap. */
 export function openSelect(select: HTMLSelectElement | null): void {
   if (!select) return;

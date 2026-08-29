@@ -4,7 +4,7 @@ import { useSettings } from "../settings.ts";
 import { browserStorage } from "../storage.ts";
 import { CommandMenu, slashQuery, useSlashCommands, type MenuEntry } from "./command-menu.tsx";
 import { PlusIcon, SendIcon, StopIcon } from "./icons.tsx";
-import { openSelect, type NativeCommand } from "./native-commands.ts";
+import { nativeCommandFor, openSelect, type NativeCommand } from "./native-commands.ts";
 import { ModelPicker } from "./model-picker.tsx";
 import { ThinkingPicker } from "./thinking-picker.tsx";
 
@@ -68,8 +68,12 @@ export function Composer({
 
   // A pi command is an ordinary prompt; the menu only helps write one. A
   // native command never becomes text at all.
+  const localCommands = [...nativeCommands, ...dockCommands];
   const query = slashQuery(text);
-  const matches = useSlashCommands(sessionId, query, [...nativeCommands, ...dockCommands]);
+  const matches = useSlashCommands(sessionId, query, localCommands);
+  // The list shrinks under the cursor when pi's answer arrives, so the
+  // highlight is clamped where it is read rather than where it is set.
+  const highlighted = Math.min(active, Math.max(matches.length - 1, 0));
 
   // One line until there is more to show: a tall empty box eats transcript on
   // a phone. The height has to be reset before it is read, or it only grows.
@@ -98,7 +102,9 @@ export function Composer({
   function edit(value: string) {
     setText(value);
     setActive(0);
-    browserStorage.set(DRAFT_PREFIX + sessionId, value);
+    const key = DRAFT_PREFIX + sessionId;
+    if (value) browserStorage.set(key, value);
+    else browserStorage.remove(key);
   }
 
   /** Runs a native command, or completes a pi one: most take arguments. */
@@ -115,12 +121,19 @@ export function Composer({
   function send() {
     const trimmed = text.trim();
     if (!trimmed && images.length === 0) return;
+    // `/settings` is an app screen, not something the model should be told
+    // about, however the line was finished.
+    const native = nativeCommandFor(trimmed, localCommands);
+    if (native) {
+      edit("");
+      native.run();
+      return;
+    }
     // Mandatory while the agent streams, ignored otherwise; sending it always
     // is simpler than tracking who won the race with `agent_settled`.
     onSend(trimmed, images, running ? steeringMode : undefined);
-    setText("");
+    edit("");
     setImages([]);
-    browserStorage.remove(DRAFT_PREFIX + sessionId);
   }
 
   async function attach(files: Iterable<File> | null) {
@@ -133,7 +146,7 @@ export function Composer({
 
   return (
     <div className="composer">
-      <CommandMenu entries={matches} active={active} onPick={choose} />
+      <CommandMenu entries={matches} active={highlighted} onPick={choose} />
 
       {images.length > 0 ? (
         <div className="attachments">
@@ -165,6 +178,12 @@ export function Composer({
           }
         }}
         onKeyDown={(e) => {
+          // Checked before the menu: an explicit send is never a completion.
+          if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+            e.preventDefault();
+            send();
+            return;
+          }
           if (matches.length > 0) {
             if (e.key === "ArrowDown" || e.key === "ArrowUp") {
               e.preventDefault();
@@ -176,13 +195,9 @@ export function Composer({
             // rarely what was meant, and sending an unknown one just errors.
             if (e.key === "Tab" || e.key === "Enter") {
               e.preventDefault();
-              choose(matches[Math.min(active, matches.length - 1)]!);
+              choose(matches[highlighted]!);
               return;
             }
-          }
-          if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-            e.preventDefault();
-            send();
           }
         }}
       />

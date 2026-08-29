@@ -146,8 +146,7 @@ export const CommandOptionSchema = z.looseObject({
   name: z.string(),
   description: z.string().optional(),
   source: z.enum(["extension", "prompt", "skill"]).optional(),
-  /** Provenance. `location` is the older shape, `sourceInfo` the current one. */
-  location: z.string().optional(),
+  /** Provenance, normalised by the host across pi's shapes for it. */
   scope: z.string().optional(),
   path: z.string().optional(),
 });
