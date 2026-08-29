@@ -1058,8 +1058,7 @@ button.danger {
   width: 26px;
   height: 26px;
   border-radius: 6px;
-  /* Opaque enough that code scrolling underneath stays out of the glyph. */
-  background: var(--panel);
+  background: none;
 }
 
 .md-code {
