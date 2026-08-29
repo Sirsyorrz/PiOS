@@ -10,7 +10,7 @@ import { Composer } from "./composer.tsx";
 import type { NativeCommand } from "./native-commands.ts";
 import { sessionState } from "../session-status.ts";
 import { DialogSheet } from "./dialog-sheet.tsx";
-import { ChevronLeftIcon, PlusIcon } from "./icons.tsx";
+import { ChevronDownIcon, ChevronLeftIcon, PlusIcon } from "./icons.tsx";
 import { MessageBubble, StreamingBubble } from "./message.tsx";
 
 /** Extension widgets for one slot. pi defaults an unplaced widget above. */
@@ -150,6 +150,18 @@ export function ChatView({
       </div>
 
       <div className="dock" ref={dock}>
+      {/* Only while the reader is away from the tail: at the bottom it would
+          be a button that does nothing. */}
+      {transcript.atBottom ? null : (
+        <button
+          type="button"
+          className="scroll-bottom icon"
+          onClick={transcript.scrollToBottom}
+          aria-label="scroll to latest"
+        >
+          <ChevronDownIcon />
+        </button>
+      )}
       {view && view.presentation.status.length > 0 ? (
         <div className="ext-status row">
           {view.presentation.status.map((item) => (
