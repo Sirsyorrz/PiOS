@@ -1,2 +1,8 @@
-- tree picker
+- /model should be all, not scoped, probably worth showing our own modal rather than the native picker which we use for the input component
+- add missing native commands
+- show claude usage
+- when we reach the bottom of chat scroll, the arrow dissapears (correct), but then the scroll jumps
+- /tree functionality, touch and hold on a sent message in chat to branch from there
+- terminal
+- git integration
 - reference paseo, what can we learn/improve, can we relay, rather than tailscale?
