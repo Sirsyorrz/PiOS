@@ -885,9 +885,15 @@ button.danger {
 }
 
 /* Sits above the composer and centred, so it reads as belonging to the
-   transcript it scrolls rather than to the input it floats over. */
+   transcript it scrolls rather than to the input it floats over. Out of the
+   dock's flow: it appears and disappears mid-scroll, and in flow that would
+   resize the dock, hence the transcript's bottom padding, hence its scroll. */
 button.scroll-bottom {
-  align-self: center;
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  margin-bottom: 8px;
+  transform: translateX(-50%);
   border-radius: 50%;
   /* Transparent: the transcript reads straight through it, so it never hides
      the line it is offering to scroll to. */
