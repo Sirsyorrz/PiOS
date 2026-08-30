@@ -166,7 +166,7 @@ export abstract class BaseSession {
    * Published as a status event because that is what clients turn into a fresh
    * summary; a model switch from one device has to reach the others.
    */
-  protected setModelInfo(model: ModelOption | undefined): void {
+  protected recordModel(model: ModelOption | undefined): void {
     if (model?.provider === this.model?.provider && model?.modelId === this.model?.modelId) return;
     this.model = model;
     this.publish({ type: "status", status: this.status });
@@ -178,7 +178,7 @@ export abstract class BaseSession {
    * Published like the model switch: pi clamps the level when the model
    * changes, so a client that never asked still has to hear about it.
    */
-  protected setThinkingInfo(level: string | undefined, levels?: string[]): void {
+  protected recordThinking(level: string | undefined, levels?: string[]): void {
     const nextLevels = levels ?? this.thinkingLevels;
     const same =
       level === this.thinkingLevel &&

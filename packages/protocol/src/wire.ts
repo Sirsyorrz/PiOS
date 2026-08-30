@@ -177,7 +177,7 @@ export const SessionSummarySchema = z.object({
   preview: z.string().optional(),
   /** The model the agent is on right now, absent when pi has not resolved one. */
   model: ModelOptionSchema.optional(),
-  /** Effective thinking level, absent when pi has not reported one. */
+  /** Effective thinking level, absent until pi resolves one. */
   thinkingLevel: z.string().optional(),
   /**
    * Levels the current model accepts. Model-dependent, so it travels with the

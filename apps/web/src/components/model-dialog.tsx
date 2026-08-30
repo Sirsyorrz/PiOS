@@ -48,7 +48,7 @@ export function ModelDialog({ sessionId, current, onClose }: {
       )
     : listing.models;
 
-  function choose(model: ModelOption) {
+  function chooseModel(model: ModelOption) {
     client.setModel(sessionId, model.provider, model.modelId);
     onClose();
   }
@@ -77,7 +77,7 @@ export function ModelDialog({ sessionId, current, onClose }: {
               <li key={`${model.provider}/${model.modelId}`}>
                 <ListRowButton
                   className={active ? "model active" : "model"}
-                  onClick={() => choose(model)}
+                  onClick={() => chooseModel(model)}
                   trailing={active ? <span className="status running">active</span> : undefined}
                 >
                   <span className="name line">{model.name}</span>

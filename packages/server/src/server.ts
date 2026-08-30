@@ -4,7 +4,6 @@ import { WebSocketServer } from "ws";
 import {
   createSessionLister,
   SessionRegistry,
-  subprocessHost,
   type SessionHost,
   type SessionLister,
 } from "@pios/pi-host";
@@ -13,16 +12,18 @@ import { CommandLedger } from "./dedupe.ts";
 import { Connection } from "./connection.ts";
 import { handleRequest } from "./http-routes.ts";
 import { advertisedEndpoints, type Endpoint } from "./endpoints.ts";
+import { createSessionHost } from "./session-host.ts";
 import { SettleNotifier } from "./notifier.ts";
 import { PushStore } from "./push.ts";
 import { authStorePath, defaultConfig, pushStorePath, type ServerConfig } from "./config.ts";
 
 export interface PiosServerOptions extends Partial<ServerConfig> {
   /** Overridable so tests can run without spawning real pi. */
-  host_?: SessionHost;
+  sessionHost?: SessionHost;
+  /** pi's version, reported in `welcome` so a client can spot a mismatch. */
   piVersion?: string;
   /** Overridable so tests do not touch the real session directory. */
-  lister_?: SessionLister;
+  lister?: SessionLister;
 }
 
 export class PiosServer {
@@ -45,7 +46,7 @@ export class PiosServer {
 
     this.auth = new AuthStore(authStorePath(this.config));
     this.lister =
-      options.lister_ ?? createSessionLister({ sessionDir: this.config.sessionDir });
+      options.lister ?? createSessionLister({ sessionDir: this.config.sessionDir });
     this.push = new PushStore(pushStorePath(this.config), this.config.pushSubject);
     this.notifier = new SettleNotifier({
       send: async (notification) => {
@@ -58,7 +59,7 @@ export class PiosServer {
       watchers: (sessionId) => this.watchers(sessionId),
     });
     this.registry = new SessionRegistry(
-      options.host_ ?? subprocessHost({ sessionDir: this.config.sessionDir }),
+      options.sessionHost ?? createSessionHost(this.config),
       {
         onCreate: (session) => this.notifier.attach(session),
         onDispose: (id) => this.notifier.release(id),
@@ -101,7 +102,7 @@ export class PiosServer {
     return typeof address === "object" && address ? address.port : this.config.port;
   }
 
-  /** Devices with a client currently looking at the session. */
+  /** Devices whose client is watching the session right now. */
   private watchers(sessionId: string): Set<string> {
     const found = new Set<string>();
     for (const connection of this.connections) {

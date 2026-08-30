@@ -25,15 +25,6 @@ function Svg({ children, ...rest }: SVGProps<SVGSVGElement>) {
   );
 }
 
-export function EyeIcon(props: SVGProps<SVGSVGElement>) {
-  return (
-    <Svg {...props}>
-      <path d="M2 12s3.6-6.5 10-6.5S22 12 22 12s-3.6 6.5-10 6.5S2 12 2 12Z" />
-      <circle cx="12" cy="12" r="2.75" />
-    </Svg>
-  );
-}
-
 export function CopyIcon(props: SVGProps<SVGSVGElement>) {
   return (
     <Svg {...props}>
@@ -47,17 +38,6 @@ export function CheckIcon(props: SVGProps<SVGSVGElement>) {
   return (
     <Svg {...props}>
       <path d="M4.5 12.5 9.5 17.5 19.5 6.5" />
-    </Svg>
-  );
-}
-
-export function EyeOffIcon(props: SVGProps<SVGSVGElement>) {
-  return (
-    <Svg {...props}>
-      <path d="M3 3l18 18" />
-      <path d="M10.6 6.7A9.9 9.9 0 0 1 12 5.5c6.4 0 10 6.5 10 6.5a17 17 0 0 1-3.4 4.1" />
-      <path d="M6.4 8A17 17 0 0 0 2 12s3.6 6.5 10 6.5c1.5 0 2.8-.3 4-.9" />
-      <path d="M9.9 9.9a2.75 2.75 0 0 0 3.9 3.9" />
     </Svg>
   );
 }

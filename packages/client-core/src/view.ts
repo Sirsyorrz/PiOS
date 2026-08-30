@@ -53,56 +53,23 @@ export function sessionView(
   const seen = new Set<string>();
   const tools = new Map<string, ToolExecution>();
 
-  const push = (message: AgentMessage, renderKey: string) => {
+  const addMessage = (message: AgentMessage, renderKey: string) => {
     // Deduped on content, keyed for rendering on whichever source arrived
     // first, so a persisted entry and its live event collapse into one item.
     const key = messageKey(message);
     if (seen.has(key)) return;
     seen.add(key);
-    // Arguments live on the assistant turn that made the call, and the result
-    // arrives as a separate entry. Without this the card from a resumed
-    // session shows output with no command.
-    if (message.role === "assistant") {
-      for (const part of message.content) {
-        if (part.type !== "toolCall") continue;
-        const existing = tools.get(part.id);
-        tools.set(part.id, {
-          toolCallId: part.id,
-          toolName: part.name,
-          args: part.arguments,
-          result: existing?.result,
-          isError: existing?.isError ?? false,
-          status: existing?.status ?? "running",
-          startedAt: existing?.startedAt,
-          durationMs: existing?.durationMs,
-        });
-      }
-    }
+    if (message.role === "assistant") recordToolCalls(tools, message);
     // Tool results belong on their tool card, not as a bubble of their own.
-    if (message.role === "toolResult") {
-      const existing = tools.get(message.toolCallId);
-      tools.set(message.toolCallId, {
-        toolCallId: message.toolCallId,
-        toolName: message.toolName,
-        args: existing?.args,
-        result: { content: message.content },
-        isError: message.isError ?? false,
-        status: "done",
-        startedAt: existing?.startedAt,
-        // Absent for a call rebuilt from history: the session file records no
-        // timings, so a resync loses them rather than inventing one.
-        durationMs: existing?.durationMs,
-      });
-      return;
-    }
+    if (message.role === "toolResult") return recordToolResult(tools, message);
     items.push({ kind: "message", key: renderKey, message });
   };
 
   for (const entry of cached) {
     if (!entry.message) continue;
-    push(entry.message, `e:${entry.id}`);
+    addMessage(entry.message, `e:${entry.id}`);
   }
-  for (const message of transcript.messages) push(message, messageKey(message));
+  for (const message of transcript.messages) addMessage(message, messageKey(message));
   // Live state wins over anything reconstructed from history: it has args and
   // partial output that a persisted tool result does not.
   for (const tool of transcript.toolExecutions) {
@@ -150,6 +117,53 @@ export function sessionView(
     notices: store.openNotices(sessionId),
     status: transcript.status,
   };
+}
+
+/**
+ * Files the arguments a turn's tool calls were made with.
+ *
+ * They live on the assistant turn, while the result arrives as a separate
+ * entry. Without this the card from a resumed session shows output with no
+ * command.
+ */
+function recordToolCalls(
+  tools: Map<string, ToolExecution>,
+  message: Extract<AgentMessage, { role: "assistant" }>,
+): void {
+  for (const part of message.content) {
+    if (part.type !== "toolCall") continue;
+    const existing = tools.get(part.id);
+    tools.set(part.id, {
+      toolCallId: part.id,
+      toolName: part.name,
+      args: part.arguments,
+      result: existing?.result,
+      isError: existing?.isError ?? false,
+      status: existing?.status ?? "running",
+      startedAt: existing?.startedAt,
+      durationMs: existing?.durationMs,
+    });
+  }
+}
+
+/** Files a finished call's output on the card its arguments already sit on. */
+function recordToolResult(
+  tools: Map<string, ToolExecution>,
+  message: Extract<AgentMessage, { role: "toolResult" }>,
+): void {
+  const existing = tools.get(message.toolCallId);
+  tools.set(message.toolCallId, {
+    toolCallId: message.toolCallId,
+    toolName: message.toolName,
+    args: existing?.args,
+    result: { content: message.content },
+    isError: message.isError ?? false,
+    status: "done",
+    startedAt: existing?.startedAt,
+    // Absent for a call rebuilt from history: the session file records no
+    // timings, so a resync loses them rather than inventing one.
+    durationMs: existing?.durationMs,
+  });
 }
 
 /**

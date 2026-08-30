@@ -1,6 +1,7 @@
 import {
   WIRE_VERSION,
   isDialogRequest,
+  type ClientFrame,
   type ImageContent,
   type CommandOption,
   type ModelOption,
@@ -20,6 +21,13 @@ import {
   type SupervisorOptions,
   type SupervisorState,
 } from "./supervisor.ts";
+
+/** A command frame minus the envelope the client fills in for every send. */
+type Command = ClientFrame extends infer Frame
+  ? Frame extends { commandId: string }
+    ? Omit<Frame, "v" | "commandId">
+    : never
+  : never;
 
 /** A one-off command the daemon refused, with the id that identified it. */
 export interface CommandError {
@@ -166,16 +174,17 @@ export class PiosClient {
   ): boolean {
     const commandId = this.generateId();
     if (onCreated) this.pendingCreates.set(commandId, onCreated);
-    const sent = this.supervisor.send({
-      v: WIRE_VERSION,
-      type: "create_session",
+    const sent = this.send(
+      {
+        type: "create_session",
+        cwd: args.cwd,
+        name: args.name,
+        trustProject: args.trustProject ?? false,
+        model: args.model,
+        resumeFrom: args.resumeFrom,
+      },
       commandId,
-      cwd: args.cwd,
-      name: args.name,
-      trustProject: args.trustProject ?? false,
-      model: args.model,
-      resumeFrom: args.resumeFrom,
-    });
+    );
     if (!sent) this.pendingCreates.delete(commandId);
     return sent;
   }
@@ -187,13 +196,7 @@ export class PiosClient {
    * listing, and a stale one is worse than asking again.
    */
   listResumable(args: { cwd?: string; limit?: number } = {}): boolean {
-    return this.supervisor.send({
-      v: WIRE_VERSION,
-      type: "list_resumable",
-      commandId: this.generateId(),
-      cwd: args.cwd,
-      limit: args.limit,
-    });
+    return this.send({ type: "list_resumable", cwd: args.cwd, limit: args.limit });
   }
 
   getResumable(): ResumableSessionWire[] {
@@ -213,13 +216,7 @@ export class PiosClient {
    * replaying.
    */
   listModels(sessionId: string, options: { all?: boolean } = {}): boolean {
-    return this.supervisor.send({
-      v: WIRE_VERSION,
-      type: "list_models",
-      commandId: this.generateId(),
-      sessionId,
-      all: options.all ?? false,
-    });
+    return this.send({ type: "list_models", sessionId, all: options.all ?? false });
   }
 
   getModels(sessionId: string): ModelListing {
@@ -234,12 +231,7 @@ export class PiosClient {
    * no answer and the list is re-asked rather than replayed.
    */
   listCommands(sessionId: string): boolean {
-    return this.supervisor.send({
-      v: WIRE_VERSION,
-      type: "list_commands",
-      commandId: this.generateId(),
-      sessionId,
-    });
+    return this.send({ type: "list_commands", sessionId });
   }
 
   getCommands(sessionId: string): CommandOption[] {
@@ -263,14 +255,7 @@ export class PiosClient {
    * not just the one that asked.
    */
   setModel(sessionId: string, provider: string, modelId: string): boolean {
-    return this.supervisor.send({
-      v: WIRE_VERSION,
-      type: "set_model",
-      commandId: this.generateId(),
-      sessionId,
-      provider,
-      modelId,
-    });
+    return this.send({ type: "set_model", sessionId, provider, modelId });
   }
 
   /**
@@ -280,13 +265,7 @@ export class PiosClient {
    * is loaded now, so replaying a stale choice after a reconnect is wrong.
    */
   setThinkingLevel(sessionId: string, level: string): boolean {
-    return this.supervisor.send({
-      v: WIRE_VERSION,
-      type: "set_thinking_level",
-      commandId: this.generateId(),
-      sessionId,
-      level,
-    });
+    return this.send({ type: "set_thinking_level", sessionId, level });
   }
 
   /**
@@ -297,13 +276,7 @@ export class PiosClient {
    * event once pi is back.
    */
   setSessionTrust(sessionId: string, trustProject: boolean): boolean {
-    return this.supervisor.send({
-      v: WIRE_VERSION,
-      type: "set_session_trust",
-      commandId: this.generateId(),
-      sessionId,
-      trustProject,
-    });
+    return this.send({ type: "set_session_trust", sessionId, trustProject });
   }
 
   /**
@@ -320,10 +293,8 @@ export class PiosClient {
     appState: "active" | "inactive" | "background";
     sessionIds?: string[];
   }): boolean {
-    return this.supervisor.send({
-      v: WIRE_VERSION,
+    return this.send({
       type: "activity",
-      commandId: this.generateId(),
       visible: activity.visible,
       focused: activity.focused,
       appState: activity.appState,
@@ -343,20 +314,11 @@ export class PiosClient {
     this.commands.delete(sessionId);
     this.sessions.clear(sessionId);
     this.supervisor.forgetSession(sessionId);
-    return this.supervisor.send({
-      v: WIRE_VERSION,
-      type: "dispose_session",
-      commandId: this.generateId(),
-      sessionId,
-    });
+    return this.send({ type: "dispose_session", sessionId });
   }
 
   refreshSessions(): boolean {
-    return this.supervisor.send({
-      v: WIRE_VERSION,
-      type: "list_sessions",
-      commandId: this.generateId(),
-    });
+    return this.send({ type: "list_sessions" });
   }
 
   /**
@@ -366,12 +328,7 @@ export class PiosClient {
    * button that goes back to looking idle reads as "nothing happened".
    */
   interrupt(sessionId: string): boolean {
-    const sent = this.supervisor.send({
-      v: WIRE_VERSION,
-      type: "interrupt",
-      commandId: this.generateId(),
-      sessionId,
-    });
+    const sent = this.send({ type: "interrupt", sessionId });
     if (sent) this.sessions.setInterrupting(sessionId, true);
     return sent;
   }
@@ -387,14 +344,7 @@ export class PiosClient {
     requestId: string,
     answer: { value?: string; confirmed?: boolean; cancelled?: boolean },
   ): boolean {
-    const sent = this.supervisor.send({
-      v: WIRE_VERSION,
-      type: "extension_ui_response",
-      commandId: this.generateId(),
-      sessionId,
-      requestId,
-      ...answer,
-    });
+    const sent = this.send({ type: "extension_ui_response", sessionId, requestId, ...answer });
     if (sent) this.sessions.closeDialog(sessionId, requestId);
     return sent;
   }
@@ -407,12 +357,14 @@ export class PiosClient {
 
   unwatch(sessionId: string): void {
     this.subscribed.delete(sessionId);
-    this.supervisor.send({
-      v: WIRE_VERSION,
-      type: "unsubscribe",
-      commandId: this.generateId(),
-      sessionId,
-    });
+    this.send({ type: "unsubscribe", sessionId });
+  }
+
+  /** Stamps the wire envelope on a command and hands it to the supervisor. */
+  private send(command: Command, commandId: string = this.generateId()): boolean {
+    // The spread widens the union back to a plain object; the discriminant
+    // still comes from `Command`, so the frame is well formed by construction.
+    return this.supervisor.send({ ...command, v: WIRE_VERSION, commandId } as ClientFrame);
   }
 
   private onSupervisorState(state: SupervisorState): void {
@@ -446,20 +398,11 @@ export class PiosClient {
     const subscribeId = this.generateId();
     this.syncCommands.add(entriesId);
     this.syncCommands.add(subscribeId);
-    this.supervisor.send({
-      v: WIRE_VERSION,
-      type: "get_entries",
-      commandId: entriesId,
-      sessionId,
-      since: cursor ?? undefined,
-    });
-    this.supervisor.send({
-      v: WIRE_VERSION,
-      type: "subscribe",
-      commandId: subscribeId,
-      sessionId,
-      sinceSeq: this.sessions.lastSeq(sessionId),
-    });
+    this.send({ type: "get_entries", sessionId, since: cursor ?? undefined }, entriesId);
+    this.send(
+      { type: "subscribe", sessionId, sinceSeq: this.sessions.lastSeq(sessionId) },
+      subscribeId,
+    );
   }
 
   private onFrame(frame: Parameters<Parameters<ConnectionSupervisor["onFrame"]>[0]>[0]): void {

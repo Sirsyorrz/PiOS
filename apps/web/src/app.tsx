@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ClientProvider, useClient, useSupervisorState } from "./client-provider.tsx";
 import {
   activeMachine,
@@ -19,33 +19,10 @@ import type { NativeCommand } from "./components/native-commands.ts";
 import { SessionList } from "./components/session-list.tsx";
 import { SettingsView } from "./components/settings-view.tsx";
 import { loadSettings, saveSettings, SettingsProvider, type Settings } from "./settings.ts";
-import { loadSeen, markSeen, seedSeen } from "./seen.ts";
-import { browserStorage } from "./storage.ts";
-import { fetchHomeDir } from "./files.ts";
-import { refreshPush } from "./push.ts";
-
-/**
- * Session a notification tap asked for.
- *
- * Consumed once and stripped from the URL, so a relaunch from the home screen
- * does not keep reopening whatever was tapped days ago.
- */
-function deepLinkedSession(): string | null {
-  const requested = new URL(window.location.href).searchParams.get("session");
-  if (!requested) return null;
-  const url = new URL(window.location.href);
-  url.searchParams.delete("session");
-  window.history.replaceState(null, "", url.pathname + url.search + url.hash);
-  return requested;
-}
-
-// iOS evicts a backgrounded PWA and relaunches it from scratch, so the open
-// session has to be remembered somewhere durable or every app switch dumps
-// the user back on the session list.
-const activeSessionKey = (machineId: string) => `pios.active-session.${machineId}`;
-// The home directory costs an HTTP round trip to learn and never changes for
-// a machine, so caching it keeps the launch chat from arriving late.
-const homeDirKey = (machineId: string) => `pios.home-dir.${machineId}`;
+import { useUnreadMarks } from "./seen.ts";
+import { useAttentionReport } from "./attention.ts";
+import { useLaunchSession } from "./launch-session.ts";
+import { useKeepPushRegistered } from "./push.ts";
 
 export function App() {
   const [store, setStore] = useState<MachineStore>(loadMachines);
@@ -75,23 +52,23 @@ export function App() {
   return (
     <ClientProvider url={socketUrl(machine)} token={machine.deviceToken}>
       <SettingsProvider value={settings}>
-      <Workspace
-        machine={machine}
-        settings={settings}
-        onSettingsChange={setSettings}
-        onMachineChange={(next) =>
-          update({
-            machines: store.machines.map((m) => (m.id === next.id ? next : m)),
-            activeId: store.activeId,
-          })
-        }
-        onForget={() =>
-          update({
-            machines: store.machines.filter((m) => m.id !== machine.id),
-            activeId: null,
-          })
-        }
-      />
+        <Workspace
+          machine={machine}
+          settings={settings}
+          onSettingsChange={setSettings}
+          onMachineChange={(next) =>
+            update({
+              machines: store.machines.map((m) => (m.id === next.id ? next : m)),
+              activeId: store.activeId,
+            })
+          }
+          onForget={() =>
+            update({
+              machines: store.machines.filter((m) => m.id !== machine.id),
+              activeId: null,
+            })
+          }
+        />
       </SettingsProvider>
     </ClientProvider>
   );
@@ -106,52 +83,22 @@ function Workspace({ machine, settings, onSettingsChange, onMachineChange, onFor
 }) {
   const client = useClient();
   const state = useSupervisorState();
-  const [activeId, setActiveIdState] = useState<string | null>(() => {
-    const linked = deepLinkedSession();
-    // Remembered like any other opened session: iOS may relaunch this app cold
-    // moments later, and the query string is already gone by then.
-    if (linked) browserStorage.set(activeSessionKey(machine.id), linked);
-    return linked ?? browserStorage.get(activeSessionKey(machine.id));
-  });
-  // Launching into the session list is a dead end: the app is a chat client,
-  // so a launch that is not resuming a session opens one in the home
-  // directory instead. Once per launch only.
-  const autoOpened = useRef(false);
-  // Nothing below the splash is worth a flash of the session list first.
-  const [opening, setOpening] = useState(
-    () => !browserStorage.get(activeSessionKey(machine.id)),
+  const { activeId, setActiveId, opening } = useLaunchSession(machine, state, client);
+  const seen = useUnreadMarks(machine.id, state.sessions, state.sync === "synced", activeId);
+
+  // The directory the picker opens in; null closes it, empty lets the daemon
+  // choose where to start.
+  const [pickerStart, setPickerStart] = useState<string | null>(null);
+  const [resuming, setResuming] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  // Session commands are not queued, so a dropped one has to be said out loud.
+  const [notice, setNotice] = useState<string | null>(null);
+
+  const session = useMemo(
+    () => state.sessions.find((s) => s.sessionId === activeId) ?? null,
+    [state.sessions, activeId],
   );
-
-  function setActiveId(next: string | null) {
-    // Leaving a chat is a deliberate move to the session list; the launch
-    // auto-open must not drag the user straight back into a chat.
-    autoOpened.current = true;
-    const key = activeSessionKey(machine.id);
-    if (next) browserStorage.set(key, next);
-    else browserStorage.remove(key);
-    setActiveIdState(next);
-  }
-
-  /** Drops a session the user did not close, leaving auto-open free to run. */
-  function clearActive() {
-    browserStorage.remove(activeSessionKey(machine.id));
-    setActiveIdState(null);
-  }
-  const [seen, setSeen] = useState(() => loadSeen(machine.id));
-  // Sessions this client has never seen start out read, so first contact with
-  // a machine does not flag its whole history as freshly finished work.
-  useEffect(() => {
-    if (state.sync !== "synced") return;
-    setSeen(seedSeen(machine.id, state.sessions));
-  }, [machine.id, state.sync, state.sessions]);
-
-  // An open session is being read as it moves, so it is never unread. Marking
-  // on every update keeps the badge honest the moment the user leaves.
-  useEffect(() => {
-    if (!activeId) return;
-    const open = state.sessions.find((s) => s.sessionId === activeId);
-    if (open) setSeen(markSeen(machine.id, activeId, open.updatedAt));
-  }, [activeId, machine.id, state.sessions]);
+  const base = httpBase(machine);
 
   /** pi reads trust at launch, so the daemon relaunches this session in
    *  place. Same id, same transcript, nothing to switch to. */
@@ -167,7 +114,11 @@ function Workspace({ machine, settings, onSettingsChange, onMachineChange, onFor
    */
   function screenCommands(): NativeCommand[] {
     const commands: NativeCommand[] = [
-      { name: "new", description: "Start a new session", run: () => setPicking(session?.cwd ?? "") },
+      {
+        name: "new",
+        description: "Start a new session",
+        run: () => setPickerStart(session?.cwd ?? ""),
+      },
       { name: "resume", description: "Pick from previous sessions", run: () => setResuming(true) },
       { name: "sessions", description: "Back to the session list", run: () => setActiveId(null) },
       {
@@ -182,97 +133,8 @@ function Workspace({ machine, settings, onSettingsChange, onMachineChange, onFor
     return commands;
   }
 
-  // Null means "not picking"; a string is the directory to open the picker in.
-  const [picking, setPicking] = useState<string | null>(null);
-  const [resuming, setResuming] = useState(false);
-  const [showSettings, setShowSettings] = useState(false);
-  // Session commands are not queued, so a dropped one has to be said out loud.
-  const [notice, setNotice] = useState<string | null>(null);
-
-  // A restored session can be gone by the time the daemon answers; only a
-  // live session list proves that, so nothing is dropped while offline.
-  useEffect(() => {
-    if (!activeId || state.sync !== "synced") return;
-    const known = state.sessions.find((s) => s.sessionId === activeId);
-    if (!known || known.status === "disposed") clearActive();
-  }, [activeId, state.sync, state.sessions]);
-
-  const session = useMemo(
-    () => state.sessions.find((s) => s.sessionId === activeId) ?? null,
-    [state.sessions, activeId],
-  );
-  const base = httpBase(machine);
-
-  useEffect(() => {
-    if (autoOpened.current || activeId || state.transport !== "connected" || !base) return;
-    autoOpened.current = true;
-    let live = true;
-    let opened = false;
-    const open = (home: string) => {
-      opened = true;
-      // An existing session in the same directory is the one the user means;
-      // a fresh one per launch would pile up empty transcripts.
-      const existing = state.sessions.find((s) => s.status !== "disposed" && s.cwd === home);
-      if (existing) return setActiveId(existing.sessionId);
-      client.createSession({ cwd: home, trustProject: true }, setActiveId);
-    };
-
-    const cached = browserStorage.get(homeDirKey(machine.id));
-    if (cached) open(cached);
-    void (async () => {
-      const home = await fetchHomeDir(base, machine.deviceToken);
-      if (home) browserStorage.set(homeDirKey(machine.id), home);
-      if (!live) return;
-      if (home && !cached) open(home);
-      setOpening(false);
-    })();
-    return () => {
-      live = false;
-      // A run torn down before it opened anything (a remount, or StrictMode's
-      // double invoke) must not consume the one auto-open of this launch.
-      if (!opened) autoOpened.current = false;
-    };
-  }, [activeId, state.transport, base, client, machine.deviceToken, machine.id]);
-
-  // Attention reporting. The daemon suppresses a notification for a session
-  // this client is visibly on, so the report has to be fresh (25s, under the
-  // daemon's 45s TTL) and immediate on every visibility change.
-  useEffect(() => {
-    const report = () => {
-      const visible = document.visibilityState === "visible";
-      client.reportActivity({
-        visible,
-        focused: visible && document.hasFocus(),
-        appState: visible ? "active" : "background",
-        sessionIds: activeId ? [activeId] : [],
-      });
-    };
-    report();
-    const timer = setInterval(report, 25_000);
-    document.addEventListener("visibilitychange", report);
-    return () => {
-      clearInterval(timer);
-      document.removeEventListener("visibilitychange", report);
-    };
-  }, [client, activeId, state.transport]);
-
-  // A push subscription can be dropped by the browser at any time, and the
-  // daemon's copy can outlive its data dir, so the endpoint is re-registered
-  // once per launch instead of only when the toggle is touched.
-  useEffect(() => {
-    if (!base) return;
-    void refreshPush(base, machine.deviceToken).catch(() => {
-      // Notifications are best effort; a failure here must not block the app.
-    });
-  }, [base, machine.deviceToken]);
-
-  // An unreachable daemon must not hold the splash forever: the session list
-  // still offers settings, pairing and the offline banners.
-  useEffect(() => {
-    if (!opening) return;
-    const timer = setTimeout(() => setOpening(false), 4000);
-    return () => clearTimeout(timer);
-  }, [opening]);
+  useAttentionReport(client, activeId, state.transport);
+  useKeepPushRegistered(base, machine.deviceToken);
 
   // A rejected session command has no other place to appear: it is not queued
   // and it does not make the transcript stale.
@@ -322,19 +184,19 @@ function Workspace({ machine, settings, onSettingsChange, onMachineChange, onFor
     );
   }
 
-  if (picking !== null && base) {
+  if (pickerStart !== null && base) {
     return (
       <DirectoryPicker
         baseUrl={base}
         token={machine.deviceToken}
-        startPath={picking || null}
-        onCancel={() => setPicking(null)}
+        startPath={pickerStart || null}
+        onCancel={() => setPickerStart(null)}
         onPick={(cwd, trustProject) => {
           // Opened as soon as the daemon names it: starting a session and
           // being left on the list is not what the tap asked for.
           const sent = client.createSession({ cwd, trustProject }, setActiveId);
           setNotice(sent ? null : "Not connected: the session was not started.");
-          setPicking(null);
+          setPickerStart(null);
         }}
       />
     );
@@ -370,13 +232,12 @@ function Workspace({ machine, settings, onSettingsChange, onMachineChange, onFor
           </p>
         ) : null}
 
-
         <SessionList
           sessions={state.sessions.filter((s) => s.status !== "disposed")}
           activeId={activeId}
           seen={seen}
           onSelect={setActiveId}
-          onCreate={() => setPicking("")}
+          onCreate={() => setPickerStart("")}
           onResume={() => setResuming(true)}
           onDispose={(sessionId) => {
             client.disposeSession(sessionId);
@@ -393,7 +254,7 @@ function Workspace({ machine, settings, onSettingsChange, onMachineChange, onFor
           baseUrl={base}
           deviceToken={machine.deviceToken}
           onBack={() => setActiveId(null)}
-          onNewSession={() => setPicking(session?.cwd ?? "")}
+          onNewSession={() => setPickerStart(session?.cwd ?? "")}
           nativeCommands={screenCommands()}
           onTrust={trustActive}
         />

@@ -43,10 +43,10 @@ export function ModelPicker({ sessionId, current }: {
     models.unshift(current);
   }
 
-  const value = current ? key(current) : "";
+  const value = current ? modelKey(current) : "";
 
-  function choose(next: string) {
-    const model = models.find((m) => key(m) === next);
+  function chooseModel(next: string) {
+    const model = models.find((m) => modelKey(m) === next);
     if (model) client.setModel(sessionId, model.provider, model.modelId);
   }
 
@@ -55,11 +55,11 @@ export function ModelPicker({ sessionId, current }: {
       className="ghost model-select"
       aria-label="model"
       value={value}
-      onChange={(event) => choose(event.target.value)}
+      onChange={(event) => chooseModel(event.target.value)}
     >
       {current ? null : <option value="">Model</option>}
       {models.map((model) => (
-        <option key={key(model)} value={key(model)}>
+        <option key={modelKey(model)} value={modelKey(model)}>
           {model.name}
         </option>
       ))}
@@ -67,6 +67,6 @@ export function ModelPicker({ sessionId, current }: {
   );
 }
 
-function key(model: ModelOption): string {
+function modelKey(model: ModelOption): string {
   return `${model.provider}/${model.modelId}`;
 }

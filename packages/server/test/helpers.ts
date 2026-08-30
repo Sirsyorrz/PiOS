@@ -23,13 +23,13 @@ export interface Harness {
 export async function startHarness(lister?: SessionLister): Promise<Harness> {
   const dir = mkdtempSync(join(tmpdir(), "pios-server-"));
   const server = new PiosServer({
-    lister_: lister,
+    lister,
     host: "127.0.0.1",
     port: 0,
     dataDir: join(dir, "data"),
     sessionDir: join(dir, "sessions"),
     helloTimeoutMs: 300,
-    host_: subprocessHost({
+    sessionHost: subprocessHost({
       command: process.execPath,
       argsPrefix: [FAKE_PI],
       sessionDir: join(dir, "sessions"),

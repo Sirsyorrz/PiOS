@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { browserStorage } from "./storage.ts";
 
 /**
@@ -7,16 +8,16 @@ import { browserStorage } from "./storage.ts";
  * like one the user read and left: both are `idle`. Storing the `updatedAt`
  * the user last saw is what separates "done, unread" from "done, seen".
  */
-const KEY = "pios.seen.v1";
+const STORAGE_PREFIX = "pios.seen.v1";
 
 type SeenMap = Record<string, number>;
 
-function key(machineId: string) {
-  return `${KEY}.${machineId}`;
+function storageKey(machineId: string) {
+  return `${STORAGE_PREFIX}.${machineId}`;
 }
 
 export function loadSeen(machineId: string): SeenMap {
-  const raw = browserStorage.get(key(machineId));
+  const raw = browserStorage.get(storageKey(machineId));
   if (!raw) return {};
   try {
     const parsed: unknown = JSON.parse(raw);
@@ -36,7 +37,7 @@ export function markSeen(machineId: string, sessionId: string, updatedAt: number
   const seen = loadSeen(machineId);
   if (seen[sessionId] === updatedAt) return seen;
   const next = { ...seen, [sessionId]: updatedAt };
-  browserStorage.set(key(machineId), JSON.stringify(next));
+  browserStorage.set(storageKey(machineId), JSON.stringify(next));
   return next;
 }
 
@@ -62,7 +63,7 @@ export function seedSeen(
     }
   }
   if (!changed) return seen;
-  browserStorage.set(key(machineId), JSON.stringify(next));
+  browserStorage.set(storageKey(machineId), JSON.stringify(next));
   return next;
 }
 
@@ -70,4 +71,32 @@ export function isUnseen(seen: SeenMap, sessionId: string, updatedAt: number): b
   const at = seen[sessionId];
   // Unknown means not yet seeded, not new work; treat it as read.
   return at !== undefined && at < updatedAt;
+}
+
+/**
+ * Keeps the read marks in step with the session list.
+ *
+ * The open session is being read as it moves, so it is never unread; marking
+ * on every update keeps the badge honest the moment the user leaves it.
+ */
+export function useUnreadMarks(
+  machineId: string,
+  sessions: readonly { sessionId: string; updatedAt: number }[],
+  synced: boolean,
+  activeId: string | null,
+): SeenMap {
+  const [seen, setSeen] = useState(() => loadSeen(machineId));
+
+  useEffect(() => {
+    if (!synced) return;
+    setSeen(seedSeen(machineId, sessions));
+  }, [machineId, synced, sessions]);
+
+  useEffect(() => {
+    if (!activeId) return;
+    const open = sessions.find((s) => s.sessionId === activeId);
+    if (open) setSeen(markSeen(machineId, activeId, open.updatedAt));
+  }, [activeId, machineId, sessions]);
+
+  return seen;
 }

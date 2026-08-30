@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 /**
  * Web Push registration for the PWA.
  *
@@ -128,4 +129,14 @@ function urlBase64ToUint8Array(value: string): Uint8Array {
   const bytes = new Uint8Array(binary.length);
   for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
   return bytes;
+}
+
+/** Re-registers this device's endpoint once per launch. Best effort. */
+export function useKeepPushRegistered(baseUrl: string | null, token: string): void {
+  useEffect(() => {
+    if (!baseUrl) return;
+    void refreshPush(baseUrl, token).catch(() => {
+      // Notifications are best effort; a failure here must not block the app.
+    });
+  }, [baseUrl, token]);
 }

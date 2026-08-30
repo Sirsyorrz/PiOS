@@ -47,10 +47,14 @@ export function activeMachine(store: MachineStore): Machine | null {
   return store.machines.find((m) => m.id === store.activeId) ?? null;
 }
 
+/** The route to try first: the one last known to work, else whatever exists. */
+function preferredEndpoint(machine: Machine): Endpoint | undefined {
+  return machine.endpoints.find((e) => e.key === machine.preferredKey) ?? machine.endpoints[0];
+}
+
 /** The URL the supervisor should dial for a machine. */
 export function socketUrl(machine: Machine): string | null {
-  const endpoint =
-    machine.endpoints.find((e) => e.key === machine.preferredKey) ?? machine.endpoints[0];
+  const endpoint = preferredEndpoint(machine);
   if (!endpoint) return null;
   // A stored address can be malformed; a throw here would blank the whole app.
   let url: URL;
@@ -64,10 +68,9 @@ export function socketUrl(machine: Machine): string | null {
   return url.toString();
 }
 
+/** The base URL for this machine's HTTP routes: files, pairing, push. */
 export function httpBase(machine: Machine): string | null {
-  const endpoint =
-    machine.endpoints.find((e) => e.key === machine.preferredKey) ?? machine.endpoints[0];
-  return endpoint?.url ?? null;
+  return preferredEndpoint(machine)?.url ?? null;
 }
 
 export interface PairResult {

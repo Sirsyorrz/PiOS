@@ -128,7 +128,7 @@ export class InProcessSession extends BaseSession implements PiSession {
     this.sessionFile = agent.sessionFile;
     this.setLeafId(agent.sessionManager.getLeafId());
     this.unsubscribe = agent.subscribe((raw) => this.onAgentEvent(raw));
-    this.setModelInfo(this.describe(agent.model));
+    this.recordModel(this.describe(agent.model));
     this.readThinking();
     this.setStatus(agent.isStreaming ? "running" : "idle");
   }
@@ -146,7 +146,7 @@ export class InProcessSession extends BaseSession implements PiSession {
     // so the summary is refreshed from the agent rather than only on our own
     // set_model.
     if (event.type === "agent_start" || event.type === "agent_settled") {
-      this.setModelInfo(this.describe(this.agent?.model));
+      this.recordModel(this.describe(this.agent?.model));
       this.readThinking();
     }
     if (event.type === "message_end" || event.type === "agent_settled") {
@@ -214,14 +214,14 @@ export class InProcessSession extends BaseSession implements PiSession {
     if (!options.all && scoped.length > 0) {
       return { models: scoped.map((entry) => this.describe(entry.model)!), all: false };
     }
-    const keys = new Set(scoped.map((entry) => key(entry.model.provider, entry.model.id)));
+    const keys = new Set(scoped.map((entry) => modelKey(entry.model.provider, entry.model.id)));
     const available = (await agent.modelRuntime?.getAvailable()) ?? [];
     return {
       models: available.map((model) => ({
         provider: model.provider,
         modelId: model.id,
         name: model.name,
-        scoped: keys.has(key(model.provider, model.id)),
+        scoped: keys.has(modelKey(model.provider, model.id)),
       })),
       all: true,
     };
@@ -248,9 +248,9 @@ export class InProcessSession extends BaseSession implements PiSession {
     const agent = this.requireAgent();
     if (!agent.setModel) throw new Error("this host cannot switch models");
     const model = agent.modelRuntime?.getModel(provider, modelId);
-    if (!model) throw new Error(`unknown model ${key(provider, modelId)}`);
+    if (!model) throw new Error(`unknown model ${modelKey(provider, modelId)}`);
     await agent.setModel(model);
-    this.setModelInfo(this.describe(agent.model ?? model));
+    this.recordModel(this.describe(agent.model ?? model));
     // pi clamps the level to what the new model supports.
     this.readThinking();
   }
@@ -264,13 +264,14 @@ export class InProcessSession extends BaseSession implements PiSession {
 
   private readThinking(): void {
     const agent = this.agent;
-    this.setThinkingInfo(agent?.thinkingLevel, agent?.getAvailableThinkingLevels?.() ?? []);
+    this.recordThinking(agent?.thinkingLevel, agent?.getAvailableThinkingLevels?.() ?? []);
   }
 
   private describe(model: AgentModelLike | undefined): ModelOption | undefined {
     if (!model) return undefined;
+    const wanted = modelKey(model.provider, model.id);
     const scoped = (this.agent?.scopedModels ?? []).some(
-      (entry) => key(entry.model.provider, entry.model.id) === key(model.provider, model.id),
+      (entry) => modelKey(entry.model.provider, entry.model.id) === wanted,
     );
     return { provider: model.provider, modelId: model.id, name: model.name, scoped };
   }
@@ -364,7 +365,7 @@ function toCommandOption(
   };
 }
 
-function key(provider: string, modelId: string): string {
+function modelKey(provider: string, modelId: string): string {
   return `${provider}/${modelId}`;
 }
 

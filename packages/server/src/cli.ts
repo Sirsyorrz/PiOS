@@ -33,7 +33,7 @@ async function serve(): Promise<void> {
   const server = new PiosServer({ port, piVersion: piVersion() });
   await server.listen();
 
-  console.log(`pios-server listening on port ${server.port}`);
+  console.log(`pios-server listening on port ${server.port} (${server.config.sessionHostMode})`);
   for (const endpoint of server.endpoints(hostname())) {
     console.log(`  ${endpoint.key.padEnd(28)} ${endpoint.url}`);
   }

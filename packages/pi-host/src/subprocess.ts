@@ -173,7 +173,7 @@ export class SubprocessSession extends BaseSession implements PiSession {
         | { sessionFile?: string; isStreaming?: boolean; model?: RpcModel; thinkingLevel?: string }
         | undefined;
       this.sessionFile = data?.sessionFile;
-      this.setModelInfo(toModelOption(data?.model));
+      this.recordModel(toModelOption(data?.model));
       await this.refreshThinking(data?.thinkingLevel);
       if (data?.isStreaming) this.setStatus("running");
     }
@@ -370,7 +370,7 @@ export class SubprocessSession extends BaseSession implements PiSession {
   async setModel(provider: string, modelId: string): Promise<void> {
     const response = await this.request({ type: "set_model", provider, modelId });
     if (!response.success) throw new Error(response.error ?? "set_model failed");
-    this.setModelInfo(toModelOption(response.data as RpcModel | undefined));
+    this.recordModel(toModelOption(response.data as RpcModel | undefined));
     // A new model can offer different levels, and pi clamps the active one to
     // what it supports, so both are re-read rather than assumed unchanged.
     await this.refreshThinking();
@@ -394,7 +394,7 @@ export class SubprocessSession extends BaseSession implements PiSession {
     const current =
       level ??
       (state?.success ? SessionStateSchema.safeParse(state.data).data?.thinkingLevel : undefined);
-    this.setThinkingInfo(current, available);
+    this.recordThinking(current, available);
   }
 
   async steer(text: string, images?: ImageContent[]): Promise<PromptResult> {

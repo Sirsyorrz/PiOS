@@ -137,13 +137,7 @@ export class Connection {
         // Sessions are shared, so a second device must not have to guess that
         // one appeared.
         this.deps.announceSessions?.();
-        return this.send({
-          v: WIRE_VERSION,
-          type: "session_state",
-          commandId: frame.commandId,
-          sessionId: session.id,
-          summary: toSummary(session.info),
-        });
+        return this.sendSessionState(frame.commandId, session);
       }
 
       case "list_resumable": {
@@ -188,13 +182,7 @@ export class Connection {
         // in the registry, so a redelivered frame needs no ledger claim.
         await this.deps.registry.setProjectTrust(frame.sessionId, frame.trustProject);
         this.deps.announceSessions?.();
-        return this.send({
-          v: WIRE_VERSION,
-          type: "session_state",
-          commandId: frame.commandId,
-          sessionId: frame.sessionId,
-          summary: toSummary(session.info),
-        });
+        return this.sendSessionState(frame.commandId, session);
       }
 
       case "list_models": {
@@ -229,13 +217,7 @@ export class Connection {
         // Idempotent: setting the model it already has changes nothing, so a
         // redelivered frame needs no ledger claim.
         await session.setModel(frame.provider, frame.modelId);
-        return this.send({
-          v: WIRE_VERSION,
-          type: "session_state",
-          commandId: frame.commandId,
-          sessionId: frame.sessionId,
-          summary: toSummary(session.info),
-        });
+        return this.sendSessionState(frame.commandId, session);
       }
 
       case "set_thinking_level": {
@@ -244,13 +226,7 @@ export class Connection {
         // Idempotent for the same reason as set_model: re-applying the level it
         // already has changes nothing.
         await session.setThinkingLevel(frame.level);
-        return this.send({
-          v: WIRE_VERSION,
-          type: "session_state",
-          commandId: frame.commandId,
-          sessionId: frame.sessionId,
-          summary: toSummary(session.info),
-        });
+        return this.sendSessionState(frame.commandId, session);
       }
 
       case "subscribe":
@@ -413,6 +389,16 @@ export class Connection {
       if (info.sessionFile === path) return this.deps.registry.get(info.id);
     }
     return undefined;
+  }
+
+  private sendSessionState(commandId: string, session: PiSession): void {
+    this.send({
+      v: WIRE_VERSION,
+      type: "session_state",
+      commandId,
+      sessionId: session.id,
+      summary: toSummary(session.info),
+    });
   }
 
   private ack(commandId: string, duplicate = false): void {

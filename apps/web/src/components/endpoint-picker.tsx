@@ -19,8 +19,6 @@ export function EndpointPicker({ machine, onChange, onForget }: {
 }) {
   const [checking, setChecking] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
-  // Forgetting drops the device token: it cannot be undone from here, and an
-  // icon is too easy to hit by accident to fire on the first press.
   // Dropping the last route drops the machine with it, which takes the device
   // token: not something an icon should do on the first press.
   const [confirming, setConfirming] = useState<string | null>(null);

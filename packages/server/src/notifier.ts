@@ -20,13 +20,13 @@ const BODY_LIMIT = 180;
 export interface Notification {
   sessionId: string;
   message: PushMessage;
-  /** Devices watching this session right now, which do not need waking. */
+  /** Devices already watching the session, so a push would tell them nothing. */
   skipDeviceIds: Set<string>;
 }
 
 export interface NotifierDeps {
   send(notification: Notification): void | Promise<void>;
-  /** Devices with a foreground client subscribed to the session. */
+  /** Devices whose client is watching the session right now. */
   watchers(sessionId: string): Set<string>;
   now?: () => number;
 }

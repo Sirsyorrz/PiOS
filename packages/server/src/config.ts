@@ -12,6 +12,11 @@ export interface ServerConfig {
    * and PiOS see one set of sessions and can resume each other's work.
    */
   sessionDir: string;
+  /**
+   * How sessions run: `subprocess` spawns `pi --mode rpc` per session,
+   * `in-process` drives an `AgentSession` inside the daemon.
+   */
+  sessionHostMode: SessionHostMode;
   /** Cap on a single upload, so a phone cannot fill the disk. */
   maxUploadBytes: number;
   /** How long a socket has to authenticate before it is closed. */
@@ -38,6 +43,8 @@ export interface ServerConfig {
   publicUrl: string | null;
 }
 
+export type SessionHostMode = "subprocess" | "in-process";
+
 export const SERVER_VERSION = "0.0.0";
 
 /**
@@ -62,6 +69,7 @@ export function defaultConfig(overrides: Partial<ServerConfig> = {}): ServerConf
       overrides.sessionDir ??
       process.env.PIOS_SESSION_DIR ??
       join(homedir(), ".pi", "agent", "sessions"),
+    sessionHostMode: overrides.sessionHostMode ?? sessionHostMode(process.env.PIOS_HOST),
     maxUploadBytes: overrides.maxUploadBytes ?? 25 * 1024 * 1024,
     helloTimeoutMs: overrides.helloTimeoutMs ?? 5_000,
     activityTtlMs: overrides.activityTtlMs ?? 45_000,
@@ -74,6 +82,14 @@ export function defaultConfig(overrides: Partial<ServerConfig> = {}): ServerConf
       process.env.PIOS_PUSH_SUBJECT ??
       (publicUrl?.startsWith("https://") ? publicUrl : DEFAULT_PUSH_SUBJECT),
   };
+}
+
+/**
+ * A crash in one session must not take the daemon and every other session
+ * with it, so anything but an explicit opt-in runs pi as a child process.
+ */
+function sessionHostMode(requested: string | undefined): SessionHostMode {
+  return requested === "in-process" ? "in-process" : "subprocess";
 }
 
 /** The workspace build output, when the daemon is running from the repo. */
