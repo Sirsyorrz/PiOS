@@ -14,6 +14,9 @@
   --link: #8bb8e8;
   --warn: #d9a441;
   --error: #e5645a;
+  /* One turn to the next, and one block to the next inside a turn: the same
+     distance, because a tool result ends a message without ending the turn. */
+  --turn-gap: 18px;
   --control: 40px;
   --radius: 12px;
   --hover: rgba(255, 255, 255, 0.06);
@@ -900,7 +903,7 @@ button.scroll-bottom {
 .transcript {
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: var(--turn-gap);
   /* Reserve the floating dock's height, measured at runtime, plus room to
      scroll the last line clear of it. */
   padding: 8px 0 calc(var(--dock-height, 120px) + 16px);
@@ -919,6 +922,10 @@ button.scroll-bottom {
 
 .bubble p {
   margin: 0 0 12px;
+}
+
+.bubble > :first-child {
+  margin-top: 0;
 }
 
 .bubble > :last-child {
@@ -1000,10 +1007,6 @@ button.scroll-bottom {
   font-size: 1em;
   font-weight: 650;
   line-height: 1.35;
-}
-
-.bubble > .md-heading:first-child {
-  margin-top: 0;
 }
 
 .md-list {
@@ -1182,7 +1185,7 @@ button.scroll-bottom {
 }
 
 .tool {
-  margin: 8px 0;
+  margin: var(--turn-gap) 0;
   min-width: 0;
 }
 
