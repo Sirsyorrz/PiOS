@@ -1,5 +1,4 @@
 - can we move the chat input down any further on mobile?
-- when we reach the bottom of chat scroll, the arrow dissapears (correct), but then the scroll jumps
 - show claude usage
 - /tree functionality, touch and hold on a sent message in chat to branch from there
 - add missing native commands
