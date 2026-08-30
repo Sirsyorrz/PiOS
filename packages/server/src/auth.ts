@@ -126,6 +126,21 @@ export class AuthStore {
     return true;
   }
 
+  /**
+   * Revokes every device and drops unredeemed pairings.
+   *
+   * Pairings go too: a pending pairing URL is a pending device, so leaving one
+   * alive would defeat the point of a full lockout.
+   */
+  revokeAll(): string[] {
+    this.refresh();
+    const ids = this.data.devices.map((d) => d.id);
+    this.data.devices = [];
+    this.data.pairings = [];
+    this.persist();
+    return ids;
+  }
+
   listDevices(): Omit<DeviceRecord, "tokenHash">[] {
     this.refresh();
     return this.data.devices.map(({ tokenHash: _hash, ...rest }) => rest);

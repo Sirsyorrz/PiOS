@@ -25,7 +25,7 @@ switch (command) {
     revoke(rest[0]);
     break;
   default:
-    console.error(`usage: pios-server [serve|pair|devices|revoke <deviceId>]`);
+    console.error(`usage: pios-server [serve|pair|devices|revoke <deviceId>|--all]`);
     process.exit(2);
 }
 
@@ -80,14 +80,23 @@ function devices(): void {
 
 function revoke(deviceId: string | undefined): void {
   if (!deviceId) {
-    console.error("usage: pios-server revoke <deviceId>");
+    console.error("usage: pios-server revoke <deviceId>|--all");
     process.exit(2);
   }
   const config = defaultConfig({ port });
   const auth = new AuthStore(authStorePath(config));
   // A revoked device must also stop being reachable by push: the endpoint is a
   // capability that outlives the token otherwise.
-  new PushStore(pushStorePath(config), config.pushSubject).removeDevice(deviceId);
+  const push = new PushStore(pushStorePath(config), config.pushSubject);
+
+  if (deviceId === "--all") {
+    const ids = auth.revokeAll();
+    for (const id of ids) push.removeDevice(id);
+    console.log(ids.length === 0 ? "no paired devices" : `revoked ${ids.length} device(s)`);
+    return;
+  }
+
+  push.removeDevice(deviceId);
   console.log(auth.revoke(deviceId) ? `revoked ${deviceId}` : `no device ${deviceId}`);
 }
 

@@ -70,6 +70,25 @@ test("revoking a device invalidates its token immediately", () => {
   rmSync(dir, { recursive: true, force: true });
 });
 
+test("revokeAll clears every device and any pending pairing", () => {
+  const { dir, auth, path } = store();
+  const a = auth.redeemPairing(auth.createPairing().token, "phone")!;
+  const b = auth.redeemPairing(auth.createPairing().token, "tablet")!;
+  const pending = auth.createPairing();
+
+  const ids = auth.revokeAll();
+  assert.deepEqual(ids.sort(), [a.device.id, b.device.id].sort());
+  assert.equal(auth.verify(a.deviceToken), null);
+  assert.equal(auth.verify(b.deviceToken), null);
+  assert.equal(auth.redeemPairing(pending.token, "late"), null);
+
+  const reopened = new AuthStore(path);
+  assert.deepEqual(reopened.listDevices(), []);
+  assert.equal(reopened.pendingPairings(), 0);
+  assert.deepEqual(auth.revokeAll(), []);
+  rmSync(dir, { recursive: true, force: true });
+});
+
 test("bearerToken parses only a well-formed header", () => {
   assert.equal(bearerToken("Bearer abc"), "abc");
   assert.equal(bearerToken("bearer abc"), undefined);
