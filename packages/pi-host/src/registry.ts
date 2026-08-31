@@ -1,4 +1,9 @@
-import type { CreateSessionOptions, PiSession, SessionInfo } from "./types.ts";
+import type {
+  BranchSessionFile,
+  CreateSessionOptions,
+  PiSession,
+  SessionInfo,
+} from "./types.ts";
 import { InProcessSession, type AgentSessionFactory } from "./in-process.ts";
 import { SubprocessSession, type SubprocessOptions } from "./subprocess.ts";
 
@@ -27,8 +32,11 @@ const DEFAULT_RESTART_DELAY_MS = 500;
 /** A session that ran this long before dying is treated as healthy again. */
 const HEALTHY_UPTIME_MS = 60_000;
 
-export function inProcessHost(factory: AgentSessionFactory): SessionHost {
-  return { create: (options) => InProcessSession.start(options, factory) };
+export function inProcessHost(
+  factory: AgentSessionFactory,
+  branchSessionFile?: BranchSessionFile,
+): SessionHost {
+  return { create: (options) => InProcessSession.start(options, factory, branchSessionFile) };
 }
 
 export function subprocessHost(options: SubprocessOptions = {}): SessionHost {

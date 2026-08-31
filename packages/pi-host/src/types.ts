@@ -55,6 +55,28 @@ export interface ModelListing {
   all: boolean;
 }
 
+export interface BranchResult {
+  /**
+   * The branched session file, for the caller to open as its own session.
+   * Absent when the branch would be empty, i.e. the opening turn.
+   */
+  sessionFile?: string;
+  /** The user message the branch stops before, so it can be re-composed. */
+  text: string;
+}
+
+/**
+ * Writes the history up to `leafId` out as a new session file.
+ *
+ * Injected rather than imported so the hosts can be driven by a stub that
+ * does not speak pi's on-disk format.
+ */
+export type BranchSessionFile = (args: {
+  sessionFile: string;
+  cwd: string;
+  leafId: string;
+}) => string | undefined;
+
 export interface PromptResult {
   accepted: boolean;
   error?: string;
@@ -95,6 +117,14 @@ export interface PiSession {
 
   /** Delta since a durable entry id, or the whole session when omitted. */
   getEntries(since?: string): Promise<EntriesPage>;
+
+  /**
+   * Copies the history before a user turn into a session file of its own.
+   *
+   * This session is not touched: the branch becomes a separate session, so the
+   * conversation it was cut from stays live and intact.
+   */
+  branch(entryId: string): Promise<BranchResult>;
 
   interrupt(): Promise<void>;
   dispose(): Promise<void>;

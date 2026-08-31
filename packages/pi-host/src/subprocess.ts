@@ -24,6 +24,7 @@ import type {
   CreateSessionOptions,
   EntriesPage,
   ModelListing,
+  BranchSessionFile,
   PiSession,
   PromptOptions,
   PromptResult,
@@ -40,6 +41,8 @@ export interface SubprocessOptions {
   /** pi's global config directory, for reading its model scope. */
   agentDir?: string;
   env?: NodeJS.ProcessEnv;
+  /** Overridable so tests can branch a stub's session format. */
+  branchSessionFile?: BranchSessionFile;
   requestTimeoutMs?: number;
   /** Upper bound on an unanswered extension dialog. See `dialogTimers`. */
   dialogTimeoutMs?: number;
@@ -86,6 +89,7 @@ export class SubprocessSession extends BaseSession implements PiSession {
       cwd: createOptions.cwd,
       name: createOptions.name,
       trusted: createOptions.trustProject ?? false,
+      branchSessionFile: options.branchSessionFile,
     });
     this.createOptions = { ...createOptions, id };
     this.options = options;

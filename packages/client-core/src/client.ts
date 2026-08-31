@@ -94,6 +94,9 @@ export class PiosClient {
   >();
   /** Failures of one-off commands, for the UI to say out loud. */
   private readonly commandErrorHandlers = new Set<(error: CommandError) => void>();
+  private readonly rewindHandlers = new Set<(branchSessionId: string, text: string) => void>();
+  /** Text waiting for the branched session's composer to mount and claim it. */
+  private readonly rewoundText = new Map<string, string>();
   private lastTransport: SupervisorState["transport"] = "idle";
 
   constructor(options: PiosClientOptions) {
@@ -303,6 +306,35 @@ export class PiosClient {
   }
 
   /** Notifies on a rejected one-off command. Returns an unsubscribe. */
+  /**
+   * Continues from just before a user turn, in a new session.
+   *
+   * The daemon branches the history into a session of its own and answers with
+   * its id; this session is left alone, so nothing cached about it is stale.
+   */
+  rewind(sessionId: string, entryId: string): boolean {
+    return this.send({ type: "rewind", sessionId, entryId });
+  }
+
+  /** Fires with the branched session to open and the text it starts from. */
+  onRewound(handler: (branchSessionId: string, text: string) => void): () => void {
+    this.rewindHandlers.add(handler);
+    return () => this.rewindHandlers.delete(handler);
+  }
+
+  /**
+   * Claims the text a rewind left for a session, once only.
+   *
+   * The branched session's composer is not mounted when the reply lands, so
+   * the text waits here instead of being pushed at a component that does not
+   * exist yet.
+   */
+  takeRewoundText(sessionId: string): string | undefined {
+    const text = this.rewoundText.get(sessionId);
+    this.rewoundText.delete(sessionId);
+    return text;
+  }
+
   onCommandError(handler: (error: CommandError) => void): () => void {
     this.commandErrorHandlers.add(handler);
     return () => this.commandErrorHandlers.delete(handler);
@@ -394,15 +426,20 @@ export class PiosClient {
     if (diverged) this.sessions.clear(sessionId);
 
     this.supervisor.setSyncStatus("syncing");
-    const entriesId = this.generateId();
     const subscribeId = this.generateId();
-    this.syncCommands.add(entriesId);
     this.syncCommands.add(subscribeId);
-    this.send({ type: "get_entries", sessionId, since: cursor ?? undefined }, entriesId);
+    this.fetchEntries(sessionId, cursor);
     this.send(
       { type: "subscribe", sessionId, sinceSeq: this.sessions.lastSeq(sessionId) },
       subscribeId,
     );
+  }
+
+  /** Asks for the entries after a cursor, as a sync command. */
+  private fetchEntries(sessionId: string, cursor: string | null): void {
+    const commandId = this.generateId();
+    this.syncCommands.add(commandId);
+    this.send({ type: "get_entries", sessionId, since: cursor ?? undefined }, commandId);
   }
 
   private onFrame(frame: Parameters<Parameters<ConnectionSupervisor["onFrame"]>[0]>[0]): void {
@@ -438,6 +475,12 @@ export class PiosClient {
         break;
       case "agent_event":
         this.sessions.applyEvent(frame.sessionId, frame.seq, frame.event, frame.at);
+        // A settled turn is on disk, so its entry ids exist. Without this the
+        // transcript stays event-only until the next reconnect, and anything
+        // that addresses a turn by id has nothing to address.
+        if (frame.event.type === "agent_settled" && this.subscribed.has(frame.sessionId)) {
+          this.fetchEntries(frame.sessionId, this.sessions.cursor(frame.sessionId));
+        }
         break;
       case "session_state": {
         this.trackStatus([frame.summary]);
@@ -478,6 +521,12 @@ export class PiosClient {
       case "extension_ui_closed":
         this.sessions.closeDialog(frame.sessionId, frame.requestId);
         break;
+      case "rewound": {
+        const text = frame.text ?? "";
+        this.rewoundText.set(frame.branchSessionId, text);
+        for (const handler of [...this.rewindHandlers]) handler(frame.branchSessionId, text);
+        break;
+      }
       case "session_recovered":
         if (this.sessions.needsFullRefetch(frame.sessionId, frame.leafId)) {
           this.sessions.clear(frame.sessionId);

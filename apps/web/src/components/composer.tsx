@@ -26,6 +26,7 @@ export function Composer({
   running,
   interrupting,
   editorText,
+  editorTextKey,
   nativeCommands = [],
   onSend,
   onInterrupt,
@@ -33,6 +34,8 @@ export function Composer({
   sessionId: string;
   /** An extension asked to replace what is typed, e.g. a prompt template. */
   editorText?: string;
+  /** Changes when the same text is handed over again, e.g. a second rewind. */
+  editorTextKey?: number;
   /** Active model, for the picker's label. */
   model?: ModelOption;
   thinkingLevel?: string;
@@ -100,7 +103,7 @@ export function Composer({
     if (editorText === undefined) return;
     setText(editorText);
     browserStorage.set(DRAFT_PREFIX + sessionId, editorText);
-  }, [editorText, sessionId]);
+  }, [editorText, editorTextKey, sessionId]);
 
   function edit(value: string) {
     setText(value);

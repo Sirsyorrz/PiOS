@@ -11,7 +11,10 @@ import {
 import { EventRingBuffer } from "./ring-buffer.ts";
 import { ToolTimer } from "./tool-timing.ts";
 import type {
+  BranchResult,
+  BranchSessionFile,
   BufferedEvent,
+  EntriesPage,
   HostEvent,
   SessionInfo,
   SessionStatus,
@@ -54,18 +57,50 @@ export abstract class BaseSession {
    *  lifecycle visible together. */
   private readonly toolTimer = new ToolTimer();
 
+  private readonly branchSessionFile: BranchSessionFile | undefined;
+
   constructor(args: {
     id: string;
     cwd: string;
     name?: string;
     trusted: boolean;
     bufferCapacity?: number;
+    branchSessionFile?: BranchSessionFile;
   }) {
     this.id = args.id;
     this.cwd = args.cwd;
     this.name = args.name;
     this.trustedState = args.trusted;
     this.buffer = new EventRingBuffer(args.bufferCapacity);
+    this.branchSessionFile = args.branchSessionFile;
+  }
+
+  abstract getEntries(since?: string): Promise<EntriesPage>;
+
+  /**
+   * Same for both hosts: the branch is cut from the file, never from the
+   * running agent, so nothing here can disturb the live conversation.
+   */
+  async branch(entryId: string): Promise<BranchResult> {
+    const { entries } = await this.getEntries();
+    const entry = entries.find((candidate) => candidate.id === entryId);
+    if (!entry?.message || entry.message.role !== "user") {
+      throw new Error("only a user message can be branched from");
+    }
+    const text = messageText(entry.message);
+    // The opening turn has no history in front of it, so the branch is empty
+    // and the caller starts a fresh session instead of opening a file.
+    if (!entry.parentId) return { text };
+    if (!this.branchSessionFile) throw new Error("this host cannot branch a session");
+    if (!this.sessionFile) {
+      throw new Error("this session has not been saved yet");
+    }
+    const sessionFile = this.branchSessionFile({
+      sessionFile: this.sessionFile,
+      cwd: this.cwd,
+      leafId: entry.parentId,
+    });
+    return { text, sessionFile };
   }
 
   /** Mutable: trusting a directory relaunches pi in place, it does not fork. */

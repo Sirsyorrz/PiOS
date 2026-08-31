@@ -11,7 +11,8 @@ import type { OutboxEntry } from "./outbox.ts";
 import type { Notice, SessionStore } from "./session-store.ts";
 
 export type ViewItem =
-  | { kind: "message"; key: string; message: AgentMessage }
+  /** `entryId` is present only once the entry is persisted; live messages have none. */
+  | { kind: "message"; key: string; message: AgentMessage; entryId?: string }
   | { kind: "streaming"; key: string; partial: PartialMessage }
   | { kind: "pending"; key: string; entry: OutboxEntry };
 
@@ -53,7 +54,7 @@ export function sessionView(
   const seen = new Set<string>();
   const tools = new Map<string, ToolExecution>();
 
-  const addMessage = (message: AgentMessage, renderKey: string) => {
+  const addMessage = (message: AgentMessage, renderKey: string, entryId?: string) => {
     // Deduped on content, keyed for rendering on whichever source arrived
     // first, so a persisted entry and its live event collapse into one item.
     const key = messageKey(message);
@@ -62,12 +63,12 @@ export function sessionView(
     if (message.role === "assistant") recordToolCalls(tools, message);
     // Tool results belong on their tool card, not as a bubble of their own.
     if (message.role === "toolResult") return recordToolResult(tools, message);
-    items.push({ kind: "message", key: renderKey, message });
+    items.push({ kind: "message", key: renderKey, message, entryId });
   };
 
   for (const entry of cached) {
     if (!entry.message) continue;
-    addMessage(entry.message, `e:${entry.id}`);
+    addMessage(entry.message, `e:${entry.id}`, entry.id);
   }
   for (const message of transcript.messages) addMessage(message, messageKey(message));
   // Live state wins over anything reconstructed from history: it has args and

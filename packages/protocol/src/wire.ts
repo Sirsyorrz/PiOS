@@ -104,6 +104,19 @@ export const ClientFrameSchema = z.discriminatedUnion("type", [
     streamingBehavior: StreamingBehaviorSchema.optional(),
   }),
   Envelope({ type: z.literal("interrupt"), sessionId: z.string() }),
+  /**
+   * Continues the conversation from just before a user turn, in a new session.
+   *
+   * The history in front of the turn is copied into a session of its own and
+   * the turn's text comes back to be re-composed. This session is unchanged:
+   * branching never rewrites a transcript someone might still want.
+   */
+  Envelope({
+    type: z.literal("rewind"),
+    sessionId: z.string(),
+    /** The user entry to branch before. Its text comes back in `rewound`. */
+    entryId: z.string(),
+  }),
   Envelope({
     type: z.literal("extension_ui_response"),
     sessionId: z.string(),
@@ -320,7 +333,19 @@ export const ServerFrameSchema = z.discriminatedUnion("type", [
     sessionId: z.string(),
     presentation: SessionPresentationSchema,
   }),
-  /** The daemon restarted a crashed pi session and resumed from its JSONL. */
+  /** Reply to `rewind`: where the branch now lives, and what to re-compose. */
+  ServerEnvelope({
+    type: z.literal("rewound"),
+    /** The session branched from, which is unchanged. */
+    sessionId: z.string(),
+    /** The new session holding the history before the turn. Open this one. */
+    branchSessionId: z.string(),
+    text: z.string().optional(),
+  }),
+  /**
+   * The transcript was replaced under the client and its cache is stale: pi
+   * was restarted from its JSONL after a crash, or the branch was rewound.
+   */
   ServerEnvelope({
     type: z.literal("session_recovered"),
     sessionId: z.string(),

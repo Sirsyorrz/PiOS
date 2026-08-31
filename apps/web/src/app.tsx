@@ -100,6 +100,13 @@ function Workspace({ machine, settings, onSettingsChange, onMachineChange, onFor
   );
   const base = httpBase(machine);
 
+  // A rewind branches into a session of its own, so the app follows it there
+  // and leaves the conversation it came from in the list, intact.
+  useEffect(() => client.onRewound((branchSessionId) => setActiveId(branchSessionId)), [
+    client,
+    setActiveId,
+  ]);
+
   /** pi reads trust at launch, so the daemon relaunches this session in
    *  place. Same id, same transcript, nothing to switch to. */
   function trustActive() {

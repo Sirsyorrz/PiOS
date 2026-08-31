@@ -7,22 +7,27 @@ import {
   type ToolExecution,
 } from "@pios/protocol";
 import { useState } from "react";
+import { useLongPress } from "../long-press.ts";
 import { useSettings } from "../settings.ts";
 import { TranscriptImage } from "./image-view.tsx";
 import { Markdown } from "./markdown.tsx";
 import { ToolCard } from "./tool-card.tsx";
 
-export function MessageBubble({ message, tools, cwd, blocked }: {
+export function MessageBubble({ message, tools, cwd, blocked, onRewind }: {
   message: AgentMessage;
   tools: Map<string, ToolExecution>;
   cwd?: string;
   /** A dialog is waiting on the user, so running timers must not advance. */
   blocked?: boolean;
+  /** Press and hold this turn to drop it and everything after it. */
+  onRewind?: () => void;
 }) {
+  // Hooks run for every role, so the gesture is bound before the role branch.
+  const press = useLongPress(message.role === "user" ? onRewind : undefined);
   if (message.role === "user") {
     const text = messageText(message);
     return (
-      <div className="bubble user">
+      <div className={`bubble user${onRewind ? " pressable" : ""}`} {...press}>
         {userImages(message).map((image, index) => (
           <TranscriptImage key={index} alt="attachment" src={dataUrl(image)} />
         ))}

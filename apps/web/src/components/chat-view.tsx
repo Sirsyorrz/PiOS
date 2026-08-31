@@ -1,5 +1,5 @@
 import type { ImageContent, SessionSummary, StreamingBehavior } from "@pios/protocol";
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useClient, useSessionView } from "../client-provider.tsx";
 import { FileAccessContext } from "../files.ts";
 import { collapseHome } from "../format.ts";
@@ -82,6 +82,15 @@ export function ChatView({
     client.prompt({ sessionId, text, images, streamingBehavior: behavior });
   }
 
+  // A branched session opens with the turn it was cut before already typed.
+  // Claimed on mount, because the branch was created while another session
+  // was on screen. Stamped, so the same text twice still reaches the composer.
+  const [rewound, setRewound] = useState<{ text: string; at: number } | null>(null);
+  useEffect(() => {
+    const text = client.takeRewoundText(sessionId);
+    setRewound(text === undefined ? null : { text, at: Date.now() });
+  }, [client, sessionId]);
+
   // One at a time, oldest first: an extension chains its questions, and a
   // stack of sheets makes it unclear which one is being answered.
   const dialog = view?.dialogs[0];
@@ -123,7 +132,19 @@ export function ChatView({
       <div className="transcript scroll-y" ref={transcript.ref} onScroll={transcript.onScroll}>
         {view?.items.map((item) => {
           if (item.kind === "message") {
-            return <MessageBubble key={item.key} message={item.message} tools={view.tools} cwd={session?.cwd} blocked={view.dialogs.length > 0} />;
+            return (
+              <MessageBubble
+                key={item.key}
+                message={item.message}
+                tools={view.tools}
+                cwd={session?.cwd}
+                blocked={view.dialogs.length > 0}
+                // Only a persisted turn has an entry id to rewind to.
+                onRewind={
+                  item.entryId ? () => client.rewind(sessionId, item.entryId!) : undefined
+                }
+              />
+            );
           }
           if (item.kind === "streaming") {
             return <StreamingBubble key={item.key} partial={item.partial} tools={view.tools} cwd={session?.cwd} blocked={view.dialogs.length > 0} />;
@@ -217,7 +238,8 @@ export function ChatView({
           thinkingLevels={session?.thinkingLevels}
           running={view?.running ?? false}
           interrupting={view?.interrupting ?? false}
-          editorText={view?.presentation.editorText}
+          editorText={rewound?.text ?? view?.presentation.editorText}
+          editorTextKey={rewound?.at}
           nativeCommands={nativeCommands}
           onSend={send}
           onInterrupt={() => client.interrupt(sessionId)}

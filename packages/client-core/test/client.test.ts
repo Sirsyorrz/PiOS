@@ -50,6 +50,33 @@ test("watching a session resyncs from its cursor and subscribes from its seq", a
   assert.equal(client.supervisor.getState().sync, "synced");
 });
 
+test("a settled turn is fetched as entries, so its ids exist before a reconnect", async () => {
+  const { transports, client } = setup();
+  await flush();
+  transports.last.acceptHello([summary({ sessionId: "s1", leafId: null })]);
+  client.watch("s1");
+  transports.last.emit({
+    v: WIRE_VERSION,
+    type: "entries",
+    sessionId: "s1",
+    entries: [entry("e1")],
+    leafId: "e1",
+    reset: false,
+  });
+
+  transports.last.emit({
+    v: WIRE_VERSION,
+    type: "agent_event",
+    sessionId: "s1",
+    seq: 7,
+    event: { type: "agent_settled" },
+  });
+
+  const fetches = transports.last.sentOfType("get_entries");
+  assert.equal(fetches.length, 2, "the finished turn is asked for");
+  assert.equal(fetches.at(-1)?.since, "e1", "a delta from the cursor, not the whole session");
+});
+
 test("a drop mid-stream reconnects and resumes from the cursor", async () => {
   const { scheduler, transports, client } = setup();
   await flush();

@@ -946,6 +946,22 @@ button.scroll-bottom {
   padding: 10px 14px;
 }
 
+/* A long press on a user turn branches from it, so the platform's own hold
+   gestures must not claim it first. Safari needs the prefixed property and
+   the callout opt-out, or the hold becomes a selection before the timer
+   fires; `touch-action` keeps the press from being read as a pan. */
+.bubble.user.pressable {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+  touch-action: pan-y;
+  cursor: pointer;
+}
+
+.bubble.user.pressable:active {
+  opacity: 0.7;
+}
+
 .bubble.pending {
   opacity: 0.6;
 }

@@ -8,6 +8,7 @@ import { InProcessSession } from "../src/in-process.ts";
 import { SubprocessSession } from "../src/subprocess.ts";
 import type { BufferedEvent, PiSession } from "../src/types.ts";
 import { fakeAgentFactory } from "./fake-agent.ts";
+import { branchFakeSession } from "./fake-branch.ts";
 
 const FAKE_PI = fileURLToPath(new URL("./fake-pi.ts", import.meta.url));
 
@@ -20,7 +21,7 @@ const harnesses: Harness[] = [
   {
     name: "InProcessSession",
     start: async (dir, id) =>
-      InProcessSession.start({ id, cwd: dir }, fakeAgentFactory(dir).factory),
+      InProcessSession.start({ id, cwd: dir }, fakeAgentFactory(dir).factory, branchFakeSession),
   },
   {
     name: "SubprocessSession",
@@ -32,6 +33,7 @@ const harnesses: Harness[] = [
           argsPrefix: [FAKE_PI],
           sessionDir: dir,
           agentDir: join(dir, "agent"),
+          branchSessionFile: branchFakeSession,
           requestTimeoutMs: 10_000,
         },
       ),
@@ -176,6 +178,35 @@ for (const harness of harnesses) {
       assert.equal(tail.gap, false);
       assert.ok(tail.events.every((e) => e.seq > midpoint));
       assert.equal(tail.events.length, before.events.length - before.events.findIndex((e) => e.seq === midpoint) - 1);
+    });
+
+    test("a branch is written to its own file and leaves this session alone", async () => {
+      const local = await harness.start(dir, "s3");
+      for (const text of ["first", "second"]) {
+        const done = settled(local);
+        await local.prompt(text);
+        await done;
+      }
+      const before = await local.getEntries();
+      assert.equal(before.entries.length, 4);
+
+      const branch = await local.branch(before.entries[2]!.id);
+      assert.equal(branch.text, "second");
+      assert.ok(branch.sessionFile, "the surviving history is a file of its own");
+      assert.notEqual(branch.sessionFile, local.info.sessionFile);
+
+      const after = await local.getEntries();
+      assert.equal(after.entries.length, 4, "the branched-from session is untouched");
+      assert.equal(after.leafId, before.leafId);
+
+      // The opening turn has nothing in front of it, so there is no file to
+      // open and the caller starts empty.
+      const opening = await local.branch(before.entries[0]!.id);
+      assert.equal(opening.text, "first");
+      assert.equal(opening.sessionFile, undefined);
+
+      await assert.rejects(() => local.branch(before.entries[1]!.id), /user message/);
+      await local.dispose();
     });
 
     test("status reaches disposed", async () => {

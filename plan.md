@@ -300,7 +300,9 @@ notification model.
 - Raw terminal tab: daemon-owned PTY, separate shell channel (RPC `bash` is not
   a terminal). Renderer decision deferred; xterm.js in a WebView is the cheap
   first cut.
-- Forking and branch browsing (`fork`, `clone`, `get_fork_messages`, `get_tree`).
+- Branch browsing (`clone`, `get_fork_messages`, `get_tree`). Rewind-to-a-turn
+  ships on `fork`; browsing the whole tree needs an RPC command to move the
+  leaf, which pi does not expose.
 - Text editor
 - Lazygit
 

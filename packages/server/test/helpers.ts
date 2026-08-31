@@ -4,12 +4,14 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { WebSocket } from "ws";
 import { subprocessHost, type SessionLister } from "@pios/pi-host";
+import { branchFakeSession } from "../../pi-host/test/fake-branch.ts";
 import { WIRE_VERSION, type ClientFrame, type ServerFrame } from "@pios/protocol";
 import { PiosServer } from "../src/server.ts";
 
 const FAKE_PI = fileURLToPath(
   new URL("../../pi-host/test/fake-pi.ts", import.meta.url),
 );
+
 
 export interface Harness {
   server: PiosServer;
@@ -35,6 +37,7 @@ export async function startHarness(lister?: SessionLister): Promise<Harness> {
       sessionDir: join(dir, "sessions"),
       // Empty: the suite must not inherit the developer's own model scope.
       agentDir: join(dir, "agent"),
+      branchSessionFile: branchFakeSession,
       requestTimeoutMs: 5_000,
     }),
     piVersion: "fake",

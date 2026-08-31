@@ -12,6 +12,7 @@ import type {
   CreateSessionOptions,
   EntriesPage,
   ModelListing,
+  BranchSessionFile,
   PiSession,
   PromptOptions,
   PromptResult,
@@ -105,8 +106,15 @@ export class InProcessSession extends BaseSession implements PiSession {
     id: string,
     options: CreateSessionOptions,
     factory: AgentSessionFactory,
+    branchSessionFile?: BranchSessionFile,
   ) {
-    super({ id, cwd: options.cwd, name: options.name, trusted: options.trustProject ?? false });
+    super({
+      id,
+      cwd: options.cwd,
+      name: options.name,
+      trusted: options.trustProject ?? false,
+      branchSessionFile,
+    });
     this.createOptions = options;
     this.factory = factory;
   }
@@ -114,8 +122,14 @@ export class InProcessSession extends BaseSession implements PiSession {
   static async start(
     options: CreateSessionOptions,
     factory: AgentSessionFactory,
+    branchSessionFile?: BranchSessionFile,
   ): Promise<InProcessSession> {
-    const session = new InProcessSession(options.id ?? crypto.randomUUID(), options, factory);
+    const session = new InProcessSession(
+      options.id ?? crypto.randomUUID(),
+      options,
+      factory,
+      branchSessionFile,
+    );
     await session.attach();
     return session;
   }

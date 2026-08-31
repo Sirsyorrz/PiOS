@@ -52,10 +52,10 @@ export class FakeAgentSession implements AgentSessionLike {
     getLeafId: () => this.entries.at(-1)?.id ?? null,
   };
 
-  constructor(sessionId: string, sessionDir: string) {
+  constructor(sessionId: string, sessionDir: string, resumeFrom?: string) {
     this.sessionId = sessionId;
     mkdirSync(sessionDir, { recursive: true });
-    this.sessionFile = `${sessionDir}/${sessionId}.json`;
+    this.sessionFile = resumeFrom ?? `${sessionDir}/${sessionId}.json`;
     try {
       this.entries = JSON.parse(readFileSync(this.sessionFile, "utf8"));
       this.counter = this.entries.length;
@@ -160,7 +160,7 @@ export class FakeAgentSession implements AgentSessionLike {
 export function fakeAgentFactory(sessionDir: string) {
   const created: FakeAgentSession[] = [];
   const factory = async (options: CreateSessionOptions) => {
-    const session = new FakeAgentSession(options.id ?? "fake", sessionDir);
+    const session = new FakeAgentSession(options.id ?? "fake", sessionDir, options.resumeFrom);
     created.push(session);
     return session;
   };

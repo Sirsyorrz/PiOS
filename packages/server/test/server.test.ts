@@ -207,6 +207,49 @@ test("a redelivered prompt is acked but not run twice", async () => {
   client.close();
 });
 
+test("a rewind branches into a new session and leaves the old one intact", async () => {
+  const client = await hello(harness);
+  const cwd = join(harness.dir, "rewind");
+  mkdirSync(cwd, { recursive: true });
+  const sessionId = await createSession(client, cwd);
+  await client.waitForCommand(client.send({ type: "subscribe", sessionId }));
+
+  // Counted rather than matched: the second turn's settle looks exactly like
+  // the first one, which is already in the received log.
+  const settles = () =>
+    client.received.filter(
+      (f) => f.type === "agent_event" && f.sessionId === sessionId && f.event.type === "agent_settled",
+    ).length;
+  for (const [turn, text] of ["first", "second"].entries()) {
+    client.send({ type: "prompt", sessionId, messageId: text, text, images: [] });
+    await client.waitFor(() => settles() > turn);
+  }
+  const before = await client.waitForCommand(client.send({ type: "get_entries", sessionId }));
+  assert.equal(before.type === "entries" && before.entries.length, 4);
+  const secondTurn = before.type === "entries" ? before.entries[2]! : null;
+
+  const rewound = await client.waitForCommand(
+    client.send({ type: "rewind", sessionId, entryId: secondTurn!.id }),
+  );
+  assert.equal(rewound.type, "rewound");
+  assert.equal(rewound.type === "rewound" && rewound.text, "second");
+  const branchId = rewound.type === "rewound" ? rewound.branchSessionId : "";
+  assert.notEqual(branchId, sessionId, "the branch is a session of its own");
+
+  const branch = await client.waitForCommand(
+    client.send({ type: "get_entries", sessionId: branchId }),
+  );
+  assert.equal(branch.type === "entries" && branch.entries.length, 2, "history before the turn");
+
+  const original = await client.waitForCommand(client.send({ type: "get_entries", sessionId }));
+  assert.equal(original.type === "entries" && original.entries.length, 4, "nothing was dropped");
+
+  const listed = await client.waitForCommand(client.send({ type: "list_sessions" }));
+  const ids = listed.type === "sessions" ? listed.sessions.map((s) => s.sessionId) : [];
+  assert.ok(ids.includes(sessionId) && ids.includes(branchId), "both are in the picker");
+  client.close();
+});
+
 test("late subscribers replay buffered events and are told about gaps", async () => {
   const client = await hello(harness);
   const cwd = join(harness.dir, "replay");

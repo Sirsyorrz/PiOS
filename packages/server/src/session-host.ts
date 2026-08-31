@@ -1,4 +1,5 @@
 import {
+  branchWithPi,
   createDefaultAgentSessionFactory,
   inProcessHost,
   subprocessHost,
@@ -15,7 +16,8 @@ import type { ServerConfig } from "./config.ts";
  */
 export function createSessionHost(config: ServerConfig): SessionHost {
   const sessionDir = config.sessionDir;
+  const branchSessionFile = branchWithPi(sessionDir);
   return config.sessionHostMode === "in-process"
-    ? inProcessHost(createDefaultAgentSessionFactory({ sessionDir }))
-    : subprocessHost({ sessionDir });
+    ? inProcessHost(createDefaultAgentSessionFactory({ sessionDir }), branchSessionFile)
+    : subprocessHost({ sessionDir, branchSessionFile });
 }

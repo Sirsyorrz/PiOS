@@ -2,6 +2,7 @@ export * from "./types.ts";
 export * from "./ring-buffer.ts";
 export * from "./entries.ts";
 export * from "./base-session.ts";
+export * from "./branch.ts";
 export * from "./in-process.ts";
 export * from "./subprocess.ts";
 export * from "./registry.ts";

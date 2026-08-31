@@ -274,6 +274,43 @@ export class Connection {
         return this.ack(frame.commandId);
       }
 
+      case "rewind": {
+        const session = this.require(frame.sessionId, frame.commandId);
+        if (!session) return;
+        // Not idempotent: a redelivered rewind would branch a second time and
+        // throw away the turn the user just re-composed.
+        if (!this.deps.ledger.claim(frame.commandId)) {
+          return this.ack(frame.commandId, true);
+        }
+        let branch: Awaited<ReturnType<typeof session.branch>>;
+        try {
+          branch = await session.branch(frame.entryId);
+        } catch (error) {
+          return this.fail(
+            frame.commandId,
+            "bad_request",
+            error instanceof Error ? error.message : String(error),
+          );
+        }
+        // The branch is a session of its own: the conversation it was cut from
+        // stays live and untouched, and both show up in the picker.
+        const branched = await this.deps.registry.create({
+          cwd: session.info.cwd,
+          name: session.info.name,
+          trustProject: session.info.trusted,
+          resumeFrom: branch.sessionFile,
+        });
+        this.deps.announceSessions?.();
+        return this.send({
+          v: WIRE_VERSION,
+          type: "rewound",
+          commandId: frame.commandId,
+          sessionId: frame.sessionId,
+          branchSessionId: branched.id,
+          text: branch.text,
+        });
+      }
+
       case "extension_ui_response": {
         const session = this.require(frame.sessionId, frame.commandId);
         if (!session) return;
