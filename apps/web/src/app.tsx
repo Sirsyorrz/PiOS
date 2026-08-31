@@ -83,7 +83,7 @@ function Workspace({ machine, settings, onSettingsChange, onMachineChange, onFor
 }) {
   const client = useClient();
   const state = useSupervisorState();
-  const { activeId, setActiveId, opening } = useLaunchSession(machine, state, client);
+  const { activeId, setActiveId } = useLaunchSession(machine, state);
   const seen = useUnreadMarks(machine.id, state.sessions, state.sync === "synced", activeId);
 
   // The directory the picker opens in; null closes it, empty lets the daemon
@@ -143,16 +143,7 @@ function Workspace({ machine, settings, onSettingsChange, onMachineChange, onFor
     [client],
   );
 
-  // Connecting is the slow part of a launch, and the splash covers it. Below
-  // every hook: an early return above one changes the hook order.
-  if (opening && !activeId) {
-    return (
-      <div className="splash">
-        <span className="spinner" />
-      </div>
-    );
-  }
-
+  // Below every hook: an early return above one changes the hook order.
   if (showSettings) {
     return (
       <SettingsView

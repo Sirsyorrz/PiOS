@@ -19,19 +19,6 @@ export function isDirectSrc(src: string): boolean {
   return /^(https?:|data:|blob:)/i.test(src);
 }
 
-/** The daemon's home directory, i.e. the root of the directory picker. */
-export async function fetchHomeDir(baseUrl: string, token: string): Promise<string | null> {
-  try {
-    const response = await fetch(new URL("/dirs", baseUrl), {
-      headers: { authorization: `Bearer ${token}` },
-    });
-    if (!response.ok) return null;
-    return ((await response.json()) as { root?: string }).root ?? null;
-  } catch {
-    return null;
-  }
-}
-
 const cache = new Map<string, string>();
 
 /**

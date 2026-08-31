@@ -1583,10 +1583,3 @@ button.scroll-bottom {
   border-radius: var(--radius);
 }
 
-/* Launch cover: the session list must not flash before the chat opens. */
-.splash {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 100%;
-}

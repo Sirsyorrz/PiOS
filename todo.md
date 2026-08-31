@@ -1,6 +1,7 @@
 - can we move the chat input down any further on mobile?
 - show claude usage
-- /tree functionality, touch and hold on a sent message in chat to branch from there
+- /tree functionality
+- quick branch back to a previous message.
 - add missing native commands
 - surface errors (e.g. rate limits)
 - terminal
