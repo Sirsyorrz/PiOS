@@ -42,7 +42,9 @@ html[data-keyboard="1"] {
    indicator, which overlays content and needs a hairline of clearance, not
    the full inset a scrolling page would want. */
 @media (display-mode: standalone) {
-  html {
+  /* `:root`, not `html`: the block that defines the inset is `:root` too, and
+     a plain type selector loses to it. */
+  :root {
     --safe-bottom: 0px;
   }
 }
