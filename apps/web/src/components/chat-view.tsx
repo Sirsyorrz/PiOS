@@ -62,6 +62,9 @@ export function ChatView({
   const pane = useRef<HTMLElement>(null);
   const dock = useRef<HTMLDivElement>(null);
   const transcript = useStickToBottom(view);
+  // Typing collapses the chrome around the field, so the keyboard leaves as
+  // much transcript on screen as possible.
+  const [composing, setComposing] = useState(false);
 
   // The dock floats over the transcript, so the transcript has to reserve
   // exactly as much room as the dock currently takes. That reservation is
@@ -109,7 +112,7 @@ export function ChatView({
 
   return (
     <FileAccessContext.Provider value={files}>
-    <section className="chat" ref={pane}>
+    <section className={`chat${composing ? " composing" : ""}`} ref={pane}>
       <header className="chat-header">
         <button type="button" className="back icon ghost" onClick={onBack} aria-label="back to sessions">
           <ChevronLeftIcon />
@@ -243,6 +246,7 @@ export function ChatView({
           nativeCommands={nativeCommands}
           onSend={send}
           onInterrupt={() => client.interrupt(sessionId)}
+          onComposingChange={setComposing}
         />
       )}
       {widgets(view, "belowEditor")}

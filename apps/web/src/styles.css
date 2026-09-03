@@ -575,6 +575,38 @@ button.danger {
   font-weight: 500;
 }
 
+/* While typing, the header and the composer's pickers fold away instead of
+   disappearing: an abrupt reflow under a rising keyboard loses the reader's
+   place. Height, not `display`, so both ends of the change are animatable. */
+.chat-header,
+.composer-options {
+  transition:
+    max-height 180ms ease,
+    opacity 140ms ease,
+    margin 180ms ease,
+    padding 180ms ease;
+  overflow: hidden;
+}
+
+.chat-header {
+  max-height: 60px;
+}
+
+.chat.composing .chat-header {
+  max-height: 0;
+  min-height: 0;
+  opacity: 0;
+  padding-bottom: 0;
+  border-bottom-color: transparent;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-header,
+  .composer-options {
+    transition: none;
+  }
+}
+
 .back {
   display: none;
 }
@@ -1415,6 +1447,24 @@ button.scroll-bottom {
   gap: 4px;
 }
 
+/* Attach and the pickers travel together: only send and stop stay while a
+   prompt is being written. */
+.composer-options {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 100%;
+}
+
+/* Kept in the tree rather than removed: `/think` opens the select by ref. */
+.chat.composing .composer-options {
+  flex: 0 0 0;
+  max-width: 0;
+  opacity: 0;
+}
+
 /* Every picker gets the same share of the row: their labels change with the
    model and the turn, and a row that reflows on each pick is unaimable. */
 .composer-actions select {
@@ -1432,6 +1482,34 @@ button.scroll-bottom {
 /* The pickers already fill the row, so the spacer is only a gap here. */
 .composer-actions .spacer {
   flex: 0 0 4px;
+}
+
+/* Nothing to push apart once the pickers are folded. */
+.chat.composing .composer-actions .spacer {
+  display: none;
+}
+
+/* Typing reflows the dock into one line: the field takes the width the
+   pickers gave up instead of leaving an empty strip under the text. */
+.chat.composing .composer {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: flex-end;
+}
+
+.chat.composing .command-menu,
+.chat.composing .attachments {
+  flex: 0 0 100%;
+}
+
+.chat.composing .composer textarea {
+  flex: 1 1 auto;
+  width: auto;
+  min-width: 0;
+}
+
+.chat.composing .composer-actions {
+  flex: 0 0 auto;
 }
 
 /* The one filled control on the screen: it is the primary action. */
@@ -1567,6 +1645,13 @@ button.scroll-bottom {
 
 /* Extension surfaces: status chips and widgets sit with the composer, where
    the eye already is, and never inside the transcript. */
+/* Extension chips and widgets are ambient, so they fold with the rest of the
+   chrome while typing rather than sitting over the transcript. */
+.chat.composing .ext-status,
+.chat.composing .ext-widgets {
+  display: none;
+}
+
 .ext-status {
   flex-wrap: wrap;
   gap: 6px;

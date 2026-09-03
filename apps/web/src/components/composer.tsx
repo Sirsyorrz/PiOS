@@ -30,6 +30,7 @@ export function Composer({
   nativeCommands = [],
   onSend,
   onInterrupt,
+  onComposingChange,
 }: {
   sessionId: string;
   /** An extension asked to replace what is typed, e.g. a prompt template. */
@@ -48,6 +49,8 @@ export function Composer({
   nativeCommands?: NativeCommand[];
   onSend: (text: string, images: ImageContent[], behavior?: StreamingBehavior) => void;
   onInterrupt: () => void;
+  /** Focus of the field, so the pane can give the keyboard more room. */
+  onComposingChange?: (composing: boolean) => void;
 }) {
   const steeringMode = useSettings().steeringMode;
   const [text, setText] = useState("");
@@ -178,6 +181,8 @@ export function Composer({
         rows={1}
         placeholder="Message pi"
         onChange={(e) => edit(e.target.value)}
+        onFocus={() => onComposingChange?.(true)}
+        onBlur={() => onComposingChange?.(false)}
         // A screenshot is the fastest way to show the agent something, and on
         // a phone the clipboard is often the only path to one.
         onPaste={(e) => {
@@ -213,6 +218,9 @@ export function Composer({
       />
 
       <div className="composer-actions">
+        {/* Collapsed while typing: the pickers are one `/model` or `/think`
+            away, and the room they take is transcript on a phone. */}
+        <div className="composer-options">
         <label className="attach ghost icon" title="Attach an image">
           <input
             type="file"
@@ -236,6 +244,7 @@ export function Composer({
           levels={thinkingLevels ?? []}
           selectRef={thinkingSelect}
         />
+        </div>
 
         <span className="spacer" />
 
