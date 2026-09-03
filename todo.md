@@ -2,5 +2,7 @@
 - git integration
 - surface errors (e.g. rate limits)
 - terminal
+- text editor
+- @ fuzzy file picker
 - add missing native commands
 - reference paseo, what can we learn/improve, can we relay, rather than tailscale?
