@@ -1,7 +1,6 @@
-- can we move the chat input down any further on mobile?
 - show claude usage
-- add missing native commands
+- git integration
 - surface errors (e.g. rate limits)
 - terminal
-- git integration
+- add missing native commands
 - reference paseo, what can we learn/improve, can we relay, rather than tailscale?
