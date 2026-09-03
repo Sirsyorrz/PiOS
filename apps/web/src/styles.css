@@ -895,7 +895,7 @@ button.danger {
   /* Top inset clears the notch/island, bottom inset the home indicator, so
      the composer never sits under either. */
   padding: calc(12px + var(--safe-top)) calc(16px + var(--safe-right))
-    max(12px, var(--safe-bottom)) calc(16px + var(--safe-left));
+    max(4px, var(--safe-bottom)) calc(16px + var(--safe-left));
   gap: 8px;
   /* The dock is taken out of flow, so the pane is its containing block. */
   position: relative;
@@ -907,7 +907,7 @@ button.danger {
   position: absolute;
   left: calc(16px + var(--safe-left));
   right: calc(16px + var(--safe-right));
-  bottom: max(4px, calc(var(--safe-bottom) - 16px));
+  bottom: max(0px, calc(var(--safe-bottom) - 16px));
   display: flex;
   flex-direction: column;
   gap: 8px;
