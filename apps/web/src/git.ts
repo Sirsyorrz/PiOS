@@ -188,20 +188,67 @@ export type PatchLine = { kind: "add" | "remove" | "same" | "meta"; text: string
 /** Above this a patch is not readable on a phone and not worth the DOM. */
 const MAX_PATCH_LINES = 1200;
 
-/** Splits a unified diff into renderable lines, keeping hunk headers as meta. */
+/**
+ * Splits a unified diff into renderable lines, keeping hunk headers as meta.
+ *
+ * The indentation every line shares carries no information but costs the whole
+ * width of a phone, so it is removed: a deeply nested hunk otherwise starts
+ * off screen and has to be scrolled to before it can be read at all. The
+ * change markers keep their column, and headers are left alone.
+ */
 export function patchLines(patch: string): PatchLine[] {
   const lines = patch.split("\n").slice(0, MAX_PATCH_LINES);
-  const out: PatchLine[] = [];
+  const out: { kind: PatchLine["kind"]; marker: string; body: string }[] = [];
+
   for (const text of lines) {
-    if (text.startsWith("+++") || text.startsWith("---") || text.startsWith("@@")) {
-      out.push({ kind: "meta", text });
-    } else if (text.startsWith("diff ") || text.startsWith("index ") || text.startsWith("new ")) {
+    // "\ No newline at end of file" is a note about the patch, not a line of
+    // the file: counting its zero indentation would defeat the trim below.
+    if (
+      text.startsWith("+++") ||
+      text.startsWith("---") ||
+      text.startsWith("@@") ||
+      text.startsWith("\\")
+    ) {
+      out.push({ kind: "meta", marker: "", body: text });
       continue;
-    } else if (text.startsWith("+")) out.push({ kind: "add", text });
-    else if (text.startsWith("-")) out.push({ kind: "remove", text });
-    else out.push({ kind: "same", text });
+    }
+    if (text.startsWith("diff ") || text.startsWith("index ") || text.startsWith("new ")) continue;
+
+    const kind = text.startsWith("+") ? "add" : text.startsWith("-") ? "remove" : "same";
+    // Every content line carries a one-character marker column, including the
+    // space on a context line, so the body starts one character in.
+    out.push({ kind, marker: text.slice(0, 1), body: text.slice(1) });
   }
+
   // A trailing blank from the final newline is not a line of the patch.
-  if (out.at(-1)?.text === "") out.pop();
-  return out;
+  if (out.at(-1)?.body === "" && out.at(-1)?.marker === "") out.pop();
+
+  const shared = commonIndent(out.filter((line) => line.kind !== "meta").map((line) => line.body));
+  return out.map((line) => ({
+    kind: line.kind,
+    text: line.marker + (line.kind === "meta" ? line.body : line.body.slice(shared)),
+  }));
+}
+
+/**
+ * Length of the leading whitespace every non-blank line shares.
+ *
+ * Blank lines are skipped: they have no indentation to speak of, and counting
+ * them as zero would defeat the trim on every hunk that contains one.
+ */
+function commonIndent(bodies: string[]): number {
+  let shared: string | null = null;
+  for (const body of bodies) {
+    if (body.trim() === "") continue;
+    const indent = body.slice(0, body.length - body.trimStart().length);
+    if (shared === null) {
+      shared = indent;
+      continue;
+    }
+    let i = 0;
+    while (i < shared.length && i < indent.length && shared[i] === indent[i]) i++;
+    shared = shared.slice(0, i);
+    if (shared === "") break;
+  }
+  return shared?.length ?? 0;
 }

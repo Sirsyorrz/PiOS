@@ -276,6 +276,15 @@ button.danger {
   white-space: nowrap;
 }
 
+/* Clips the head instead of the tail, for paths: the filename identifies what
+   is on screen, the directories leading to it rarely do. The reversed
+   direction only moves the ellipsis; a path is bidi-neutral, so the text
+   itself still reads left to right. */
+.line.tail {
+  direction: rtl;
+  text-align: left;
+}
+
 /* The one scroll container: fills its flex parent and reserves gutter room
    so content does not sit under the scrollbar or reflow when it appears. */
 .scroll-y {

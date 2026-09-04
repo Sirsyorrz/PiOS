@@ -290,7 +290,7 @@ function DiffView({ git, selection, onBack, onClose }: {
         <button type="button" className="ghost icon" aria-label="back" onClick={onBack}>
           <ChevronLeftIcon />
         </button>
-        <h2 className="line">{selection.path}</h2>
+        <h2 className="line tail">{selection.path}</h2>
         <button type="button" className="ghost" onClick={onClose}>
           Close
         </button>
