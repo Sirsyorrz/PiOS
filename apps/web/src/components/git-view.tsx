@@ -108,8 +108,8 @@ export function GitSheet({ git, onClose }: { git: Git; onClose: () => void }) {
           {confirming ? (
             <div className="banner warn">
               <span className="line">
-                Stash {"paths" in confirming ? confirming.paths.join(", ") : "changes"}? The change
-                is recoverable with Pop stash.
+                Discard {"paths" in confirming ? confirming.paths.join(", ") : "changes"}? It is
+                stashed, so `git stash pop` on the machine brings it back.
               </span>
               <button type="button" onClick={() => setConfirming(null)}>
                 Cancel
@@ -170,9 +170,6 @@ export function GitSheet({ git, onClose }: { git: Git; onClose: () => void }) {
           <div className="row spread">
             <button type="button" disabled={git.busy} onClick={() => run({ type: "stage_all" })}>
               Stage all
-            </button>
-            <button type="button" disabled={git.busy} onClick={() => run({ type: "stash_pop" })}>
-              Pop stash
             </button>
             <button
               type="button"

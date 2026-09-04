@@ -32,9 +32,7 @@ export type GitAction =
   | { type: "unstage"; paths: string[] }
   | { type: "unstage_all" }
   | { type: "discard"; paths: string[] }
-  | { type: "commit"; message: string }
-  | { type: "stash" }
-  | { type: "stash_pop" };
+  | { type: "commit"; message: string };
 
 /** Destructive enough that the sheet asks first. */
 export function needsConfirmation(action: GitAction): boolean {
