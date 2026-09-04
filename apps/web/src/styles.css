@@ -374,6 +374,11 @@ button.danger {
 
 .field > input {
   width: 100%;
+}
+
+/* Only a search field has a leading glyph, so only it gives up the inset the
+   glyph sits in; a plain field must not start typing a third of the way in. */
+.field.search > input {
   padding-left: 34px;
 }
 
@@ -1728,11 +1733,6 @@ button.scroll-bottom {
 .dialog textarea {
   width: 100%;
   resize: vertical;
-}
-
-/* No leading glyph here, so the input keeps its normal inset. */
-.dialog .field > input {
-  padding-left: 10px;
 }
 
 /* Extension surfaces: status chips and widgets sit with the composer, where

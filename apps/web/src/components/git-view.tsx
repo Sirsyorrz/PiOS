@@ -128,6 +128,16 @@ export function GitSheet({ git, onClose }: { git: Git; onClose: () => void }) {
             </div>
           ) : null}
 
+          {/* Above the file list: the message is what the commit button at the
+              bottom acts on, and a long list must not push it off screen. */}
+          <div className="field">
+            <input
+              value={message}
+              placeholder="Commit message"
+              onChange={(event) => setMessage(event.target.value)}
+            />
+          </div>
+
           <div className="scroll-y">
             <Section
               title="Staged"
@@ -155,14 +165,6 @@ export function GitSheet({ git, onClose }: { git: Git; onClose: () => void }) {
             {status.truncated ? (
               <p className="muted">Too many changes to list; counts above are exact.</p>
             ) : null}
-          </div>
-
-          <div className="field">
-            <input
-              value={message}
-              placeholder="Commit message"
-              onChange={(event) => setMessage(event.target.value)}
-            />
           </div>
 
           <div className="row spread">
