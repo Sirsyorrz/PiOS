@@ -9,6 +9,7 @@ import { AuthStore, bearerToken } from "./auth.ts";
 import { containedPath } from "./paths.ts";
 import type { PushStore } from "./push.ts";
 import { SERVER_VERSION, type ServerConfig } from "./config.ts";
+import { claudeUsage } from "./usage.ts";
 
 const CONTENT_TYPES: Record<string, string> = {
   ".png": "image/png",
@@ -43,6 +44,7 @@ const API_PATHS = new Set([
   "/push/key",
   "/push/subscribe",
   "/push/unsubscribe",
+  "/usage",
 ]);
 
 export interface RouteContext {
@@ -100,6 +102,10 @@ export async function handleRequest(
       const endpoint = typeof body?.endpoint === "string" ? body.endpoint : undefined;
       if (!endpoint) return json(res, 400, { error: "bad_request" });
       return json(res, 200, { removed: ctx.push.unsubscribe(endpoint) });
+    }
+    if (req.method === "GET" && url.pathname === "/usage") {
+      const usage = await claudeUsage();
+      return json(res, 200, { usage });
     }
     if (req.method === "GET" && url.pathname === "/dirs") return await listDirs(ctx, url, res);
     if (req.method === "GET" && url.pathname === "/file") return serveFile(ctx, url, res);

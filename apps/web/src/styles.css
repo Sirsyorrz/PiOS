@@ -517,6 +517,27 @@ button.danger {
   font-size: 12px;
 }
 
+.usage-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 14px;
+  color: var(--text);
+}
+
+.usage-bar {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--line);
+  overflow: hidden;
+}
+
+.usage-fill {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+}
+
 .workspace {
   display: grid;
   grid-template-columns: 280px 1fr;

@@ -1,4 +1,6 @@
 - show claude usage
+- shortened session names in notifications
+- collapse skills in session names
 - git integration
 - surface errors (e.g. rate limits)
 - terminal

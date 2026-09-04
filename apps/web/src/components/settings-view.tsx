@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { httpBase, type Machine } from "../machine.ts";
 import { disablePush, enablePush, pushState, type PushState } from "../push.ts";
 import type { Settings } from "../settings.ts";
+import { fetchUsage, formatSpend, resetsIn, type UsageReport } from "../usage.ts";
 import { EndpointPicker } from "./endpoint-picker.tsx";
 import { ModalCard, PickerHeader } from "./ui.tsx";
 
@@ -68,6 +69,11 @@ export function SettingsView({ settings, machine, onChange, onMachineChange, onF
       </div>
 
       <div className="settings-group">
+        <h3>Claude usage</h3>
+        <Usage machine={machine} />
+      </div>
+
+      <div className="settings-group">
         <h3>Notifications</h3>
         <Notifications machine={machine} />
       </div>
@@ -129,6 +135,54 @@ function Notifications({ machine }: { machine: Machine }) {
         onChange={busy ? () => {} : toggle}
       />
       {error ? <p className="muted">{error}</p> : null}
+    </>
+  );
+}
+
+/**
+ * Plan limits for the account the machine runs pi under.
+ *
+ * Read-only and best-effort: the daemon shells out to a CLI that may not be
+ * installed, so "unavailable" is a normal answer and never an error.
+ */
+function Usage({ machine }: { machine: Machine }) {
+  const [report, setReport] = useState<UsageReport | null | "loading" | "error">("loading");
+  const base = httpBase(machine);
+
+  useEffect(() => {
+    if (!base) return;
+    let live = true;
+    void fetchUsage(base, machine.deviceToken)
+      .then((next) => live && setReport(next))
+      .catch(() => live && setReport("error"));
+    return () => {
+      live = false;
+    };
+  }, [base, machine.deviceToken]);
+
+  if (report === "loading") return <p className="muted">Checking...</p>;
+  if (report === "error") return <p className="muted">Could not reach the machine.</p>;
+  if (!report) return <p className="muted">No usage data on this machine.</p>;
+
+  return (
+    <>
+      {report.windows.map((window) => {
+        const reset = window.resetsAt ? resetsIn(window.resetsAt) : null;
+        return (
+          <div key={window.key} className="usage-row">
+            <span className="settings-label">
+              <span>{window.label}</span>
+              <span className="muted">
+                {window.percent}% used{reset ? ` \u00b7 ${reset}` : ""}
+              </span>
+            </span>
+            <span className="usage-bar">
+              <span className="usage-fill" style={{ width: `${window.percent}%` }} />
+            </span>
+          </div>
+        );
+      })}
+      {report.spend ? <p className="muted">Extra usage: {formatSpend(report.spend)}</p> : null}
     </>
   );
 }
