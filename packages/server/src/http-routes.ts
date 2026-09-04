@@ -6,6 +6,7 @@ import { basename, dirname, extname, join, sep } from "node:path";
 import { sessionDirName, type SessionRegistry } from "@pios/pi-host";
 import { WIRE_VERSION } from "@pios/protocol";
 import { AuthStore, bearerToken } from "./auth.ts";
+import { gitAction, gitDiff, gitLog, gitStatus, GitError, parseGitAction } from "./git.ts";
 import { containedPath } from "./paths.ts";
 import type { PushStore } from "./push.ts";
 import { SERVER_VERSION, type ServerConfig } from "./config.ts";
@@ -45,6 +46,10 @@ const API_PATHS = new Set([
   "/push/subscribe",
   "/push/unsubscribe",
   "/usage",
+  "/git/status",
+  "/git/diff",
+  "/git/log",
+  "/git/action",
 ]);
 
 export interface RouteContext {
@@ -112,6 +117,7 @@ export async function handleRequest(
     if (req.method === "POST" && url.pathname === "/upload") {
       return await upload(ctx, url, req, res);
     }
+    if (url.pathname.startsWith("/git/")) return await gitRoute(ctx, url, req, res);
     return json(res, 404, { error: "not_found" });
   } catch (error) {
     console.error("[pios] request failed", error);
@@ -273,6 +279,56 @@ function lastSessionAt(recency: Map<string, number>, cwd: string): number | null
     if (name === key || name.startsWith(subtree)) newest = Math.max(newest, mtime);
   }
   return newest || null;
+}
+
+/**
+ * Git state for a session's working directory.
+ *
+ * Ambient state of the cwd, not conversation state, so it is served here
+ * rather than injected into the entry stream, where non-entry data would break
+ * the cursor. Local operations only: nothing here touches a remote.
+ */
+async function gitRoute(
+  ctx: RouteContext,
+  url: URL,
+  req: IncomingMessage,
+  res: ServerResponse,
+): Promise<void> {
+  const sessionId = url.searchParams.get("session");
+  const session = sessionId ? ctx.registry.get(sessionId) : null;
+  if (!session) return json(res, 404, { error: "unknown_session" });
+  const cwd = session.info.cwd;
+
+  try {
+    if (req.method === "GET" && url.pathname === "/git/status") {
+      const status = await gitStatus(cwd, { fresh: url.searchParams.get("fresh") === "1" });
+      // A cwd that is not a repository is a normal answer, not an error: the
+      // client hides the whole feature on a null status.
+      return json(res, 200, { status });
+    }
+    if (req.method === "GET" && url.pathname === "/git/diff") {
+      const result = await gitDiff(cwd, {
+        path: url.searchParams.get("path") ?? undefined,
+        staged: url.searchParams.get("staged") === "1",
+      });
+      return json(res, 200, result ?? { diff: null });
+    }
+    if (req.method === "GET" && url.pathname === "/git/log") {
+      const limit = Number(url.searchParams.get("limit") ?? 30);
+      return json(res, 200, { commits: await gitLog(cwd, Number.isFinite(limit) ? limit : 30) });
+    }
+    if (req.method === "POST" && url.pathname === "/git/action") {
+      const action = parseGitAction(await readJson(req, 64 * 1024));
+      if (!action) return json(res, 400, { error: "bad_request" });
+      // The recomputed status rides back on the response so the client never
+      // needs a follow-up round trip to redraw.
+      return json(res, 200, { status: await gitAction(cwd, action) });
+    }
+  } catch (error) {
+    if (error instanceof GitError) return json(res, 422, { error: "git_failed", message: error.message });
+    throw error;
+  }
+  return json(res, 404, { error: "not_found" });
 }
 
 function serveFile(ctx: RouteContext, url: URL, res: ServerResponse): void {

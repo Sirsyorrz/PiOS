@@ -1,7 +1,4 @@
-- show claude usage
-- shortened session names in notifications
-- collapse skills in session names
-- git integration
+- git integration: remote operations (fetch/pull/push), branch switching
 - surface errors (e.g. rate limits)
 - terminal
 - text editor

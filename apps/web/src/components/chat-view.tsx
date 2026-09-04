@@ -10,6 +10,7 @@ import { Composer } from "./composer.tsx";
 import type { NativeCommand } from "./native-commands.ts";
 import { sessionState } from "../session-status.ts";
 import { DialogSheet } from "./dialog-sheet.tsx";
+import { GitControl } from "./git-view.tsx";
 import { ChevronDownIcon, ChevronLeftIcon, PlusIcon } from "./icons.tsx";
 import { MessageBubble, StreamingBubble } from "./message.tsx";
 
@@ -120,6 +121,7 @@ export function ChatView({
         <span className="title line">
           {view?.presentation.title ?? session?.name ?? (session ? collapseHome(session.cwd) : undefined) ?? sessionId}
         </span>
+        <GitControl running={view?.running ?? false} />
         {/* One source for the word and its colour, shared with the list. */}
         <span className={`status ${rowState.tone}`}>
           {rowState.tone === "running" ? <span className="spinner" /> : null}

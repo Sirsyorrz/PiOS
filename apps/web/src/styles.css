@@ -1370,6 +1370,75 @@ button.scroll-bottom {
   color: var(--error);
 }
 
+/* Hunk headers are scaffolding, not content: dimmed so the eye lands on the
+   changed lines instead of on the line numbers. */
+.diff-meta {
+  color: var(--muted);
+}
+
+/* Reuses the extension status chip, tightened for a header that also holds a
+   title, a status word and two icon controls. */
+.git-chip {
+  flex: 0 1 auto;
+  padding: 2px 8px;
+  font-size: 12px;
+  color: var(--muted);
+  background: var(--raised);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Taller than a picker card: this is a working surface, not a single choice. */
+.git-sheet {
+  width: min(560px, 100%);
+  max-height: min(80vh, 720px);
+}
+
+.git-sheet .scroll-y {
+  flex: 1;
+}
+
+.git-section {
+  margin: 8px 0 2px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/* The path is the tap target and takes all the slack; the controls keep their
+   width so they do not shift between rows of different name lengths. */
+.git-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.git-row .list-row {
+  flex: 1;
+  min-width: 0;
+}
+
+.git-mark {
+  font-family: ui-monospace, monospace;
+  font-weight: 600;
+}
+
+.git-mark.add {
+  color: var(--ok);
+}
+
+.git-mark.remove,
+.git-mark.warn {
+  color: var(--error);
+}
+
+.git-mark.muted {
+  color: var(--muted);
+}
+
 .banners {
   display: flex;
   flex-direction: column;
