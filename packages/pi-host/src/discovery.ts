@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { readdir } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
+import { previewText } from "@pios/protocol";
 import { projectSessionDir } from "./session-paths.ts";
 
 /**
@@ -115,6 +116,6 @@ function toResumable(info: {
     createdAt: info.created.getTime(),
     modifiedAt: info.modified.getTime(),
     messageCount: info.messageCount,
-    preview: info.firstMessage.slice(0, 200),
+    preview: previewText(info.firstMessage).slice(0, 200),
   };
 }

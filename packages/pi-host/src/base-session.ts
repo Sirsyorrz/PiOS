@@ -2,6 +2,7 @@ import {
   applyPresentation,
   emptyPresentation,
   messageText,
+  previewText,
   type AgentEvent,
   type SessionEntry,
   type ExtensionUiRequest,
@@ -254,7 +255,7 @@ export abstract class BaseSession {
 
   /** Published as a status event: list rows on other devices show it too. */
   private notePreview(text: string): void {
-    const trimmed = text.trim().slice(0, 200);
+    const trimmed = previewText(text).slice(0, 200);
     if (!trimmed || this.preview) return;
     this.preview = trimmed;
     this.publish({ type: "status", status: this.status });

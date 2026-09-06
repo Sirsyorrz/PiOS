@@ -120,6 +120,51 @@ export const SessionEntrySchema = z.looseObject({
 });
 export type SessionEntry = z.infer<typeof SessionEntrySchema>;
 
+/**
+ * Blocks pi (or a client) injects into the user's first message. They are
+ * long, machine-facing, and would otherwise become the session's name.
+ */
+const INJECTED_TAGS = [
+  "skill",
+  "available_skills",
+  "system-reminder",
+  "project_context",
+  "project_instructions",
+  "environment",
+  "context",
+];
+
+const INJECTED_BLOCKS = new RegExp(
+  `<(${INJECTED_TAGS.join("|")})(\\s[^>]*)?>[\\s\\S]*?</\\1>|<(${INJECTED_TAGS.join("|")})(\\s[^>]*)?/?>`,
+  "gi",
+);
+
+/**
+ * Message text as a human-facing one-liner. Injected blocks collapse to a
+ * short tag so a skill-only message still says which skill it was.
+ */
+export function previewText(text: string): string {
+  const collapsed = text
+    .replace(
+      INJECTED_BLOCKS,
+      (
+        _match,
+        pairTag?: string,
+        pairAttrs?: string,
+        loneTag?: string,
+        loneAttrs?: string,
+      ) => {
+        const label = (pairTag ?? loneTag ?? "").toLowerCase();
+        const attrs = pairAttrs ?? loneAttrs ?? "";
+        const name = /name\s*=\s*["']([^"']+)["']/i.exec(attrs)?.[1];
+        return ` <${name ? `${label}:${name}` : label}> `;
+      },
+    )
+    .replace(/\s+/g, " ")
+    .trim();
+  return collapsed || text.trim().replace(/\s+/g, " ");
+}
+
 /** Text of a message, ignoring thinking and tool calls. */
 export function messageText(message: AgentMessage): string {
   if (message.role === "bashExecution") return message.output;
