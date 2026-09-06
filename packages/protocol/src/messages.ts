@@ -140,6 +140,13 @@ const INJECTED_BLOCKS = new RegExp(
 );
 
 /**
+ * A pasted image reaches the agent as a temp file path, which is noise in a
+ * session name.
+ */
+const PASTED_IMAGE_PATH =
+  /(^|\s)\/tmp\/[\w.-]*\.(png|jpe?g|gif|webp|bmp)(?=\s|$)/gi;
+
+/**
  * Message text as a human-facing one-liner. Injected blocks collapse to a
  * short tag so a skill-only message still says which skill it was.
  */
@@ -160,9 +167,24 @@ export function previewText(text: string): string {
         return ` <${name ? `${label}:${name}` : label}> `;
       },
     )
+    .replace(PASTED_IMAGE_PATH, " <image> ")
     .replace(/\s+/g, " ")
     .trim();
   return collapsed || text.trim().replace(/\s+/g, " ");
+}
+
+/**
+ * A message as a one-line name: image parts keep their place as `<image>`,
+ * so a screenshot-only message is not a blank row.
+ */
+export function messagePreview(message: AgentMessage): string {
+  if (message.role !== "user" || typeof message.content === "string") {
+    return previewText(messageText(message));
+  }
+  const parts = message.content.map((part) =>
+    part.type === "image" ? "<image>" : part.text,
+  );
+  return previewText(parts.join(" "));
 }
 
 /** Text of a message, ignoring thinking and tool calls. */

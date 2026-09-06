@@ -2,6 +2,7 @@ import {
   applyPresentation,
   emptyPresentation,
   messageText,
+  messagePreview,
   previewText,
   type AgentEvent,
   type SessionEntry,
@@ -235,7 +236,7 @@ export abstract class BaseSession {
   /** Tracks run state and the durable cursor as events go by. */
   protected observeAgentEvent(event: AgentEvent): void {
     if (event.type === "message_start" && event.message.role === "user") {
-      this.notePreview(messageText(event.message));
+      this.notePreview(messagePreview(event.message));
     }
     if (event.type === "agent_start") this.setStatus("running");
     // Only agent_settled is terminal; agent_end may be followed by a retry,
@@ -250,7 +251,7 @@ export abstract class BaseSession {
   protected observeEntries(entries: SessionEntry[]): void {
     if (this.preview) return;
     const first = entries.find((entry) => entry.message?.role === "user");
-    if (first?.message) this.notePreview(messageText(first.message));
+    if (first?.message) this.notePreview(messagePreview(first.message));
   }
 
   /** Published as a status event: list rows on other devices show it too. */
