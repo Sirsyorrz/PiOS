@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import type { ServerFrame } from "@pios/protocol";
-import { startHarness, hello, TestClient, type Harness } from "./helpers.ts";
+import { startHarness, hello, nextSessionId, TestClient, type Harness } from "./helpers.ts";
 
 let harness: Harness;
 
@@ -17,13 +17,18 @@ after(async () => {
 async function sessionAskingForConfirmation(client: TestClient, name: string) {
   const cwd = join(harness.dir, name);
   mkdirSync(cwd, { recursive: true });
-  const created = client.send({ type: "create_session", cwd, trustProject: false });
-  const frame = await client.waitForCommand(created);
-  assert.equal(frame.type, "session_state", JSON.stringify(frame));
-  const sessionId = frame.type === "session_state" ? frame.sessionId : "";
-
+  const sessionId = nextSessionId();
   await client.waitForCommand(client.send({ type: "subscribe", sessionId }));
-  client.send({ type: "prompt", sessionId, messageId: `${name}-m1`, text: "ASK_DIALOG", images: [] });
+  // The first prompt is what starts the session, so the directory travels
+  // with it rather than in a command of its own.
+  client.send({
+    type: "prompt",
+    sessionId,
+    create: { cwd, trustProject: false },
+    messageId: `${name}-m1`,
+    text: "ASK_DIALOG",
+    images: [],
+  });
 
   const asked = await client.waitFor(
     (f) => f.type === "extension_ui_request" && f.sessionId === sessionId,
@@ -102,12 +107,17 @@ test("presentation survives a reconnect; a stray control byte does not eat a fra
   const client = await hello(harness);
   const cwd = join(harness.dir, "dialog-c");
   mkdirSync(cwd, { recursive: true });
-  const created = client.send({ type: "create_session", cwd, trustProject: false });
-  const frame = await client.waitForCommand(created);
-  const sessionId = frame.type === "session_state" ? frame.sessionId : "";
+  const sessionId = nextSessionId();
   await client.waitForCommand(client.send({ type: "subscribe", sessionId }));
 
-  client.send({ type: "prompt", sessionId, messageId: "c-m1", text: "SHOW_STATUS", images: [] });
+  client.send({
+    type: "prompt",
+    sessionId,
+    create: { cwd, trustProject: false },
+    messageId: "c-m1",
+    text: "SHOW_STATUS",
+    images: [],
+  });
   await client.waitFor(
     (f) => f.type === "extension_ui_request" && f.request.method === "setStatus",
   );

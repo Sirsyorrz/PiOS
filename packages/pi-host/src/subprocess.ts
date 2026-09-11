@@ -255,6 +255,12 @@ export class SubprocessSession extends BaseSession implements PiSession {
 
   private request(command: Record<string, unknown>, timeoutMs?: number): Promise<RpcResponse> {
     const proc = this.proc;
+    // A sleeping session answers commands; it just has to get up first. Only
+    // a sleeping one: a crashed session belongs to the registry's recovery,
+    // and two restarts racing each other is worse than one failed command.
+    if (!proc && !this.disposed && this.status === "cold") {
+      return this.wakeThen(command, timeoutMs);
+    }
     if (!proc || this.disposed) {
       return Promise.resolve({
         type: "response",
@@ -326,6 +332,7 @@ export class SubprocessSession extends BaseSession implements PiSession {
   }
 
   async prompt(text: string, options: PromptOptions = {}): Promise<PromptResult> {
+    this.noteActivity();
     // pi itself rejects a bare prompt while streaming, so the behaviour is
     // forwarded as given rather than second-guessed here.
     return toResult(
@@ -417,10 +424,12 @@ export class SubprocessSession extends BaseSession implements PiSession {
   }
 
   async steer(text: string, images?: ImageContent[]): Promise<PromptResult> {
+    this.noteActivity();
     return toResult(await this.request({ type: "steer", message: text, images }));
   }
 
   async followUp(text: string, images?: ImageContent[]): Promise<PromptResult> {
+    this.noteActivity();
     return toResult(await this.request({ type: "follow_up", message: text, images }));
   }
 
@@ -475,6 +484,59 @@ export class SubprocessSession extends BaseSession implements PiSession {
     }
     this.setStatus("disposed");
     this.clearListeners();
+  }
+
+  /** True while a child process is backing this session. */
+  get awake(): boolean {
+    return this.proc !== null;
+  }
+
+  /**
+   * Stops the child while keeping the session.
+   *
+   * The transcript is on disk and the id outlives the process, so a sleeping
+   * session is still listable, still readable, and wakes on the next command.
+   * Anything in flight would be lost, so the caller decides when it is safe.
+   */
+  async sleep(): Promise<void> {
+    const proc = this.proc;
+    if (this.disposed || !proc) return;
+    this.proc = null;
+    // Detached from recovery first: this exit is intended, not a crash.
+    proc.removeAllListeners("exit");
+    proc.stdin.end();
+    proc.kill("SIGTERM");
+    this.setStatus("cold");
+  }
+
+  /**
+   * Brings the child back for a session that was asleep or died.
+   *
+   * The ring buffer's seq numbers only ever meant anything within one process,
+   * so waking announces itself the way a crash recovery does, with the durable
+   * leaf the new child loaded.
+   */
+  async wake(): Promise<void> {
+    if (this.disposed || this.proc) return;
+    this.setStatus("starting");
+    await this.relaunch("session resumed");
+  }
+
+  private async wakeThen(
+    command: Record<string, unknown>,
+    timeoutMs?: number,
+  ): Promise<RpcResponse> {
+    try {
+      await this.wake();
+    } catch (error) {
+      return {
+        type: "response",
+        command: String(command.type),
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+    return this.request(command, timeoutMs);
   }
 
   /** Respawns on the same session id, so pi reloads the persisted JSONL. */

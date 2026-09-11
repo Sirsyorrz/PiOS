@@ -66,16 +66,6 @@ export function PlusIcon(props: SVGProps<SVGSVGElement>) {
   );
 }
 
-export function HistoryIcon(props: SVGProps<SVGSVGElement>) {
-  return (
-    <Svg {...props}>
-      <path d="M3.5 12a8.5 8.5 0 1 0 2.6-6.1" />
-      <path d="M3 4v4.5h4.5" />
-      <path d="M12 7.5V12l3 1.8" />
-    </Svg>
-  );
-}
-
 export function TrashIcon(props: SVGProps<SVGSVGElement>) {
   return (
     <Svg {...props}>

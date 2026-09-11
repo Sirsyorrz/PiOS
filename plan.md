@@ -299,6 +299,29 @@ file-edit.test.ts` and `packages/sandbox/test/files.test.ts`.
 
 ---
 
+## Phase 7.6 - Session model: disk is the session - DONE
+
+Sessions were live objects the daemon created and held; files on disk were a
+separate "resumable" list behind a second picker. One session was two things
+depending on an implementation detail the user could not see.
+
+1. `SessionIndex` replaces `discovery.ts`: stat-only candidate pass, skim
+   bounded by bytes, mtime+size caches, seed file for warm cold starts.
+   Listing 1300 sessions went from 1.8s to 40ms cold, 20ms warm.
+2. `transcript-file.ts`: transcripts read from the session JSONL, with tail
+   paging (`limit`/`before`) beside the `since` delta.
+3. Lazy processes: `sleep`/`wake` on the subprocess host, an idle sweep in the
+   registry, `cold` as the resting status.
+4. Wire v2: `list_sessions` paged and searched over the index,
+   `list_resumable`, `dispose_session` and `create_session` deleted, `prompt`
+   carrying `create`, `sessions_changed` nudge from a store watcher, trust
+   stored per project directory.
+5. Web: one session list with search and infinite scroll, drafts for sessions
+   that do not exist yet, no delete affordance, cached list and transcript for
+   an instant cold launch.
+
+---
+
 ## Phase 8 - Cleanup and hardening
 
 1. Prune dead code and duplicated view logic surfaced by Phases 6-7.

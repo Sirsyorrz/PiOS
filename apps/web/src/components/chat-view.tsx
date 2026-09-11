@@ -18,6 +18,7 @@ import { ChevronDownIcon, ChevronLeftIcon, FileIcon, PlusIcon } from "./icons.ts
 import { BashCard, MessageBubble, StreamingBubble } from "./message.tsx";
 import { SessionStatsFooter } from "./session-stats.tsx";
 import { useSettings } from "../settings.ts";
+import type { Draft } from "../drafts.ts";
 
 /** Extension widgets for one slot. pi defaults an unplaced widget above. */
 function widgets(view: SessionView | null, placement: "aboveEditor" | "belowEditor") {
@@ -43,6 +44,7 @@ function widgets(view: SessionView | null, placement: "aboveEditor" | "belowEdit
 export function ChatView({
   sessionId,
   session,
+  draft,
   state,
   baseUrl,
   deviceToken,
@@ -53,6 +55,8 @@ export function ChatView({
 }: {
   sessionId: string;
   session: SessionSummary | null;
+  /** Set while this is a composer with no session behind it yet. */
+  draft: Draft | null;
   state: SupervisorState;
   /** Daemon HTTP origin, for files and uploads. */
   baseUrl: string | null;
@@ -91,7 +95,15 @@ export function ChatView({
   }, [transcript.settle]);
 
   function send(text: string, images: ImageContent[], behavior?: StreamingBehavior) {
-    client.prompt({ sessionId, text, images, streamingBehavior: behavior });
+    client.prompt({
+      sessionId,
+      text,
+      images,
+      streamingBehavior: behavior,
+      // The first prompt of a draft is what creates the session, so the
+      // directory travels with it rather than ahead of it.
+      create: draft ? { cwd: draft.cwd, trustProject: draft.trustProject } : undefined,
+    });
   }
 
   // A branched session opens with the turn it was cut before already typed.
@@ -177,6 +189,17 @@ export function ChatView({
       </header>
 
       <div className="transcript scroll-y" ref={transcript.ref} onScroll={transcript.onScroll}>
+        {/* The tail is loaded first, because a chat is read from the bottom;
+            the rest is fetched only if someone goes looking for it. */}
+        {view?.hasOlder ? (
+          <button
+            type="button"
+            className="ghost older"
+            onClick={() => client.loadOlderEntries(sessionId)}
+          >
+            Load earlier messages
+          </button>
+        ) : null}
         {view?.items.map((item) => {
           if (item.kind === "message") {
             return (

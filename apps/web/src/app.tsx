@@ -13,14 +13,13 @@ import { Banners } from "./components/banners.tsx";
 import { ChatView } from "./components/chat-view.tsx";
 import { DirectoryPicker } from "./components/directory-picker.tsx";
 import { PairingScreen } from "./components/pairing-screen.tsx";
-import { ResumePicker } from "./components/resume-picker.tsx";
 import { SettingsIcon } from "./components/icons.tsx";
 import type { NativeCommand } from "./components/native-commands.ts";
 import { SessionList } from "./components/session-list.tsx";
 import { SettingsView } from "./components/settings-view.tsx";
 import { loadSettings, saveSettings, SettingsProvider, type Settings } from "./settings.ts";
 import { adoptSandboxMachine } from "./sandbox.ts";
-import { dropSessionDrafts } from "./file-edit.ts";
+import { loadDrafts, saveDrafts, type Draft } from "./drafts.ts";
 import { useUnreadMarks } from "./seen.ts";
 import { useAttentionReport } from "./attention.ts";
 import { useLaunchSession } from "./launch-session.ts";
@@ -85,13 +84,14 @@ function Workspace({ machine, settings, onSettingsChange, onMachineChange, onFor
 }) {
   const client = useClient();
   const state = useSupervisorState();
-  const { activeId, setActiveId } = useLaunchSession(machine, state);
+  const { activeId, setActiveId } = useLaunchSession(machine);
   const seen = useUnreadMarks(machine.id, state.sessions, state.sync === "synced", activeId);
 
   // The directory the picker opens in; null closes it, empty lets the daemon
   // choose where to start.
   const [pickerStart, setPickerStart] = useState<string | null>(null);
-  const [resuming, setResuming] = useState(false);
+  const [drafts, setDrafts] = useState<Draft[]>(() => loadDrafts(machine.id));
+  const [search, setSearch] = useState("");
   const [showSettings, setShowSettings] = useState(false);
   // Session commands are not queued, so a dropped one has to be said out loud.
   const [notice, setNotice] = useState<string | null>(null);
@@ -100,7 +100,37 @@ function Workspace({ machine, settings, onSettingsChange, onMachineChange, onFor
     () => state.sessions.find((s) => s.sessionId === activeId) ?? null,
     [state.sessions, activeId],
   );
+  const draft = useMemo(
+    () => drafts.find((d) => d.id === activeId) ?? null,
+    [drafts, activeId],
+  );
   const base = httpBase(machine);
+
+  function updateDrafts(next: Draft[]) {
+    saveDrafts(machine.id, next);
+    setDrafts(next);
+  }
+
+  // The daemon owns the search: rows past the first page are not here to be
+  // filtered. Debounced, so typing does not scan the store per keystroke.
+  useEffect(() => {
+    const timer = setTimeout(
+      () => client.listSessions({ query: search.trim() || undefined }),
+      search ? 200 : 0,
+    );
+    return () => clearTimeout(timer);
+  }, [client, search, state.transport]);
+
+  // The store changed on disk, e.g. the TUI started a session. The nudge
+  // carries nothing: this client knows which page it is looking at.
+  useEffect(() => client.onSessionsChanged(() => client.refreshSessions()), [client]);
+
+  // A draft stops being a draft the moment its session exists.
+  useEffect(() => {
+    const live = new Set(state.sessions.map((s) => s.sessionId));
+    const kept = drafts.filter((d) => !live.has(d.id));
+    if (kept.length !== drafts.length) updateDrafts(kept);
+  }, [state.sessions, drafts]);
 
   // A rewind branches into a session of its own, so the app follows it there
   // and leaves the conversation it came from in the list, intact.
@@ -128,7 +158,6 @@ function Workspace({ machine, settings, onSettingsChange, onMachineChange, onFor
         description: "Start a new session",
         run: () => setPickerStart(session?.cwd ?? ""),
       },
-      { name: "resume", description: "Pick from previous sessions", run: () => setResuming(true) },
       { name: "sessions", description: "Back to the session list", run: () => setActiveId(null) },
       {
         name: "settings",
@@ -166,24 +195,6 @@ function Workspace({ machine, settings, onSettingsChange, onMachineChange, onFor
     );
   }
 
-  if (resuming) {
-    return (
-      <ResumePicker
-        onCancel={() => setResuming(false)}
-        onResume={(session) => {
-          // Same call as a new session: the daemon decides whether this is an
-          // attach to something already open or a fresh load of the file.
-          const sent = client.createSession(
-            { cwd: session.cwd, name: session.name, trustProject: true, resumeFrom: session.path },
-            setActiveId,
-          );
-          setNotice(sent ? null : "Not connected: the session was not resumed.");
-          setResuming(false);
-        }}
-      />
-    );
-  }
-
   if (pickerStart !== null && base) {
     return (
       <DirectoryPicker
@@ -192,10 +203,16 @@ function Workspace({ machine, settings, onSettingsChange, onMachineChange, onFor
         startPath={pickerStart || null}
         onCancel={() => setPickerStart(null)}
         onPick={(cwd, trustProject) => {
-          // Opened as soon as the daemon names it: starting a session and
-          // being left on the list is not what the tap asked for.
-          const sent = client.createSession({ cwd, trustProject }, setActiveId);
-          setNotice(sent ? null : "Not connected: the session was not started.");
+          // No daemon round trip: the session begins when the first prompt is
+          // sent, under the id composed against here.
+          const draft: Draft = {
+            id: client.newSessionId(),
+            cwd,
+            trustProject,
+            createdAt: Date.now(),
+          };
+          updateDrafts([draft, ...drafts]);
+          setActiveId(draft.id);
           setPickerStart(null);
         }}
       />
@@ -233,18 +250,19 @@ function Workspace({ machine, settings, onSettingsChange, onMachineChange, onFor
         ) : null}
 
         <SessionList
-          sessions={state.sessions.filter((s) => s.status !== "disposed")}
+          sessions={state.sessions}
+          drafts={drafts}
           activeId={activeId}
           seen={seen}
+          query={search}
+          loading={state.transport === "connected" && state.sessions.length === 0}
+          hasMore={state.hasMoreSessions}
+          onQuery={setSearch}
           onSelect={setActiveId}
           onCreate={() => setPickerStart("")}
-          onResume={() => setResuming(true)}
-          onDispose={(sessionId) => {
-            client.disposeSession(sessionId);
-            // Drafts belong to a conversation; the conversation is gone.
-            void dropSessionDrafts(sessionId);
-            if (sessionId === activeId) setActiveId(null);
-          }}
+          onLoadMore={() =>
+            client.listSessions({ query: search || undefined, offset: state.sessions.length })
+          }
         />
       </aside>
 
@@ -252,6 +270,7 @@ function Workspace({ machine, settings, onSettingsChange, onMachineChange, onFor
         <ChatView
           sessionId={activeId}
           session={session}
+          draft={draft}
           state={state}
           baseUrl={base}
           deviceToken={machine.deviceToken}

@@ -23,6 +23,11 @@ export interface Scenario {
   sessions: SessionSpec[];
   /** Session the app opens on, when the client has no opinion of its own. */
   active?: string;
+  /**
+   * Idle time before a session's process is reaped. Tiny values make the cold
+   * path, which is the normal resting state, reachable in a screenshot.
+   */
+  sessionIdleMs?: number;
 }
 
 export function scenario(name: string, spec: Omit<Scenario, "name">): Scenario {

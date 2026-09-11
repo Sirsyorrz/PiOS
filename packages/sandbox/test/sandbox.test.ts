@@ -48,3 +48,28 @@ describe("sandbox", () => {
     sandbox = await startSandbox({ scenario: "empty" });
   });
 });
+
+describe("cold sessions", () => {
+  let sandbox: Sandbox;
+
+  before(async () => {
+    sandbox = await startSandbox({ scenario: "cold" });
+  });
+  after(async () => {
+    await sandbox.close();
+  });
+
+  it("reaps an idle session and keeps it listable", async () => {
+    const session = sandbox.server.registry.get("sbx-cold");
+    assert.ok(session, "a reaped session is still a session");
+    assert.equal(session.info.status, "cold");
+    assert.equal(session.info.cwd.length > 0, true);
+  });
+
+  it("wakes on the next command, with its transcript intact", async () => {
+    const session = sandbox.server.registry.get("sbx-cold")!;
+    const page = await session.getEntries();
+    assert.equal(page.entries.length, 2);
+    assert.equal(session.info.status !== "cold", true, "the command brought it back");
+  });
+});

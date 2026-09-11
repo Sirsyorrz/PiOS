@@ -1,5 +1,4 @@
-import { useEffect, useState } from "react";
-import type { SupervisorState } from "@pios/client-core";
+import { useState } from "react";
 import type { Machine } from "./machine.ts";
 import { browserStorage } from "./storage.ts";
 
@@ -34,9 +33,10 @@ function deepLinkedSession(): string | null {
  *
  * Two things can name it: a notification deep link, or the session left open
  * before the app was evicted. Failing both, the launch lands on the session
- * list.
+ * list. A remembered id is never dropped from here: the list is paged, so its
+ * absence from the page on screen proves nothing about the session.
  */
-export function useLaunchSession(machine: Machine, state: SupervisorState): LaunchSession {
+export function useLaunchSession(machine: Machine): LaunchSession {
   const [activeId, setActiveIdState] = useState<string | null>(() => {
     const linked = deepLinkedSession();
     // Remembered like any other opened session: iOS may relaunch this app cold
@@ -51,16 +51,6 @@ export function useLaunchSession(machine: Machine, state: SupervisorState): Laun
     else browserStorage.remove(key);
     setActiveIdState(next);
   }
-
-  // A restored session can be gone by the time the daemon answers; only a
-  // live session list proves that, so nothing is dropped while offline.
-  useEffect(() => {
-    if (!activeId || state.sync !== "synced") return;
-    const known = state.sessions.find((s) => s.sessionId === activeId);
-    if (known && known.status !== "disposed") return;
-    browserStorage.remove(activeSessionKey(machine.id));
-    setActiveIdState(null);
-  }, [activeId, machine.id, state.sync, state.sessions]);
 
   return { activeId, setActiveId };
 }

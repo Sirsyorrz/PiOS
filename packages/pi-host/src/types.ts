@@ -12,7 +12,17 @@ import type {
   StreamingBehavior,
 } from "@pios/protocol";
 
-export type SessionStatus = "starting" | "idle" | "running" | "crashed" | "disposed";
+/**
+ * `cold` is a session with no process behind it, which is a resting state and
+ * not a failure: the transcript is on disk and the next command wakes it.
+ */
+export type SessionStatus =
+  | "starting"
+  | "idle"
+  | "running"
+  | "cold"
+  | "crashed"
+  | "disposed";
 
 /**
  * Everything the daemon publishes for one session.

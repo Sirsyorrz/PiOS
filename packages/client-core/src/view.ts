@@ -32,6 +32,8 @@ export interface SessionView {
   notices: Notice[];
   /** A `!` command running now, or the last one until its entry lands. */
   bash: BashRun | null;
+  /** History continues above the first item held here. */
+  hasOlder: boolean;
   status: TranscriptStatus;
 }
 
@@ -119,6 +121,7 @@ export function sessionView(
     presentation: store.presentation(sessionId),
     notices: store.openNotices(sessionId),
     bash: store.bash(sessionId),
+    hasOlder: store.hasOlder(sessionId),
     status: transcript.status,
   };
 }

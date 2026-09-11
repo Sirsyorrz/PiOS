@@ -65,6 +65,7 @@ export async function startSandbox(options: SandboxOptions = {}): Promise<Sandbo
     port: options.port ?? 0,
     dataDir: join(dir, "data"),
     sessionDir: sessionRoot,
+    sessionIdleMs: scenario.sessionIdleMs ?? 30 * 60_000,
     piVersion: "sandbox",
     webDir: options.webDir === undefined ? null : options.webDir,
     sessionHost: subprocessHost({
@@ -85,6 +86,9 @@ export async function startSandbox(options: SandboxOptions = {}): Promise<Sandbo
   for (const session of sessions) {
     await server.registry.create({ id: session.id, cwd: session.cwd, name: session.name });
   }
+  // A scenario that asks for reaping gets it now, rather than after a wait
+  // nobody watching a screenshot is going to sit through.
+  if (scenario.sessionIdleMs !== undefined) await server.registry.sweep();
 
   return {
     server,

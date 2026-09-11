@@ -42,13 +42,13 @@ test("a leaf the cache has never seen forces a full refetch", () => {
   assert.equal(store.needsFullRefetch("s1", "forked-1"), true);
 });
 
-test("an emptied session invalidates a non-empty cache", () => {
+test("an unknown leaf is not mistaken for an empty session", () => {
   const store = new SessionStore();
   store.applyEntries("s1", [entry("e1")], "e1", false);
-  assert.equal(store.needsFullRefetch("s1", null), true);
-
-  store.clear("s1");
+  // A cold session reports no leaf because its cursor lives in its file, so
+  // null must not throw away a transcript that is perfectly current.
   assert.equal(store.needsFullRefetch("s1", null), false);
+  assert.equal(store.needsFullRefetch("s1", "moved-elsewhere"), true);
 });
 
 test("the cache survives a restart, cursor and all", () => {

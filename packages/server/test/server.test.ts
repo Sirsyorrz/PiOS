@@ -4,7 +4,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { WIRE_VERSION, type ServerFrame } from "@pios/protocol";
 import { sessionDirName } from "@pios/pi-host";
-import { startHarness, hello, TestClient, type Harness } from "./helpers.ts";
+import { startHarness, hello, openSession, TestClient, type Harness } from "./helpers.ts";
 
 let harness: Harness;
 
@@ -15,11 +15,14 @@ after(async () => {
   await harness.close();
 });
 
-async function createSession(client: TestClient, cwd: string): Promise<string> {
-  const id = client.send({ type: "create_session", cwd, trustProject: false });
-  const frame = await client.waitForCommand(id);
-  assert.equal(frame.type, "session_state", JSON.stringify(frame));
-  return frame.type === "session_state" ? frame.sessionId : "";
+/**
+ * A session for a test that is about something else.
+ *
+ * On the wire a session is born from its first prompt; these tests are not
+ * about that, and a prompt would start a turn they did not ask for.
+ */
+async function createSession(_client: TestClient, cwd: string): Promise<string> {
+  return openSession(harness, cwd);
 }
 
 function summaryOf(client: TestClient, sessionId: string) {
@@ -430,10 +433,19 @@ test("directories with recent pi sessions sort first", async () => {
   assert.deepEqual(rest, [...rest].sort((a, b) => a.localeCompare(b)));
 });
 
-test("an unknown session is refused rather than crashing the socket", async () => {
+test("an unknown session reads as empty, and a command on it is refused", async () => {
   const client = await hello(harness);
-  const frame = await client.waitForCommand(
+  // Reading is a file read: an id with nothing behind it has no transcript,
+  // which is what a composer that has not sent its first prompt looks like.
+  const entries = await client.waitForCommand(
     client.send({ type: "get_entries", sessionId: "ghost" }),
+  );
+  assert.ok(entries.type === "entries");
+  assert.deepEqual(entries.entries, []);
+
+  // Anything that needs the agent cannot invent a directory to start it in.
+  const frame = await client.waitForCommand(
+    client.send({ type: "get_stats", sessionId: "ghost" }),
   );
   assert.equal(frame.type === "error" && frame.code, "unknown_session");
 
@@ -465,24 +477,31 @@ test("a cross-origin preflight is answered without credentials", async () => {
   assert.equal(listing.headers.get("access-control-allow-origin"), "http://phone.local:5173");
 });
 
-test("disposing a session is announced to every connected client", async () => {
+test("a session started by one client is announced to every other", async () => {
   const watcher = await hello(harness);
   const actor = await hello(harness);
   const cwd = join(harness.dir, "shared");
   mkdirSync(cwd, { recursive: true });
 
-  const sessionId = await createSession(actor, cwd);
-  const created = await watcher.waitFor((f) => f.type === "sessions");
-  assert.ok(
-    created.type === "sessions" && created.sessions.some((s) => s.sessionId === sessionId),
-    "the other client learns about a session it did not create",
+  const sessionId = `00000000-0000-4000-8000-aaaaaaaaaaaa`;
+  await actor.waitForCommand(
+    actor.send({
+      type: "prompt",
+      sessionId,
+      create: { cwd, trustProject: false },
+      messageId: "shared-m1",
+      text: "hello",
+      images: [],
+    }),
   );
 
-  await actor.waitForCommand(actor.send({ type: "dispose_session", sessionId }));
-  const removed = await watcher.waitFor(
-    (f) => f.type === "sessions" && !f.sessions.some((s) => s.sessionId === sessionId),
+  // A nudge, not a payload: the other client re-asks for the page it is on.
+  await watcher.waitFor((f) => f.type === "sessions_changed");
+  const listed = await watcher.waitForCommand(watcher.send({ type: "list_sessions" }));
+  assert.ok(
+    listed.type === "sessions" && listed.sessions.some((s) => s.sessionId === sessionId),
+    "the other client learns about a session it did not create",
   );
-  assert.equal(removed.type, "sessions");
   watcher.close();
   actor.close();
 });

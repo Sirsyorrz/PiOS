@@ -5,7 +5,6 @@ import {
   type ImageContent,
   type CommandOption,
   type ModelOption,
-  type ResumableSessionWire,
   type SessionStats,
   type SessionSummary,
   type StreamingBehavior,
@@ -15,7 +14,12 @@ import type { BackoffOptions } from "./backoff.ts";
 import { ThreadOutbox, outboxFrame, type OutboxEntry } from "./outbox.ts";
 import { SessionStore } from "./session-store.ts";
 import { systemScheduler, type Scheduler } from "./scheduler.ts";
-import { MemoryStorage, type StorageAdapter } from "./storage.ts";
+import {
+  MemoryStorage,
+  readVersioned,
+  writeVersioned,
+  type StorageAdapter,
+} from "./storage.ts";
 import {
   ConnectionSupervisor,
   type Credentials,
@@ -41,6 +45,28 @@ export interface ModelListing {
   /** The full catalogue rather than the session's scope. */
   all: boolean;
 }
+
+export interface ListQuery {
+  /** Restrict to one project directory. Omitted means every project. */
+  cwd?: string;
+  /** Matched by the daemon against path, name and preview. */
+  query?: string;
+  limit?: number;
+  offset?: number;
+}
+
+/** What it takes to bring a session into being, sent with its first prompt. */
+export interface SessionCreate {
+  cwd: string;
+  name?: string;
+  trustProject?: boolean;
+  model?: string;
+}
+
+/** Entries fetched at a time. A chat is read from the bottom, not the top. */
+const ENTRY_PAGE = 200;
+const SESSIONS_KEY = "pios.sessions";
+const SESSIONS_VERSION = 1;
 
 export interface PiosClientOptions extends Omit<SupervisorOptions, "scheduler"> {
   storage?: StorageAdapter;
@@ -68,11 +94,13 @@ export class PiosClient {
   readonly appState: AppStatePolicy;
 
   private readonly scheduler: Scheduler;
+  private readonly storage: StorageAdapter;
   private readonly generateId: () => string;
   /** Sessions the UI wants live, re-subscribed on every reconnect. */
   private readonly subscribed = new Set<string>();
-  /** Create commands still waiting for the daemon to name their session. */
-  private readonly pendingCreates = new Map<string, (sessionId: string) => void>();
+  /** The query behind the list on screen, replayed on a store change. */
+  private lastListing: ListQuery = {};
+  private readonly sessionsChangedHandlers = new Set<() => void>();
   /**
    * Commands whose failure means the transcript is stale.
    *
@@ -82,9 +110,8 @@ export class PiosClient {
    * sync" sends the user looking for a problem that is not there.
    */
   private readonly syncCommands = new Set<string>();
-  /** Sessions on disk, from the last `listResumable`. */
-  private resumable: ResumableSessionWire[] = [];
-  private readonly resumableHandlers = new Set<(sessions: ResumableSessionWire[]) => void>();
+  /** Backfill requests, whose reply prepends history instead of appending. */
+  private readonly olderRequests = new Set<string>();
   /** Model lists by session, from the last `listModels`. */
   private readonly models = new Map<string, ModelListing>();
   private readonly modelHandlers = new Set<(sessionId: string, listing: ModelListing) => void>();
@@ -107,8 +134,14 @@ export class PiosClient {
     this.scheduler = options.scheduler ?? systemScheduler;
     this.generateId = options.generateId ?? defaultId;
     const storage = options.storage ?? new MemoryStorage();
+    this.storage = storage;
 
     this.supervisor = new ConnectionSupervisor({ ...options, scheduler: this.scheduler });
+    // The list from last time, so a cold launch shows conversations instead of
+    // an empty screen while the socket comes up.
+    this.supervisor.seedSessions(
+      readVersioned<SessionSummary[]>(storage, SESSIONS_KEY, SESSIONS_VERSION, []),
+    );
     this.sessions = new SessionStore(storage);
     this.outbox = new ThreadOutbox({
       storage,
@@ -142,6 +175,11 @@ export class PiosClient {
     text: string;
     images?: ImageContent[];
     streamingBehavior?: StreamingBehavior;
+    /**
+     * Starts the session, for the first prompt of a draft. The session takes
+     * the id composed against, so nothing has to be renamed afterwards.
+     */
+    create?: SessionCreate;
   }): OutboxEntry {
     return this.outbox.enqueue({
       messageId: this.generateId(),
@@ -150,69 +188,37 @@ export class PiosClient {
       text: args.text,
       images: args.images ?? [],
       streamingBehavior: args.streamingBehavior,
+      create: args.create,
     });
   }
 
-  /**
-   * Asks the daemon to start a session.
-   *
-   * The daemon answers with `session_state`, which the supervisor merges into
-   * its session list, so the UI learns about the new session the same way it
-   * learns about one another device created.
-   *
-   * Returns false when there was no live socket. Unlike a prompt, this is not
-   * queued: replaying a stale "start a session here" minutes later is not
-   * obviously what the user still wants, so the caller is told instead.
-   */
-  createSession(
-    args: {
-      cwd: string;
-      name?: string;
-      trustProject?: boolean;
-      model?: string;
-      /**
-       * Session file to adopt, from `listResumable`. Continues a transcript
-       * started elsewhere, including one started in the pi TUI.
-       */
-      resumeFrom?: string;
-    },
-    /** Called once the daemon names the session, so the UI can open it. */
-    onCreated?: (sessionId: string) => void,
-  ): boolean {
-    const commandId = this.generateId();
-    if (onCreated) this.pendingCreates.set(commandId, onCreated);
-    const sent = this.send(
-      {
-        type: "create_session",
-        cwd: args.cwd,
-        name: args.name,
-        trustProject: args.trustProject ?? false,
-        model: args.model,
-        resumeFrom: args.resumeFrom,
-      },
-      commandId,
-    );
-    if (!sent) this.pendingCreates.delete(commandId);
-    return sent;
+  /** A session id to compose against before the session exists. */
+  newSessionId(): string {
+    return this.generateId();
   }
 
   /**
-   * Asks for the sessions on disk, including ones this daemon never started.
+   * Asks for a page of the session list.
    *
-   * Not queued and not cached across reconnects: the answer is a directory
-   * listing, and a stale one is worse than asking again.
+   * The list is every session on disk, running or not, so it is paged and
+   * searched on the daemon rather than filtered here: the rows past the first
+   * page are not on this device to filter.
    */
-  listResumable(args: { cwd?: string; limit?: number } = {}): boolean {
-    return this.send({ type: "list_resumable", cwd: args.cwd, limit: args.limit });
+  listSessions(query: ListQuery = {}): boolean {
+    this.lastListing = query;
+    return this.send({
+      type: "list_sessions",
+      cwd: query.cwd,
+      query: query.query,
+      limit: query.limit,
+      offset: query.offset,
+    });
   }
 
-  getResumable(): ResumableSessionWire[] {
-    return this.resumable;
-  }
-
-  onResumable(handler: (sessions: ResumableSessionWire[]) => void): () => void {
-    this.resumableHandlers.add(handler);
-    return () => this.resumableHandlers.delete(handler);
+  /** Fires when the store changed on disk and the list should be re-asked. */
+  onSessionsChanged(handler: () => void): () => void {
+    this.sessionsChangedHandlers.add(handler);
+    return () => this.sessionsChangedHandlers.delete(handler);
   }
 
   /**
@@ -363,18 +369,9 @@ export class PiosClient {
     return () => this.commandErrorHandlers.delete(handler);
   }
 
-  disposeSession(sessionId: string): boolean {
-    this.subscribed.delete(sessionId);
-    this.models.delete(sessionId);
-    this.commands.delete(sessionId);
-    this.stats.delete(sessionId);
-    this.sessions.clear(sessionId);
-    this.supervisor.forgetSession(sessionId);
-    return this.send({ type: "dispose_session", sessionId });
-  }
-
+  /** Re-asks for the list on screen, with the query it was built from. */
   refreshSessions(): boolean {
-    return this.send({ type: "list_sessions" });
+    return this.listSessions(this.lastListing);
   }
 
   /**
@@ -475,11 +472,50 @@ export class PiosClient {
     );
   }
 
-  /** Asks for the entries after a cursor, as a sync command. */
+  /**
+   * Asks for the entries after a cursor, as a sync command.
+   *
+   * With no cursor this is a first load, which takes the tail rather than the
+   * whole transcript: a long conversation would otherwise cost a phone the
+   * entire history to show its last screen.
+   */
   private fetchEntries(sessionId: string, cursor: string | null): void {
     const commandId = this.generateId();
     this.syncCommands.add(commandId);
-    this.send({ type: "get_entries", sessionId, since: cursor ?? undefined }, commandId);
+    this.send(
+      {
+        type: "get_entries",
+        sessionId,
+        since: cursor ?? undefined,
+        limit: cursor ? undefined : ENTRY_PAGE,
+      },
+      commandId,
+    );
+  }
+
+  /** Fetches the page of history above what is held. */
+  loadOlderEntries(sessionId: string): boolean {
+    if (!this.sessions.hasOlder(sessionId)) return false;
+    const commandId = this.generateId();
+    this.olderRequests.add(commandId);
+    return this.send(
+      {
+        type: "get_entries",
+        sessionId,
+        before: this.sessions.firstHeldIndex(sessionId),
+        limit: ENTRY_PAGE,
+      },
+      commandId,
+    );
+  }
+
+  private persistSessions(): void {
+    writeVersioned(
+      this.storage,
+      SESSIONS_KEY,
+      SESSIONS_VERSION,
+      this.supervisor.getState().sessions,
+    );
   }
 
   private onFrame(frame: Parameters<Parameters<ConnectionSupervisor["onFrame"]>[0]>[0]): void {
@@ -502,11 +538,24 @@ export class PiosClient {
         }
         break;
       }
-      case "entries":
+      case "entries": {
+        if (frame.commandId && this.olderRequests.delete(frame.commandId)) {
+          this.sessions.applyOlderEntries(
+            frame.sessionId,
+            frame.entries,
+            frame.offset,
+            frame.total,
+          );
+          break;
+        }
         if (frame.commandId) this.syncCommands.delete(frame.commandId);
-        this.sessions.applyEntries(frame.sessionId, frame.entries, frame.leafId, frame.reset);
+        this.sessions.applyEntries(frame.sessionId, frame.entries, frame.leafId, frame.reset, {
+          offset: frame.offset,
+          total: frame.total,
+        });
         this.supervisor.setSyncStatus("synced");
         break;
+      }
       case "subscribed":
         if (frame.commandId) this.syncCommands.delete(frame.commandId);
         // Buffered events were evicted, so the live transcript is missing a
@@ -522,16 +571,21 @@ export class PiosClient {
           this.fetchEntries(frame.sessionId, this.sessions.cursor(frame.sessionId));
         }
         break;
-      case "session_state": {
+      case "session_state":
         this.trackStatus([frame.summary]);
-        const onCreated = frame.commandId ? this.pendingCreates.get(frame.commandId) : undefined;
-        if (frame.commandId) this.pendingCreates.delete(frame.commandId);
-        onCreated?.(frame.sessionId);
         break;
-      }
       case "welcome":
+        this.trackStatus(frame.sessions);
+        // The list is a disk read the daemon does not do unasked, so the first
+        // page is asked for as soon as there is a socket to ask on.
+        this.listSessions(this.lastListing);
+        break;
       case "sessions":
         this.trackStatus(frame.sessions);
+        this.persistSessions();
+        break;
+      case "sessions_changed":
+        for (const handler of [...this.sessionsChangedHandlers]) handler();
         break;
       case "commands": {
         this.commands.set(frame.sessionId, frame.commands);
@@ -550,10 +604,7 @@ export class PiosClient {
         for (const handler of [...this.modelHandlers]) handler(frame.sessionId, listing);
         break;
       }
-      case "resumable_sessions":
-        this.resumable = frame.sessions;
-        for (const handler of [...this.resumableHandlers]) handler(this.resumable);
-        break;
+
       case "extension_ui_request":
         // Most methods are presentation the agent does not wait on; only a
         // dialog blocks it, and only a dialog gets a sheet.
@@ -586,10 +637,13 @@ export class PiosClient {
         break;
       }
       case "session_recovered":
+        // The process behind the session was replaced, by a crash, a trust
+        // change, or a wake. Whether the transcript moved is decided by the
+        // leaf it came back with, not by assuming either way.
         if (this.sessions.needsFullRefetch(frame.sessionId, frame.leafId)) {
           this.sessions.clear(frame.sessionId);
-          this.resync(frame.sessionId);
         }
+        if (this.subscribed.has(frame.sessionId)) this.resync(frame.sessionId);
         break;
       default:
         break;

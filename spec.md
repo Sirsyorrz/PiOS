@@ -225,6 +225,42 @@ input box.
 
 ## 8. Protocol notes
 
+### The session model
+
+**A session is a file in pi's session store.** Its id is the one in the JSONL
+header, so it outlives any process, and the store is shared with the TUI: a
+conversation started there and one started here are the same kind of thing and
+appear in the same list.
+
+A `pi --mode rpc` process is a cache in front of that file, nothing more.
+
+- **Lazy.** Nothing spawns to list a session or to read one. The first prompt
+  is what starts a session: a composer with no prompt sent is a draft, holding
+  a client-minted id, and the prompt that creates the session takes that id.
+- **Reaped.** A process idle for 30 minutes is stopped and the session goes
+  `cold`, which is its normal resting state. Only prompts and agent events
+  refresh the idle clock; a client polling for models or stats cannot pin a
+  process open. A session that is streaming, or blocked on a dialog, is never
+  reaped.
+- **Woken by use.** Any command that needs the agent starts it again, under the
+  same id, and announces it with `session_recovered` carrying the leaf the new
+  process loaded. Ring-buffer `seq` is only meaningful within one process; the
+  durable cursor is always `leafId`.
+- **Read from disk.** pi persists an entry before it announces it, so
+  `get_entries` is a file read: `since` for a delta, `limit`/`before` for tail
+  paging. A live process only adds partials on top. Entry id is the dedupe key
+  and the persisted copy wins over the streamed one.
+- **Listed from disk.** `list_sessions` is a stat-only scan for ordering and
+  paging plus a byte-bounded skim of the page asked for, cached on mtime+size
+  and seeded from a file so a restarted daemon answers instantly. Search
+  matches path, name and preview, never whole transcripts.
+- **Trust is a directory's, not a session's.** It is a launch flag, and launches
+  now happen whenever a session is woken, so asking per session would ask the
+  same question forever.
+
+There is no delete: removing a row would mean deleting a transcript the TUI
+also owns.
+
 ### Sending prompts
 
 `prompt`, `steer`, and `follow_up` accept an optional `images` array of base64

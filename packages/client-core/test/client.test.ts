@@ -45,6 +45,8 @@ test("watching a session resyncs from its cursor and subscribes from its seq", a
     entries: [entry("e1"), entry("e2", "e1")],
     leafId: "e2",
     reset: false,
+    offset: 0,
+    total: 0,
   });
   assert.equal(client.sessions.cursor("s1"), "e2");
   assert.equal(client.supervisor.getState().sync, "synced");
@@ -62,6 +64,8 @@ test("a settled turn is fetched as entries, so its ids exist before a reconnect"
     entries: [entry("e1")],
     leafId: "e1",
     reset: false,
+    offset: 0,
+    total: 0,
   });
 
   transports.last.emit({
@@ -90,6 +94,8 @@ test("a drop mid-stream reconnects and resumes from the cursor", async () => {
     entries: [entry("e1")],
     leafId: "e1",
     reset: false,
+    offset: 0,
+    total: 0,
   });
   transports.last.emit({
     v: WIRE_VERSION,
@@ -124,6 +130,8 @@ test("a moved branch triggers a full refetch, not a patch", async () => {
     entries: [entry("e1"), entry("e2", "e1")],
     leafId: "e2",
     reset: false,
+    offset: 0,
+    total: 0,
   });
 
   // Someone forked the session from another client while we were away.
@@ -294,6 +302,8 @@ test("recovery from a daemon crash refetches when the leaf rewound", async () =>
     entries: [entry("e1"), entry("e2", "e1")],
     leafId: "e2",
     reset: false,
+    offset: 0,
+    total: 0,
   });
 
   // The daemon restarted pi; the half-streamed turn was never persisted.
@@ -313,11 +323,11 @@ test("a session command with no live socket is reported, not silently dropped", 
   const { transports, client } = setup();
   await flush();
   transports.last.acceptHello([]);
-  assert.equal(client.createSession({ cwd: "/tmp" }), true);
+  assert.equal(client.listSessions({ query: "anything" }), true);
 
   transports.last.drop(1006, "gone");
   await flush();
-  assert.equal(client.createSession({ cwd: "/tmp" }), false);
+  assert.equal(client.listSessions({ query: "anything" }), false);
   assert.equal(client.interrupt("s1"), false);
 });
 
@@ -371,8 +381,7 @@ test("session stats are asked for and cached per session", async () => {
   assert.deepEqual(seen, ["s1"]);
   assert.equal(client.getStats("s2"), null, "another session has its own numbers");
 
-  client.disposeSession("s1");
-  assert.equal(client.getStats("s1"), null, "a disposed session keeps nothing");
+  assert.equal(client.getStats("s2"), null, "and never borrows another's");
 });
 
 test("slash commands are asked for and cached per session", async () => {
@@ -395,8 +404,7 @@ test("slash commands are asked for and cached per session", async () => {
   );
   assert.deepEqual(client.getCommands("s2"), [], "another session has its own list");
 
-  client.disposeSession("s1");
-  assert.deepEqual(client.getCommands("s1"), [], "a disposed session keeps nothing");
+  assert.deepEqual(client.getCommands("s2"), [], "and never borrows another's");
 });
 
 test("a bash run streams into the view and is held until its entry lands", async () => {
@@ -459,6 +467,70 @@ test("a bash run streams into the view and is held until its entry lands", async
     ],
     leafId: "e1",
     reset: false,
+    offset: 0,
+    total: 0,
   });
   assert.equal(client.sessions.bash("s1"), null, "the persisted entry takes over the card");
+});
+
+test("a draft's first prompt carries what it takes to create the session", async () => {
+  const { transports, client } = setup();
+  await flush();
+  transports.last.acceptHello([]);
+
+  const draftId = client.newSessionId();
+  client.prompt({
+    sessionId: draftId,
+    text: "start here",
+    create: { cwd: "/tmp/project", trustProject: true },
+  });
+  await flush();
+
+  const sent = transports.last.sentOfType("prompt").at(-1);
+  assert.equal(sent?.sessionId, draftId, "the session takes the id composed against");
+  assert.deepEqual(sent?.create, { cwd: "/tmp/project", trustProject: true });
+});
+
+test("a queued draft survives a restart with its directory attached", async () => {
+  const storage = new MemoryStorage();
+  const first = setup(storage);
+  await flush();
+  // No socket yet: this is the train case, composed offline and sent later.
+  first.client.prompt({
+    sessionId: "draft-1",
+    text: "later",
+    create: { cwd: "/tmp/project" },
+  });
+  await flush();
+
+  const second = setup(storage);
+  await flush();
+  second.transports.last.acceptHello([]);
+  await flush();
+
+  const sent = second.transports.last.sentOfType("prompt").at(-1);
+  assert.equal(sent?.text, "later");
+  assert.deepEqual(sent?.create, { cwd: "/tmp/project", trustProject: false });
+});
+
+test("the last session list is shown before the socket is up", async () => {
+  const storage = new MemoryStorage();
+  const first = setup(storage);
+  await flush();
+  first.transports.last.acceptHello([]);
+  first.transports.last.emit({
+    v: WIRE_VERSION,
+    type: "sessions",
+    sessions: [summary({ sessionId: "s1", cwd: "/tmp/project" })],
+    offset: 0,
+    total: 1,
+    hasMore: false,
+  });
+
+  const second = setup(storage);
+  assert.deepEqual(
+    second.client.supervisor.getState().sessions.map((s) => s.sessionId),
+    ["s1"],
+    "rendered from the cache, never trusted for freshness",
+  );
 });

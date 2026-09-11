@@ -694,7 +694,6 @@ button.link {
 
 .sessions ul,
 .dirlist,
-.resumable,
 .models-list,
 .endpoints ul {
   list-style: none;
@@ -709,8 +708,8 @@ button.link {
   position: relative;
 }
 
-/* State rides in the corner of the row. Swapped for the dispose control on
-   hover, so neither has to make room for the other. */
+/* State rides in the corner of the row, so it never adds a third line to
+   some rows and not others. */
 .badge {
   position: absolute;
   top: 9px;
@@ -747,49 +746,15 @@ button.link {
   color: var(--error);
 }
 
-.sessions li:hover .badge {
-  opacity: 0;
+/* No process behind it, which is the resting state, not a problem. */
+.badge.cold {
+  color: var(--muted);
 }
 
-/* Sits on the row rather than beside it, so the row keeps its full width. */
-.sessions .dispose {
-  position: absolute;
-  top: 6px;
-  right: 6px;
-  width: 26px;
-  height: 26px;
-  /* Beats the shared control min-height, which would make it a rectangle. */
-  min-height: 0;
-  opacity: 0;
-}
-
-.sessions li:hover .dispose,
-.sessions .dispose:focus-visible {
-  opacity: 1;
-}
-
-.sessions .dispose:hover {
-  color: var(--error);
-}
-
-/* No hover to reveal with, so the control is permanent and the badge steps
-   aside instead of sharing the corner. */
-@media (hover: none) {
-  .sessions .dispose {
-    opacity: 1;
-  }
-
-  .sessions li:hover .badge {
-    opacity: 1;
-  }
-
-  .badge {
-    right: 40px;
-  }
-
-  .sessions .session {
-    padding-right: 114px;
-  }
+/* The sentinel that asks for the next page. Reads as a row, not a control. */
+.sessions .more {
+  padding: 10px 12px;
+  font-size: 12px;
 }
 
 .sessions .session {
@@ -1997,30 +1962,13 @@ button.scroll-bottom {
   color: var(--error);
 }
 
-/* Wider than the other cards: every row carries a path and a preview line. */
-.picker.resume {
-  width: min(720px, 100%);
-}
-
-/* The list scrolls; the filter above it must not sit on the first row. */
-.picker.resume .resumable {
-  margin-top: 4px;
-}
-
-
-/* Same as the resume list: a filter sits above rows that scroll. */
+/* A filter sits above rows that scroll, and must not sit on the first one. */
 .picker.models .models-list {
   margin-top: 4px;
 }
 
-.resumable > li,
 .models-list > li {
   min-width: 0;
-}
-
-.resumable .preview {
-  font-size: 12px;
-  color: var(--muted);
 }
 
 .tag {

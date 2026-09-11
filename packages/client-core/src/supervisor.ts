@@ -34,6 +34,9 @@ export interface SupervisorState {
   /** Set when blocked, so the UI can say why instead of spinning. */
   blockedReason?: string;
   sessions: SessionSummary[];
+  /** Sessions the daemon has in total, for knowing whether more can be asked for. */
+  sessionsTotal: number;
+  hasMoreSessions: boolean;
   attempts: number;
 }
 
@@ -85,6 +88,8 @@ export class ConnectionSupervisor {
     transport: "idle",
     sync: "idle",
     sessions: [],
+    sessionsTotal: 0,
+    hasMoreSessions: false,
     attempts: 0,
   };
 
@@ -256,7 +261,7 @@ export class ConnectionSupervisor {
       }, this.options.stableAfterMs);
     }
 
-    if (frame.type === "sessions") this.patch({ sessions: frame.sessions });
+    if (frame.type === "sessions") this.mergePage(frame);
     if (frame.type === "session_state") this.mergeSummary(frame.summary);
     if (frame.type === "error" && frame.code === "unauthorized") {
       return this.block("unauthorized");
@@ -266,14 +271,31 @@ export class ConnectionSupervisor {
   }
 
   /**
-   * Drops a session from the list without waiting for the daemon.
+   * Shows a list from a previous run before the socket is up.
    *
-   * The daemon's own `sessions` broadcast is authoritative and will arrive;
-   * this is so a disposed session leaves the screen when it was tapped, not a
-   * round trip later.
+   * Rendering only: the first page from the daemon replaces it wholesale, and
+   * nothing decides freshness from these rows.
    */
-  forgetSession(sessionId: string): void {
-    this.patch({ sessions: this.state.sessions.filter((s) => s.sessionId !== sessionId) });
+  seedSessions(sessions: SessionSummary[]): void {
+    if (this.state.sessions.length || !sessions.length) return;
+    this.patch({ sessions });
+  }
+
+  /**
+   * One page of the session list.
+   *
+   * The first page replaces what was there, so a search or a filter cannot
+   * leave stale rows behind; later pages append.
+   */
+  private mergePage(frame: Extract<ServerFrame, { type: "sessions" }>): void {
+    const kept = frame.offset === 0 ? [] : this.state.sessions;
+    const byId = new Map(kept.map((session) => [session.sessionId, session]));
+    for (const session of frame.sessions) byId.set(session.sessionId, session);
+    this.patch({
+      sessions: [...byId.values()],
+      sessionsTotal: frame.total,
+      hasMoreSessions: frame.hasMore,
+    });
   }
 
   private mergeSummary(summary: SessionSummary): void {

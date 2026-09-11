@@ -9,7 +9,7 @@ import type {
 } from "@pios/protocol";
 import { AgentEventSchema, BashResultSchema, SessionStatsSchema } from "@pios/protocol";
 import { BaseSession } from "./base-session.ts";
-import { sliceEntriesSince } from "./entries.ts";
+import { sliceEntries } from "./transcript-file.ts";
 import type {
   CreateSessionOptions,
   EntriesPage,
@@ -229,7 +229,7 @@ export class InProcessSession extends BaseSession implements PiSession {
     this.setLeafId(leafId);
     const entries = manager.getEntries();
     this.observeEntries(entries);
-    return sliceEntriesSince(entries, leafId, since);
+    return sliceEntries(entries, leafId, { since });
   }
 
   async listModels(options: { all?: boolean } = {}): Promise<ModelListing> {

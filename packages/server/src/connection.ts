@@ -1,22 +1,24 @@
 import type { WebSocket } from "ws";
 import type {
   BufferedEvent,
+  EntriesWindow,
   HostEvent,
   PiSession,
-  SessionInfo,
-  SessionLister,
+  SessionIndex,
   SessionRegistry,
 } from "@pios/pi-host";
+import { readTranscript, sliceEntries } from "@pios/pi-host";
 import {
   ClientFrameSchema,
   WIRE_VERSION,
   type ClientFrame,
   type ServerFrame,
-  type SessionSummary,
 } from "@pios/protocol";
 import type { AuthStore, DeviceRecord } from "./auth.ts";
 import type { CommandLedger } from "./dedupe.ts";
 import { SERVER_VERSION } from "./config.ts";
+import { listSessions, liveSummary, summaryFor } from "./sessions.ts";
+import type { TrustStore } from "./trust.ts";
 
 export interface ConnectionDeps {
   auth: AuthStore;
@@ -24,8 +26,10 @@ export interface ConnectionDeps {
   ledger: CommandLedger;
   piVersion: string;
   helloTimeoutMs: number;
-  /** Reads pi's session directory, so TUI sessions are resumable from here. */
-  lister?: SessionLister;
+  /** The session store on disk, which is where the session list comes from. */
+  index: SessionIndex;
+  /** Project trust, applied whenever a session's process is (re)started. */
+  trust: TrustStore;
   /** Tells every authenticated socket the session list changed. */
   announceSessions?: () => void;
 }
@@ -42,6 +46,8 @@ export class Connection {
   private readonly deps: ConnectionDeps;
   private device: DeviceRecord | null = null;
   private readonly subscriptions = new Map<string, () => void>();
+  /** Subscribed while cold: attached for real as soon as a process exists. */
+  private readonly pendingSubscriptions = new Set<string>();
   private helloTimer: NodeJS.Timeout | null = null;
   private activity: { sessionIds: Set<string>; foreground: boolean; at: number } | null = null;
 
@@ -102,82 +108,38 @@ export class Connection {
       commandId: frame.commandId,
       serverVersion: SERVER_VERSION,
       piVersion: this.deps.piVersion,
-      sessions: this.deps.registry.list().map(toSummary),
+      // The list itself is a disk read, so it is asked for rather than paid
+      // for on every handshake; this is only what is running right now.
+      sessions: this.deps.registry.list().map((info) => liveSummary(info)),
     });
   }
 
   private async dispatch(frame: Exclude<ClientFrame, { type: "hello" }>): Promise<void> {
     switch (frame.type) {
-      case "list_sessions":
+      case "list_sessions": {
+        const page = await listSessions(this.deps.index, this.deps.registry, {
+          cwd: frame.cwd,
+          query: frame.query,
+          limit: frame.limit,
+          offset: frame.offset,
+        });
         return this.send({
           v: WIRE_VERSION,
           type: "sessions",
           commandId: frame.commandId,
-          sessions: this.deps.registry.list().map(toSummary),
+          sessions: page.sessions,
+          offset: page.offset,
+          total: page.total,
+          hasMore: page.hasMore,
         });
-
-      case "create_session": {
-        // Creating a session starts a process; a redelivered create must not
-        // start a second one.
-        if (!this.deps.ledger.claim(frame.commandId)) {
-          return this.ack(frame.commandId, true);
-        }
-        // Resuming a session that is already live must attach, not open the
-        // same JSONL twice: two writers on one file interleave entries.
-        const existing = frame.resumeFrom ? this.liveByFile(frame.resumeFrom) : undefined;
-        const session =
-          existing ??
-          (await this.deps.registry.create({
-            cwd: frame.cwd,
-            name: frame.name,
-            trustProject: frame.trustProject,
-            model: frame.model,
-            resumeFrom: frame.resumeFrom,
-          }));
-        // Sessions are shared, so a second device must not have to guess that
-        // one appeared.
-        this.deps.announceSessions?.();
-        return this.sendSessionState(frame.commandId, session);
-      }
-
-      case "list_resumable": {
-        const lister = this.deps.lister;
-        if (!lister) return this.fail(frame.commandId, "internal", "session listing disabled");
-        const found = await lister({ cwd: frame.cwd, limit: frame.limit });
-        const live = new Set(
-          this.deps.registry
-            .list()
-            .map((info) => info.sessionFile)
-            .filter((path): path is string => Boolean(path)),
-        );
-        return this.send({
-          v: WIRE_VERSION,
-          type: "resumable_sessions",
-          commandId: frame.commandId,
-          sessions: found.map((session) => ({
-            path: session.path,
-            sessionId: session.id,
-            cwd: session.cwd,
-            name: session.name,
-            createdAt: session.createdAt,
-            modifiedAt: session.modifiedAt,
-            messageCount: session.messageCount,
-            preview: session.preview,
-            live: live.has(session.path),
-          })),
-        });
-      }
-
-      case "dispose_session": {
-        this.unsubscribe(frame.sessionId);
-        await this.deps.registry.dispose(frame.sessionId);
-        this.deps.announceSessions?.();
-        return this.ack(frame.commandId);
       }
 
       case "set_session_trust": {
-        const session = this.require(frame.sessionId, frame.commandId);
+        const session = await this.requireLive(frame.sessionId, frame.commandId);
         if (!session) return;
+        // Trust belongs to the directory: this session is what asked, but every
+        // session in that project inherits the answer, now and on every wake.
+        this.deps.trust.set(session.info.cwd, frame.trustProject);
         // Idempotent by nature: asking for the trust it already has is a no-op
         // in the registry, so a redelivered frame needs no ledger claim.
         await this.deps.registry.setProjectTrust(frame.sessionId, frame.trustProject);
@@ -186,7 +148,7 @@ export class Connection {
       }
 
       case "list_models": {
-        const session = this.require(frame.sessionId, frame.commandId);
+        const session = await this.requireLive(frame.sessionId, frame.commandId);
         if (!session) return;
         const listing = await session.listModels({ all: frame.all });
         return this.send({
@@ -200,7 +162,7 @@ export class Connection {
       }
 
       case "list_commands": {
-        const session = this.require(frame.sessionId, frame.commandId);
+        const session = await this.requireLive(frame.sessionId, frame.commandId);
         if (!session) return;
         return this.send({
           v: WIRE_VERSION,
@@ -212,7 +174,7 @@ export class Connection {
       }
 
       case "get_stats": {
-        const session = this.require(frame.sessionId, frame.commandId);
+        const session = await this.requireLive(frame.sessionId, frame.commandId);
         if (!session) return;
         return this.send({
           v: WIRE_VERSION,
@@ -224,7 +186,7 @@ export class Connection {
       }
 
       case "set_model": {
-        const session = this.require(frame.sessionId, frame.commandId);
+        const session = await this.requireLive(frame.sessionId, frame.commandId);
         if (!session) return;
         // Idempotent: setting the model it already has changes nothing, so a
         // redelivered frame needs no ledger claim.
@@ -233,7 +195,7 @@ export class Connection {
       }
 
       case "set_thinking_level": {
-        const session = this.require(frame.sessionId, frame.commandId);
+        const session = await this.requireLive(frame.sessionId, frame.commandId);
         if (!session) return;
         // Idempotent for the same reason as set_model: re-applying the level it
         // already has changes nothing.
@@ -249,9 +211,10 @@ export class Connection {
         return this.ack(frame.commandId);
 
       case "get_entries": {
-        const session = this.require(frame.sessionId, frame.commandId);
-        if (!session) return;
-        const page = await session.getEntries(frame.since);
+        // Read from the file, so opening a conversation never starts a
+        // process. An id with nothing behind it is a session that has not been
+        // written yet, which is an empty transcript, not an error.
+        const page = await this.readEntries(frame.sessionId, frame);
         return this.send({
           v: WIRE_VERSION,
           type: "entries",
@@ -260,11 +223,13 @@ export class Connection {
           entries: page.entries,
           leafId: page.leafId,
           reset: page.reset,
+          offset: page.offset,
+          total: page.total,
         });
       }
 
       case "prompt": {
-        const session = this.require(frame.sessionId, frame.commandId);
+        const session = await this.requireLive(frame.sessionId, frame.commandId, frame.create);
         if (!session) return;
         if (!this.deps.ledger.claim(frame.commandId)) {
           return this.ack(frame.commandId, true);
@@ -280,14 +245,14 @@ export class Connection {
       }
 
       case "interrupt": {
-        const session = this.require(frame.sessionId, frame.commandId);
+        const session = await this.requireLive(frame.sessionId, frame.commandId);
         if (!session) return;
         await session.interrupt();
         return this.ack(frame.commandId);
       }
 
       case "run_bash": {
-        const session = this.require(frame.sessionId, frame.commandId);
+        const session = await this.requireLive(frame.sessionId, frame.commandId);
         if (!session) return;
         // Running arbitrary shell twice is worse than not running it at all,
         // so a redelivered frame is acked rather than replayed.
@@ -311,14 +276,14 @@ export class Connection {
       }
 
       case "abort_bash": {
-        const session = this.require(frame.sessionId, frame.commandId);
+        const session = await this.requireLive(frame.sessionId, frame.commandId);
         if (!session) return;
         await session.abortBash();
         return this.ack(frame.commandId);
       }
 
       case "rewind": {
-        const session = this.require(frame.sessionId, frame.commandId);
+        const session = await this.requireLive(frame.sessionId, frame.commandId);
         if (!session) return;
         // Not idempotent: a redelivered rewind would branch a second time and
         // throw away the turn the user just re-composed.
@@ -355,7 +320,7 @@ export class Connection {
       }
 
       case "extension_ui_response": {
-        const session = this.require(frame.sessionId, frame.commandId);
+        const session = await this.requireLive(frame.sessionId, frame.commandId);
         if (!session) return;
         // A second device, or a retry after the deadline expired, arrives with
         // an id nobody is waiting on. Acked as a duplicate: the dialog is gone
@@ -380,9 +345,27 @@ export class Connection {
     }
   }
 
+  /**
+   * Attaches to a session's live events.
+   *
+   * A cold session is subscribed to without waking it: there is nothing in
+   * flight to miss, and seq only ever meant anything within one process, so
+   * the client tails from zero once one exists.
+   */
   private subscribe(frame: Extract<ClientFrame, { type: "subscribe" }>): void {
-    const session = this.require(frame.sessionId, frame.commandId);
-    if (!session) return;
+    const session = this.deps.registry.get(frame.sessionId);
+    if (!session) {
+      this.pendingSubscriptions.add(frame.sessionId);
+      return this.send({
+        v: WIRE_VERSION,
+        type: "subscribed",
+        commandId: frame.commandId,
+        sessionId: frame.sessionId,
+        seq: 0,
+        gap: false,
+      });
+    }
+    this.pendingSubscriptions.delete(frame.sessionId);
     this.unsubscribe(frame.sessionId);
 
     const { events, gap } = session.replay(frame.sinceSeq);
@@ -422,17 +405,85 @@ export class Connection {
   }
 
   private unsubscribe(sessionId: string): void {
+    this.pendingSubscriptions.delete(sessionId);
     this.subscriptions.get(sessionId)?.();
     this.subscriptions.delete(sessionId);
   }
 
-  private require(sessionId: string, commandId: string): PiSession | undefined {
-    const session = this.deps.registry.get(sessionId);
-    if (!session) {
+  /** Attaches any subscription that was made while the session was cold. */
+  private attachPending(session: PiSession): void {
+    if (!this.pendingSubscriptions.delete(session.id)) return;
+    this.subscriptions.set(
+      session.id,
+      session.subscribe((buffered) => this.forward(session, buffered)),
+    );
+  }
+
+  /**
+   * The session's process, started if it does not have one.
+   *
+   * Everything but reading needs pi, and a session is only ever cold because
+   * nobody has needed it lately, so waking it is the answer rather than an
+   * error. `create` starts one that does not exist at all, under the id the
+   * client composed against.
+   */
+  private async requireLive(
+    sessionId: string,
+    commandId: string,
+    create?: { cwd: string; name?: string; trustProject?: boolean; model?: string },
+  ): Promise<PiSession | undefined> {
+    const live = this.deps.registry.get(sessionId);
+    if (live) return live;
+
+    const record = await this.deps.index.find(sessionId);
+    const cwd = record?.cwd || create?.cwd;
+    if (!cwd) {
       this.fail(commandId, "unknown_session", `no session ${sessionId}`);
       return undefined;
     }
-    return session;
+
+    try {
+      const session = await this.deps.registry.create({
+        id: sessionId,
+        cwd,
+        name: record?.name ?? create?.name,
+        // The directory's answer, not this request's: trust outlives the
+        // session that first granted it.
+        trustProject: this.deps.trust.isTrusted(cwd) || (create?.trustProject ?? false),
+        model: create?.model,
+        resumeFrom: record?.path,
+      });
+      if (create?.trustProject) this.deps.trust.set(cwd, true);
+      this.attachPending(session);
+      this.deps.announceSessions?.();
+      return session;
+    } catch (error) {
+      this.fail(commandId, "internal", error instanceof Error ? error.message : String(error));
+      return undefined;
+    }
+  }
+
+  /**
+   * A page of transcript, read from the session file.
+   *
+   * pi persists an entry before it announces it, so the file is the durable
+   * truth whether or not a process exists. A session with no file yet is the
+   * one case the live agent has to answer for.
+   */
+  private async readEntries(
+    sessionId: string,
+    query: { since?: string; limit?: number; before?: number },
+  ): Promise<EntriesWindow> {
+    const live = this.deps.registry.get(sessionId);
+    const file = live?.info.sessionFile ?? (await this.deps.index.find(sessionId))?.path;
+    const transcript = file ? readTranscript(file) : null;
+    if (transcript) return sliceEntries(transcript.entries, transcript.leafId, query);
+
+    // No file yet: either the agent has written nothing, or it is not pi's
+    // format at all, which is what a stubbed host in the sandbox looks like.
+    if (!live) return { entries: [], leafId: null, reset: false, offset: 0, total: 0 };
+    const page = await live.getEntries(query.since);
+    return { ...page, offset: 0, total: page.entries.length };
   }
 
   /** Device on this socket, once it has authenticated. */
@@ -454,21 +505,15 @@ export class Connection {
     return activity.sessionIds.has(sessionId);
   }
 
-  /** Pushes the current session list, unprompted. Ignored before `hello`. */
+  /**
+   * Nudges the client that the session store changed.
+   *
+   * A nudge, not a payload: the client is the only one that knows which page,
+   * filter, and search it is looking at. Ignored before `hello`.
+   */
   sendSessions(): void {
     if (!this.device) return;
-    this.send({
-      v: WIRE_VERSION,
-      type: "sessions",
-      sessions: this.deps.registry.list().map(toSummary),
-    });
-  }
-
-  private liveByFile(path: string): PiSession | undefined {
-    for (const info of this.deps.registry.list()) {
-      if (info.sessionFile === path) return this.deps.registry.get(info.id);
-    }
-    return undefined;
+    this.send({ v: WIRE_VERSION, type: "sessions_changed" });
   }
 
   private sendSessionState(commandId: string, session: PiSession): void {
@@ -477,7 +522,8 @@ export class Connection {
       type: "session_state",
       commandId,
       sessionId: session.id,
-      summary: toSummary(session.info),
+      summary:
+        summaryFor(this.deps.index, this.deps.registry, session.id) ?? liveSummary(session.info),
     });
   }
 
@@ -550,25 +596,7 @@ function forwardFrame(
         v: WIRE_VERSION,
         type: "session_state",
         sessionId,
-        summary: toSummary(session.info),
+        summary: liveSummary(session.info),
       };
   }
-}
-
-function toSummary(info: SessionInfo): SessionSummary {
-  return {
-    sessionId: info.id,
-    name: info.name,
-    cwd: info.cwd,
-    status: info.status === "starting" ? "idle" : info.status,
-    awaitingInput: info.awaitingInput,
-    trusted: info.trusted,
-    leafId: info.leafId,
-    lastSeq: info.lastSeq,
-    updatedAt: info.updatedAt,
-    preview: info.preview,
-    model: info.model,
-    thinkingLevel: info.thinkingLevel,
-    thinkingLevels: info.thinkingLevels,
-  };
 }

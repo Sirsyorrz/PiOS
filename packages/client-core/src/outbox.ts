@@ -23,6 +23,14 @@ export interface OutboxEntry {
   /** Inlined, not a file reference: the file may be gone by the time we send. */
   images: ImageContent[];
   streamingBehavior?: StreamingBehavior;
+  /**
+   * Starts the session this prompt is addressed to.
+   *
+   * Carried in the queue rather than sent ahead of it: a session with no
+   * first prompt is an empty composer, so composing offline and sending later
+   * must create the session at delivery, not at composition.
+   */
+  create?: { cwd: string; name?: string; trustProject?: boolean; model?: string };
   createdAt: number;
   attempts: number;
   status: OutboxEntryStatus;
@@ -199,5 +207,8 @@ export function outboxFrame(entry: OutboxEntry): ClientFrame {
     text: entry.text,
     images: entry.images,
     streamingBehavior: entry.streamingBehavior,
+    create: entry.create
+      ? { ...entry.create, trustProject: entry.create.trustProject ?? false }
+      : undefined,
   };
 }

@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { ConnectionSupervisor } from "../src/supervisor.ts";
 import { FakeScheduler, flush } from "../src/scheduler.ts";
+import { WIRE_VERSION } from "@pios/protocol";
 import { TransportFactoryStub, summary } from "./fake-transport.ts";
 
 function setup(options: { stableAfterMs?: number } = {}) {
@@ -134,7 +135,7 @@ test("an unauthorized error frame blocks as hard as a close does", async () => {
   await flush();
   transports.last.acceptHello();
   transports.last.emit({
-    v: 1,
+    v: WIRE_VERSION,
     type: "error",
     code: "unauthorized",
     message: "token revoked",
@@ -164,7 +165,7 @@ test("a drop mid-stream reconnects and reports transport health honestly", async
   transports.last.acceptHello([summary()]);
 
   transports.last.emit({
-    v: 1,
+    v: WIRE_VERSION,
     type: "agent_event",
     sessionId: "s1",
     seq: 1,

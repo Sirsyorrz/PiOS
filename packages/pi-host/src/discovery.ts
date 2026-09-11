@@ -1,9 +1,4 @@
-import { existsSync } from "node:fs";
-import { readdir } from "node:fs/promises";
-import { join, resolve } from "node:path";
-import { SessionManager } from "@earendil-works/pi-coding-agent";
-import { previewText } from "@pios/protocol";
-import { projectSessionDir } from "./session-paths.ts";
+import { SessionIndex, type SessionRecord } from "./session-index.ts";
 
 /**
  * A session file on disk that no PiOS session currently owns.
@@ -19,7 +14,8 @@ export interface ResumableSession {
   name?: string;
   createdAt: number;
   modifiedAt: number;
-  messageCount: number;
+  /** Absent for a session too large to count without reading all of it. */
+  messageCount?: number;
   /** First user message, for a list row that is readable without opening it. */
   preview: string;
 }
@@ -27,95 +23,45 @@ export interface ResumableSession {
 export interface ListResumableOptions {
   /** Restrict to one project directory. Omitted means every project. */
   cwd?: string;
-  sessionDir?: string;
   /** Newest first, capped so a phone does not receive years of history. */
   limit?: number;
 }
 
 export type SessionLister = (options: ListResumableOptions) => Promise<ResumableSession[]>;
 
-const DEFAULT_LIMIT = 50;
-
-export function createSessionLister(defaults: ListResumableOptions = {}): SessionLister {
-  return async (options) => {
-    const sessionDir = options.sessionDir ?? defaults.sessionDir;
-    const limit = options.limit ?? defaults.limit ?? DEFAULT_LIMIT;
-    const cwd = options.cwd ?? defaults.cwd;
-
-    const found = cwd ? await listForCwd(cwd, sessionDir) : await listEverything(sessionDir);
-
-    return found
-      .map(toResumable)
-      .sort((a, b) => b.modifiedAt - a.modifiedAt)
-      .slice(0, limit);
-  };
+export interface SessionListerOptions extends ListResumableOptions {
+  sessionDir: string;
+  /** Warm-start seed for the index behind this lister. */
+  cacheFile?: string;
 }
 
 /**
- * pi's `sessionDir` is one project's directory, not the root above them.
- *
- * The root holds one encoded directory per project, so a plain `listAll(root)`
- * finds nothing: every file is one level further down.
+ * Listing backed by one long-lived index, so repeat calls skim only the files
+ * that changed. Creating a lister per request would throw that cache away.
  */
-async function listEverything(root?: string): Promise<PiSessionInfo[]> {
-  if (!root) return SessionManager.listAll();
-  const leaves = await leafDirs(root);
-  // The root itself is included for a flat directory, e.g. a test fixture.
-  const batches = await Promise.all([root, ...leaves].map((dir) => SessionManager.listAll(dir)));
-  return batches.flat();
+export function createSessionLister(defaults: SessionListerOptions): SessionLister {
+  const index = new SessionIndex({
+    sessionDir: defaults.sessionDir,
+    cacheFile: defaults.cacheFile,
+    limit: defaults.limit,
+  });
+  // Nothing waits on this: the first list is correct either way, just slower.
+  void index.warm();
+  return async (options) => {
+    const page = await index.list({ cwd: options.cwd ?? defaults.cwd, limit: options.limit });
+    return page.sessions.map(toResumable);
+  };
 }
 
-async function listForCwd(cwd: string, root?: string): Promise<PiSessionInfo[]> {
-  if (!root) return SessionManager.list(cwd);
-  const leaf = projectSessionDir(cwd, root);
-  if (existsSync(leaf)) return SessionManager.list(cwd, leaf);
-  // A session file can name a cwd that does not match the directory it sits
-  // in, e.g. after a fork, so falling back to a filtered scan is not dead code.
-  const all = await listEverything(root);
-  const resolved = resolve(cwd);
-  return all.filter((session) => resolve(session.cwd || "/") === resolved);
-}
-
-async function leafDirs(root: string): Promise<string[]> {
-  try {
-    const entries = await readdir(root, { withFileTypes: true });
-    return entries
-      .filter((entry) => entry.isDirectory() || entry.isSymbolicLink())
-      .map((entry) => join(root, entry.name));
-  } catch {
-    return [];
-  }
-}
-
-interface PiSessionInfo {
-  path: string;
-  id: string;
-  cwd: string;
-  name?: string;
-  created: Date;
-  modified: Date;
-  messageCount: number;
-  firstMessage: string;
-}
-
-function toResumable(info: {
-  path: string;
-  id: string;
-  cwd: string;
-  name?: string;
-  created: Date;
-  modified: Date;
-  messageCount: number;
-  firstMessage: string;
-}): ResumableSession {
+function toResumable(record: SessionRecord): ResumableSession {
   return {
-    path: info.path,
-    id: info.id,
-    cwd: info.cwd,
-    name: info.name,
-    createdAt: info.created.getTime(),
-    modifiedAt: info.modified.getTime(),
-    messageCount: info.messageCount,
-    preview: previewText(info.firstMessage).slice(0, 200),
+    path: record.path,
+    id: record.id,
+    cwd: record.cwd,
+    name: record.name,
+    createdAt: record.createdAt,
+    modifiedAt: record.modifiedAt,
+    messageCount: record.messageCount,
+    preview: record.preview,
   };
 }

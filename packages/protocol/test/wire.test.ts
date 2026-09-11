@@ -114,3 +114,69 @@ test("a bash frame defaults to keeping its output in context", () => {
   });
   assert.equal(result.type === "bash_state" && result.result?.cancelled, false);
 });
+
+test("a prompt can carry what it takes to create the session it addresses", () => {
+  const parsed = ClientFrameSchema.parse({
+    v: WIRE_VERSION,
+    type: "prompt",
+    commandId: "c1",
+    sessionId: "draft-1",
+    create: { cwd: "/tmp/project" },
+    messageId: "m1",
+    text: "hi",
+  });
+  assert.ok(parsed.type === "prompt");
+  // Trust is never inherited: an unspecified session is untrusted.
+  assert.deepEqual(parsed.create, { cwd: "/tmp/project", trustProject: false });
+});
+
+test("the session list is paged and searched by the daemon", () => {
+  const asked = ClientFrameSchema.parse({
+    v: WIRE_VERSION,
+    type: "list_sessions",
+    commandId: "c1",
+    query: "refactor",
+    limit: 20,
+    offset: 40,
+  });
+  assert.ok(asked.type === "list_sessions" && asked.offset === 40);
+
+  const page = ServerFrameSchema.parse({
+    v: WIRE_VERSION,
+    type: "sessions",
+    sessions: [
+      { sessionId: "s1", cwd: "/tmp", status: "cold", updatedAt: 1 },
+    ],
+    offset: 40,
+    total: 97,
+    hasMore: true,
+  });
+  assert.ok(page.type === "sessions");
+  // A cold row is mostly absences: no process, so no cursor and no seq.
+  assert.deepEqual(page.sessions[0]?.leafId, null);
+  assert.equal(page.sessions[0]?.lastSeq, 0);
+  assert.equal(page.sessions[0]?.trusted, false);
+});
+
+test("entries can be asked for as a tail and paged backwards", () => {
+  const asked = ClientFrameSchema.parse({
+    v: WIRE_VERSION,
+    type: "get_entries",
+    commandId: "c1",
+    sessionId: "s1",
+    limit: 200,
+    before: 400,
+  });
+  assert.ok(asked.type === "get_entries" && asked.before === 400);
+
+  const page = ServerFrameSchema.parse({
+    v: WIRE_VERSION,
+    type: "entries",
+    sessionId: "s1",
+    entries: [],
+    leafId: null,
+    offset: 200,
+    total: 600,
+  });
+  assert.ok(page.type === "entries" && page.offset === 200 && page.total === 600);
+});

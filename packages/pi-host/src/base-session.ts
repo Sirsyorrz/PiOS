@@ -43,6 +43,12 @@ export abstract class BaseSession {
   protected thinkingLevel: string | undefined;
   protected thinkingLevels: string[] = [];
   protected updatedAt = Date.now();
+  /**
+   * Last moment the agent did work, which is what the idle sweep reaps on.
+   * Only prompts and agent events move it: a client polling for models or
+   * stats must not be able to keep a process resident forever.
+   */
+  protected activityAt = Date.now();
   /** First user message: what a list row shows when the session has no name. */
   protected preview: string | undefined;
 
@@ -269,6 +275,15 @@ export abstract class BaseSession {
     this.publish({ type: "status", status: this.status });
   }
 
+  /** Marks real work, so the idle sweep leaves this session alone for now. */
+  protected noteActivity(): void {
+    this.activityAt = Date.now();
+  }
+
+  get lastActivityAt(): number {
+    return this.activityAt;
+  }
+
   protected setStatus(status: SessionStatus): void {
     if (this.status === status) return;
     this.status = status;
@@ -277,6 +292,7 @@ export abstract class BaseSession {
 
   /** Tracks run state and the durable cursor as events go by. */
   protected observeAgentEvent(event: AgentEvent): void {
+    this.noteActivity();
     if (event.type === "message_start" && event.message.role === "user") {
       this.notePreview(messagePreview(event.message));
     }

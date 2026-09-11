@@ -1,12 +1,8 @@
 import { createServer, type Server } from "node:http";
 import { mkdirSync } from "node:fs";
+import { join } from "node:path";
 import { WebSocketServer } from "ws";
-import {
-  createSessionLister,
-  SessionRegistry,
-  type SessionHost,
-  type SessionLister,
-} from "@pios/pi-host";
+import { SessionIndex, SessionRegistry, type SessionHost } from "@pios/pi-host";
 import { AuthStore } from "./auth.ts";
 import { CommandLedger } from "./dedupe.ts";
 import { Connection } from "./connection.ts";
@@ -15,6 +11,8 @@ import { advertisedEndpoints, type Endpoint } from "./endpoints.ts";
 import { createSessionHost } from "./session-host.ts";
 import { SettleNotifier } from "./notifier.ts";
 import { PushStore } from "./push.ts";
+import { SessionStoreWatcher } from "./store-watcher.ts";
+import { TrustStore } from "./trust.ts";
 import { authStorePath, defaultConfig, pushStorePath, type ServerConfig } from "./config.ts";
 
 export interface PiosServerOptions extends Partial<ServerConfig> {
@@ -23,7 +21,7 @@ export interface PiosServerOptions extends Partial<ServerConfig> {
   /** pi's version, reported in `welcome` so a client can spot a mismatch. */
   piVersion?: string;
   /** Overridable so tests do not touch the real session directory. */
-  lister?: SessionLister;
+  index?: SessionIndex;
 }
 
 export class PiosServer {
@@ -36,7 +34,9 @@ export class PiosServer {
   private readonly wss: WebSocketServer;
   private readonly ledger = new CommandLedger();
   private readonly connections = new Set<Connection>();
-  private readonly lister: SessionLister;
+  private readonly index: SessionIndex;
+  private readonly trust: TrustStore;
+  private readonly watcher: SessionStoreWatcher;
   private readonly notifier: SettleNotifier;
 
   constructor(options: PiosServerOptions = {}) {
@@ -45,8 +45,19 @@ export class PiosServer {
     mkdirSync(this.config.sessionDir, { recursive: true });
 
     this.auth = new AuthStore(authStorePath(this.config));
-    this.lister =
-      options.lister ?? createSessionLister({ sessionDir: this.config.sessionDir });
+    this.index =
+      options.index ??
+      new SessionIndex({
+        sessionDir: this.config.sessionDir,
+        cacheFile: join(this.config.dataDir, "session-index.json"),
+      });
+    this.trust = new TrustStore(join(this.config.dataDir, "trust.json"));
+    // A change on disk invalidates what was skimmed for it and nudges every
+    // client; the TUI writes to the same store this daemon reads.
+    this.watcher = new SessionStoreWatcher(this.config.sessionDir, () => {
+      this.index.invalidate();
+      this.announceSessions();
+    });
     this.push = new PushStore(pushStorePath(this.config), this.config.pushSubject);
     this.notifier = new SettleNotifier({
       send: async (notification) => {
@@ -61,6 +72,7 @@ export class PiosServer {
     this.registry = new SessionRegistry(
       options.sessionHost ?? createSessionHost(this.config),
       {
+        idleMs: this.config.sessionIdleMs,
         onCreate: (session) => this.notifier.attach(session),
         onDispose: (id) => this.notifier.release(id),
       },
@@ -84,7 +96,8 @@ export class PiosServer {
         ledger: this.ledger,
         piVersion: options.piVersion ?? "unknown",
         helloTimeoutMs: this.config.helloTimeoutMs,
-        lister: this.lister,
+        index: this.index,
+        trust: this.trust,
         announceSessions: () => this.announceSessions(),
       });
       this.connections.add(connection);
@@ -94,6 +107,10 @@ export class PiosServer {
 
   async listen(): Promise<number> {
     await new Promise<void>((resolve) => this.http.listen(this.config.port, this.config.host, resolve));
+    // Warmed before anyone asks, so the first session list is instant rather
+    // than a scan of every project the user has ever worked in.
+    void this.index.warm();
+    await this.watcher.start();
     return this.port;
   }
 
@@ -121,6 +138,7 @@ export class PiosServer {
   }
 
   async close(): Promise<void> {
+    this.watcher.stop();
     this.notifier.releaseAll();
     await this.registry.disposeAll();
     for (const client of this.wss.clients) client.terminate();

@@ -17,6 +17,11 @@ export interface ServerConfig {
    * `in-process` drives an `AgentSession` inside the daemon.
    */
   sessionHostMode: SessionHostMode;
+  /**
+   * Idle time before a session's `pi` process is stopped. The session itself
+   * survives: its transcript is on disk and the next command starts it again.
+   */
+  sessionIdleMs: number;
   /** Cap on a single upload, so a phone cannot fill the disk. */
   maxUploadBytes: number;
   /** How long a socket has to authenticate before it is closed. */
@@ -70,6 +75,7 @@ export function defaultConfig(overrides: Partial<ServerConfig> = {}): ServerConf
       process.env.PIOS_SESSION_DIR ??
       join(homedir(), ".pi", "agent", "sessions"),
     sessionHostMode: overrides.sessionHostMode ?? sessionHostMode(process.env.PIOS_HOST),
+    sessionIdleMs: overrides.sessionIdleMs ?? 30 * 60_000,
     maxUploadBytes: overrides.maxUploadBytes ?? 25 * 1024 * 1024,
     helloTimeoutMs: overrides.helloTimeoutMs ?? 5_000,
     activityTtlMs: overrides.activityTtlMs ?? 45_000,

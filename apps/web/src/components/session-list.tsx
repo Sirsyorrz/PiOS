@@ -1,9 +1,98 @@
 import type { SessionSummary } from "@pios/protocol";
-import { shortenPath } from "../format.ts";
+import { useEffect, useRef } from "react";
+import { relativeTime, shortenPath } from "../format.ts";
 import { isUnseen } from "../seen.ts";
 import { sessionState } from "../session-status.ts";
-import { HistoryIcon, PlusIcon, TrashIcon } from "./icons.tsx";
-import { ListRowButton } from "./ui.tsx";
+import type { Draft } from "../drafts.ts";
+import { PlusIcon } from "./icons.tsx";
+import { ListRowButton, SearchField } from "./ui.tsx";
+
+/**
+ * Every session on the machine, running or not.
+ *
+ * One list, because a conversation is a conversation: whether the daemon
+ * happens to have pi up for it is a detail the user cannot see and should not
+ * have to look in a second place for.
+ */
+export function SessionList({
+  sessions,
+  drafts,
+  activeId,
+  seen,
+  query,
+  loading,
+  hasMore,
+  onQuery,
+  onSelect,
+  onCreate,
+  onLoadMore,
+}: {
+  sessions: SessionSummary[];
+  /** Composers with no session behind them yet, newest first. */
+  drafts: Draft[];
+  activeId: string | null;
+  /** Last `updatedAt` the user saw, by session id. */
+  seen: Record<string, number>;
+  query: string;
+  loading: boolean;
+  hasMore: boolean;
+  onQuery: (query: string) => void;
+  onSelect: (sessionId: string) => void;
+  onCreate: () => void;
+  onLoadMore: () => void;
+}) {
+  const ordered = [...sessions].sort((a, b) => b.updatedAt - a.updatedAt);
+
+  return (
+    <nav className="sessions">
+      <div className="row spread section-head">
+        <h2>Sessions</h2>
+        <button type="button" className="ghost icon" aria-label="new session" onClick={onCreate}>
+          <PlusIcon />
+        </button>
+      </div>
+
+      {/* The list is the whole history on disk, so it is searched rather than
+          scrolled: filtering happens on the daemon, across every page. */}
+      <SearchField value={query} placeholder="Search sessions" onChange={onQuery} />
+
+      {ordered.length === 0 && drafts.length === 0 ? (
+        <p className="muted">{loading ? "Loading sessions…" : "No sessions yet."}</p>
+      ) : (
+        <ul className="scroll-y">
+          {drafts.map((draft) => (
+            <li key={draft.id} className={draft.id === activeId ? "active" : ""}>
+              <ListRowButton className="session" onClick={() => onSelect(draft.id)}>
+                <span className="name line">New session</span>
+                <span className="muted line">{shortenPath(draft.cwd)}</span>
+                <span className="badge cold">draft</span>
+              </ListRowButton>
+            </li>
+          ))}
+          {ordered.map((session) => (
+            <li key={session.sessionId} className={session.sessionId === activeId ? "active" : ""}>
+              <ListRowButton className="session" onClick={() => onSelect(session.sessionId)}>
+                {/* The opening message identifies a session far better than its
+                    directory, which every session in a project shares. */}
+                <span className="name line">
+                  {session.name ?? session.preview ?? shortenPath(session.cwd)}
+                </span>
+                <span className="muted line">
+                  {shortenPath(session.cwd)} · {relativeTime(session.updatedAt)}
+                </span>
+                <SessionBadge
+                  session={session}
+                  unseen={isUnseen(seen, session.sessionId, session.updatedAt)}
+                />
+              </ListRowButton>
+            </li>
+          ))}
+          {hasMore ? <MoreRow onVisible={onLoadMore} /> : null}
+        </ul>
+      )}
+    </nav>
+  );
+}
 
 /**
  * The row's state, worded and coloured exactly as the open session's header
@@ -14,74 +103,23 @@ function SessionBadge({ session, unseen }: { session: SessionSummary; unseen: bo
   return <span className={`badge ${state.tone}`}>{state.label}</span>;
 }
 
-export function SessionList({ sessions, activeId, seen, onSelect, onCreate, onResume, onDispose }: {
-  sessions: SessionSummary[];
-  activeId: string | null;
-  /** Last `updatedAt` the user saw, by session id. */
-  seen: Record<string, number>;
-  onSelect: (sessionId: string) => void;
-  onCreate: () => void;
-  onResume: () => void;
-  onDispose: (sessionId: string) => void;
-}) {
-  const ordered = [...sessions].sort((a, b) => b.updatedAt - a.updatedAt);
+/** Asks for the next page once the end of the list is actually reached. */
+function MoreRow({ onVisible }: { onVisible: () => void }) {
+  const marker = useRef<HTMLLIElement>(null);
 
-  // The opening message identifies a session far better than its directory,
-  // which every session in a project shares.
-  const sessionLabel = (session: SessionSummary) =>
-    session.name ?? session.preview ?? shortenPath(session.cwd);
+  useEffect(() => {
+    const node = marker.current;
+    if (!node) return;
+    const observer = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) onVisible();
+    });
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [onVisible]);
 
   return (
-    <nav className="sessions">
-      <div className="row spread section-head">
-        <h2>Sessions</h2>
-        <span className="row">
-          {/* Sessions started in the pi TUI live in the same directory, so
-              they are reachable from here too. */}
-          <button type="button" className="ghost icon" aria-label="resume a session" onClick={onResume}>
-            <HistoryIcon />
-          </button>
-          <button type="button" className="ghost icon" aria-label="new session" onClick={onCreate}>
-            <PlusIcon />
-          </button>
-        </span>
-      </div>
-      {/* No empty list element: it would still take a gap and push the empty
-          state away from its heading. */}
-      {ordered.length === 0 ? (
-        <p className="muted">No sessions yet.</p>
-      ) : (
-        <ul>
-          {ordered.map((session) => (
-            <li key={session.sessionId} className={session.sessionId === activeId ? "active" : ""}>
-              <ListRowButton
-                className="session"
-                onClick={() => onSelect(session.sessionId)}
-              >
-                <span className="name line">{sessionLabel(session)}</span>
-                <span className="muted line">{shortenPath(session.cwd)}</span>
-                {/* Two lines, fixed: the row is a list entry, so state rides
-                    in the corner rather than adding a third line to some
-                    rows and not others. */}
-                <SessionBadge
-                  session={session}
-                  unseen={isUnseen(seen, session.sessionId, session.updatedAt)}
-                />
-              </ListRowButton>
-              {/* Over the row, not beside it: a sibling column made every row
-                  wider than the sidebar could afford. */}
-              <button
-                type="button"
-                className="icon ghost dispose"
-                aria-label={`dispose ${sessionLabel(session)}`}
-                onClick={() => onDispose(session.sessionId)}
-              >
-                <TrashIcon width={16} height={16} />
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
-    </nav>
+    <li ref={marker} className="muted more">
+      Loading more…
+    </li>
   );
 }

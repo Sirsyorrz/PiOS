@@ -194,17 +194,6 @@ export async function dropDraft(sessionId: string, path: string): Promise<void> 
   }
 }
 
-export async function dropSessionDrafts(sessionId: string): Promise<void> {
-  try {
-    const all = await run<DraftRecord[]>("readonly", (s) => s.getAll());
-    await Promise.all(
-      all.filter((d) => d.sessionId === sessionId).map((d) => dropDraft(sessionId, d.path)),
-    );
-  } catch {
-    /* nothing to drop */
-  }
-}
-
 async function evict(): Promise<void> {
   const all = await run<DraftRecord[]>("readonly", (s) => s.getAll());
   const stale = all.sort((a, b) => b.at - a.at).slice(MAX_DRAFTS);

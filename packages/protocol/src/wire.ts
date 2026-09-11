@@ -19,7 +19,7 @@ import {
  */
 
 /** Bumped on any breaking envelope change. Clients refuse a mismatch. */
-export const WIRE_VERSION = 1;
+export const WIRE_VERSION = 2;
 
 const ClientBase = z.object({
   v: z.literal(WIRE_VERSION),
@@ -38,29 +38,22 @@ const Envelope = <T extends z.ZodRawShape>(shape: T) => ClientBase.extend(shape)
 export const ClientFrameSchema = z.discriminatedUnion("type", [
   // Must succeed before the supervisor reports `connected`.
   Envelope({ type: z.literal("hello"), deviceToken: z.string(), clientVersion: z.string() }),
-  Envelope({ type: z.literal("list_sessions") }),
+  /**
+   * Every session on disk, whether or not the daemon has a process for it.
+   *
+   * The session store is the list: one started in the TUI and one started here
+   * are the same kind of thing. Paged, because a real history is thousands of
+   * conversations and a phone asks for a screenful at a time.
+   */
   Envelope({
-    type: z.literal("create_session"),
-    cwd: z.string(),
-    name: z.string().optional(),
-    /** Explicit, because pi's headless trust default is not something to inherit. */
-    trustProject: z.boolean().default(false),
-    model: z.string().optional(),
-    /**
-     * Path to an existing pi session JSONL, from `list_resumable`. Adopts that
-     * transcript instead of starting an empty one, so a session begun in the
-     * TUI continues here under its own id.
-     */
-    resumeFrom: z.string().optional(),
-  }),
-  /** Sessions on disk, including ones the daemon never started. */
-  Envelope({
-    type: z.literal("list_resumable"),
+    type: z.literal("list_sessions"),
     /** Restrict to one project directory. Omitted means every project. */
     cwd: z.string().optional(),
+    /** Matched against path, name and preview. Never against transcripts. */
+    query: z.string().optional(),
     limit: z.number().optional(),
+    offset: z.number().optional(),
   }),
-  Envelope({ type: z.literal("dispose_session"), sessionId: z.string() }),
   // Relaunches the same session under new trust; it never forks a new one.
   Envelope({
     type: z.literal("set_session_trust"),
@@ -94,15 +87,41 @@ export const ClientFrameSchema = z.discriminatedUnion("type", [
     sessionId: z.string(),
     level: z.string(),
   }),
-  // Resume. `since` omitted means "send everything".
+  /**
+   * Transcript, read from the session file.
+   *
+   * `since` answers "what changed" and `before` answers "what came earlier":
+   * two different questions, so two parameters rather than one cursor doing
+   * both jobs. Neither given means the tail, or everything without a `limit`.
+   */
   Envelope({
     type: z.literal("get_entries"),
     sessionId: z.string(),
     since: z.string().optional(),
+    /** Newest N entries. A chat is read from the bottom. */
+    limit: z.number().optional(),
+    /** Page backwards from this index, as returned in `offset`. */
+    before: z.number().optional(),
   }),
   Envelope({
     type: z.literal("prompt"),
     sessionId: z.string(),
+    /**
+     * Starts the session when it does not exist yet.
+     *
+     * A session with no first prompt is an empty composer, not a session, so
+     * the composer holds a client-generated id and the first prompt is what
+     * brings the session into being under that exact id.
+     */
+    create: z
+      .object({
+        cwd: z.string(),
+        name: z.string().optional(),
+        /** Explicit: pi's headless trust default is not something to inherit. */
+        trustProject: z.boolean().default(false),
+        model: z.string().optional(),
+      })
+      .optional(),
     /** Stable per composed message, survives app restart in the outbox. */
     messageId: z.string(),
     text: z.string(),
@@ -192,23 +211,31 @@ export const SessionSummarySchema = z.object({
   sessionId: z.string(),
   name: z.string().optional(),
   cwd: z.string(),
-  /** `crashed` is reported, never hidden behind a silent restart. */
-  status: z.enum(["idle", "running", "crashed", "disposed"]),
+  /**
+   * `cold` is the resting state: no process, transcript on disk, wakes on the
+   * next command. `crashed` is reported, never hidden behind a silent restart.
+   */
+  status: z.enum(["cold", "idle", "running", "crashed"]),
   /**
    * Blocked on an extension dialog. Kept beside `status` rather than folded
    * into it: the agent is still running, it just cannot proceed without an
    * answer, and only a client attached to the session can give one.
    */
   awaitingInput: z.boolean().default(false),
-  trusted: z.boolean(),
-  /** Durable cursor: survives restarts, covers only what pi persisted. */
-  leafId: z.string().nullable(),
+  trusted: z.boolean().default(false),
+  /**
+   * Durable cursor: survives restarts, covers only what pi persisted. Null for
+   * a cold session, whose cursor is whatever `get_entries` reads off disk.
+   */
+  leafId: z.string().nullable().default(null),
   /**
    * Live cursor: the newest buffered event. A client subscribes with this to
    * tail without replaying history it does not want.
    */
-  lastSeq: z.number(),
+  lastSeq: z.number().default(0),
   updatedAt: z.number(),
+  /** Entries in the transcript, absent when counting one would cost a read. */
+  messageCount: z.number().optional(),
   /** First user message, for a row that reads without opening the session. */
   preview: z.string().optional(),
   /** The model the agent is on right now, absent when pi has not resolved one. */
@@ -223,20 +250,6 @@ export const SessionSummarySchema = z.object({
 });
 export type SessionSummary = z.infer<typeof SessionSummarySchema>;
 
-export const ResumableSessionSchema = z.object({
-  /** Pass back as `create_session.resumeFrom`. */
-  path: z.string(),
-  sessionId: z.string(),
-  cwd: z.string(),
-  name: z.string().optional(),
-  createdAt: z.number(),
-  modifiedAt: z.number(),
-  messageCount: z.number(),
-  preview: z.string(),
-  /** Already open in the daemon; resuming it is an attach, not a new session. */
-  live: z.boolean().default(false),
-});
-export type ResumableSessionWire = z.infer<typeof ResumableSessionSchema>;
 
 const ServerBase = z.object({
   v: z.literal(WIRE_VERSION),
@@ -254,10 +267,7 @@ export const ServerFrameSchema = z.discriminatedUnion("type", [
     piVersion: z.string(),
     sessions: z.array(SessionSummarySchema),
   }),
-  ServerEnvelope({
-    type: z.literal("resumable_sessions"),
-    sessions: z.array(ResumableSessionSchema),
-  }),
+
   ServerEnvelope({
     type: z.literal("ack"),
     commandId: z.string(),
@@ -287,7 +297,20 @@ export const ServerFrameSchema = z.discriminatedUnion("type", [
     ]),
     message: z.string(),
   }),
-  ServerEnvelope({ type: z.literal("sessions"), sessions: z.array(SessionSummarySchema) }),
+  /** One page of the session list. `offset` 0 replaces, anything else appends. */
+  ServerEnvelope({
+    type: z.literal("sessions"),
+    sessions: z.array(SessionSummarySchema),
+    offset: z.number().default(0),
+    total: z.number().default(0),
+    hasMore: z.boolean().default(false),
+  }),
+  /**
+   * The session store changed on disk, e.g. the TUI started or advanced a
+   * session. A nudge with no payload: the client re-lists the page it is on
+   * rather than the daemon guessing which one that is.
+   */
+  ServerEnvelope({ type: z.literal("sessions_changed") }),
   ServerEnvelope({
     type: z.literal("models"),
     sessionId: z.string(),
@@ -323,6 +346,10 @@ export const ServerFrameSchema = z.discriminatedUnion("type", [
     leafId: z.string().nullable(),
     /** True when the cursor was rejected and the client must drop its cache. */
     reset: z.boolean().default(false),
+    /** Index of the first entry returned, for the next `before`. */
+    offset: z.number().default(0),
+    /** Entries in the whole transcript, for knowing whether more remain. */
+    total: z.number().default(0),
   }),
   /** A pi event, forwarded verbatim, tagged with its session. */
   ServerEnvelope({

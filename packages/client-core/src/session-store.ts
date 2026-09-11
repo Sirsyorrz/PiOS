@@ -12,7 +12,7 @@ import {
 } from "@pios/protocol";
 import { readVersioned, writeVersioned, type StorageAdapter } from "./storage.ts";
 
-export const SESSION_CACHE_VERSION = 1;
+export const SESSION_CACHE_VERSION = 2;
 const STORAGE_PREFIX = "pios.session.";
 /** A chatty extension must not be able to bury the transcript. */
 const MAX_NOTICES = 3;
@@ -41,6 +41,10 @@ export interface SessionCache {
   /** Live tail cursor into the daemon's ring buffer. */
   lastSeq: number;
   entries: SessionEntry[];
+  /** Index of the first held entry within the whole transcript. */
+  offset: number;
+  /** Entries the whole transcript has, so the UI knows more exist above. */
+  total: number;
 }
 
 export interface ApplyResult {
@@ -100,7 +104,14 @@ export class SessionStore {
           null,
         )
       : null;
-    const cache = loaded ?? { sessionId, cursor: null, lastSeq: 0, entries: [] };
+    const cache = loaded ?? {
+      sessionId,
+      cursor: null,
+      lastSeq: 0,
+      entries: [],
+      offset: 0,
+      total: 0,
+    };
     this.caches.set(sessionId, cache);
     return cache;
   }
@@ -112,6 +123,36 @@ export class SessionStore {
 
   lastSeq(sessionId: string): number {
     return this.get(sessionId).lastSeq;
+  }
+
+  /** Where the held transcript starts, which is the next backfill's `before`. */
+  firstHeldIndex(sessionId: string): number {
+    return this.get(sessionId).offset;
+  }
+
+  /** True when the transcript continues above what is held here. */
+  hasOlder(sessionId: string): boolean {
+    return this.get(sessionId).offset > 0;
+  }
+
+  /**
+   * Prepends a page of older entries.
+   *
+   * A chat is read from the bottom, so history above the first held entry is
+   * fetched only when someone scrolls up to look for it.
+   */
+  applyOlderEntries(sessionId: string, entries: SessionEntry[], offset: number, total: number): void {
+    const cache = this.get(sessionId);
+    if (!entries.length) {
+      cache.offset = offset;
+      this.persist(cache);
+      return;
+    }
+    const known = new Set(cache.entries.map((entry) => entry.id));
+    cache.entries = [...entries.filter((entry) => !known.has(entry.id)), ...cache.entries];
+    cache.offset = offset;
+    cache.total = Math.max(total, cache.total);
+    this.persist(cache);
   }
 
   subscribe(listener: (sessionId: string) => void): () => void {
@@ -131,8 +172,15 @@ export class SessionStore {
     entries: SessionEntry[],
     leafId: string | null,
     reset: boolean,
+    page?: { offset: number; total: number },
   ): ApplyResult {
     const cache = this.get(sessionId);
+    if (page) {
+      cache.total = Math.max(page.total, cache.total);
+      // A tail page starts partway in; a delta does not move where the held
+      // transcript begins.
+      if (reset || cache.entries.length === 0) cache.offset = page.offset;
+    }
     if (reset) {
       cache.entries = [...entries];
     } else {
@@ -162,7 +210,10 @@ export class SessionStore {
    */
   needsFullRefetch(sessionId: string, leafId: string | null): boolean {
     const cache = this.get(sessionId);
-    if (leafId === null) return cache.entries.length > 0;
+    // Null is "not known from here", not "empty": a cold session reports no
+    // leaf because its cursor lives in its file, and throwing the cache away
+    // for that would refetch every transcript on every reconnect.
+    if (leafId === null) return false;
     if (cache.cursor === leafId) return false;
     return !cache.entries.some((entry) => entry.id === leafId);
   }

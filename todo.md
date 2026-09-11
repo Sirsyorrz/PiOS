@@ -3,7 +3,6 @@
 - /name slash command on set_session_name
 - compaction UI: compact + set_auto_compaction
 - absorb cc-usage into packages/server/src/usage.ts instead of shelling out
-- pios sessions in background, do we need to keep them open/running?
 - terminal (needs a real PTY; one-shot bash does not grow into it)
 - chat header: too many controls in one flex row. Split into smaller pieces
   with room to expand (overflow menu or a second row), then move the file
@@ -21,3 +20,8 @@
     relay exists. Not needed while the daemon is reached directly.
 - session list: docked column / overlay drawer, one component (plan phase 7.2)
 - fix floating input with no keyboard on app reopen bug
+- session model follow-ups
+  - push for a turn finished in the TUI: the store watcher sees the file
+    change, but notifications still come only from a live process
+  - the list is ordered by mtime; a long unattended run outranks the
+    conversation you were just in

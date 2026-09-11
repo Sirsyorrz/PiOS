@@ -11,6 +11,18 @@ export interface RestartableSession extends PiSession {
   restart(reason: string): Promise<void>;
 }
 
+/**
+ * A session whose process can be stopped and started again underneath it.
+ *
+ * Sleeping is invisible from outside: the id, the transcript, and the
+ * subscribers all survive, because none of them ever lived in the process.
+ */
+export interface SleepableSession {
+  readonly awake: boolean;
+  readonly lastActivityAt: number;
+  sleep(): Promise<void>;
+}
+
 export interface SessionHost {
   create(options: CreateSessionOptions): Promise<RestartableSession>;
 }
@@ -20,6 +32,10 @@ export interface RegistryOptions {
   maxRestarts?: number;
   /** Backoff before each restart, capped like every other retry ladder here. */
   restartDelayMs?: number;
+  /** Idle time before a session's process is stopped. 0 disables the sweep. */
+  idleMs?: number;
+  /** How often idle sessions are looked for. */
+  sweepIntervalMs?: number;
   now?: () => number;
   sleep?: (ms: number) => Promise<void>;
   /** Observer for every session this registry owns, live and restarted. */
@@ -29,6 +45,9 @@ export interface RegistryOptions {
 
 const DEFAULT_MAX_RESTARTS = 3;
 const DEFAULT_RESTART_DELAY_MS = 500;
+/** Long enough to step away from a conversation and come back to it warm. */
+const DEFAULT_IDLE_MS = 30 * 60_000;
+const DEFAULT_SWEEP_INTERVAL_MS = 60_000;
 /** A session that ran this long before dying is treated as healthy again. */
 const HEALTHY_UPTIME_MS = 60_000;
 
@@ -60,17 +79,43 @@ export class SessionRegistry {
   private readonly options: Required<Omit<RegistryOptions, "onCreate" | "onDispose">> &
     Pick<RegistryOptions, "onCreate" | "onDispose">;
   private readonly host: SessionHost;
+  private sweepTimer: NodeJS.Timeout | null = null;
 
   constructor(host: SessionHost, options: RegistryOptions = {}) {
     this.host = host;
     this.options = {
       maxRestarts: options.maxRestarts ?? DEFAULT_MAX_RESTARTS,
       restartDelayMs: options.restartDelayMs ?? DEFAULT_RESTART_DELAY_MS,
+      idleMs: options.idleMs ?? DEFAULT_IDLE_MS,
+      sweepIntervalMs: options.sweepIntervalMs ?? DEFAULT_SWEEP_INTERVAL_MS,
       now: options.now ?? Date.now,
       sleep: options.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms))),
       onCreate: options.onCreate,
       onDispose: options.onDispose,
     };
+    if (this.options.idleMs > 0) {
+      this.sweepTimer = setInterval(() => void this.sweep(), this.options.sweepIntervalMs);
+      // The sweep is housekeeping; it must never hold the daemon open.
+      this.sweepTimer.unref?.();
+    }
+  }
+
+  /**
+   * Stops the process of every session idle for too long.
+   *
+   * Browsing a list of conversations should not leave a `pi` process resident
+   * for each one. What is never reaped: a session that is working, and one
+   * blocked on a dialog, because killing that discards a question the user was
+   * about to answer and there is no way to ask it again.
+   */
+  async sweep(): Promise<void> {
+    const deadline = this.options.now() - this.options.idleMs;
+    const asleep = [...this.sessions.values()]
+      .filter(isSleepable)
+      .filter((session) => session.awake && session.lastActivityAt <= deadline)
+      .filter((session) => session.info.status === "idle" && session.pendingDialogs.length === 0)
+      .map((session) => session.sleep());
+    await Promise.all(asleep);
   }
 
   async create(options: CreateSessionOptions): Promise<RestartableSession> {
@@ -120,6 +165,8 @@ export class SessionRegistry {
   }
 
   async disposeAll(): Promise<void> {
+    if (this.sweepTimer) clearInterval(this.sweepTimer);
+    this.sweepTimer = null;
     await Promise.all([...this.sessions.keys()].map((id) => this.dispose(id)));
   }
 
@@ -156,6 +203,12 @@ export class SessionRegistry {
       return false;
     }
   }
+}
+
+function isSleepable(
+  session: RestartableSession,
+): session is RestartableSession & SleepableSession {
+  return typeof (session as { sleep?: unknown }).sleep === "function";
 }
 
 function hasExitHandler(

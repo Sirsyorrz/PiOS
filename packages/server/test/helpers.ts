@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { WebSocket } from "ws";
-import { subprocessHost, type SessionLister } from "@pios/pi-host";
+import { subprocessHost, type SessionIndex } from "@pios/pi-host";
 import { branchFakeSession } from "../../pi-host/test/fake-branch.ts";
 import { WIRE_VERSION, type ClientFrame, type ServerFrame } from "@pios/protocol";
 import { PiosServer } from "../src/server.ts";
@@ -22,10 +22,10 @@ export interface Harness {
 }
 
 /** A real server over the loopback, driven by the stub pi from Phase 2. */
-export async function startHarness(lister?: SessionLister): Promise<Harness> {
+export async function startHarness(index?: SessionIndex): Promise<Harness> {
   const dir = mkdtempSync(join(tmpdir(), "pios-server-"));
   const server = new PiosServer({
-    lister,
+    index,
     host: "127.0.0.1",
     port: 0,
     dataDir: join(dir, "data"),
@@ -71,6 +71,24 @@ export async function startHarness(lister?: SessionLister): Promise<Harness> {
 type Sendable<T = ClientFrame> = T extends ClientFrame
   ? Omit<T, "v" | "commandId"> & { commandId?: string }
   : never;
+
+let sessionCounter = 0;
+
+/**
+ * A session id minted the way a client does, before the session exists.
+ *
+ * Sessions are created by their first prompt, so anything that needs one
+ * without sending a prompt starts it on the registry directly.
+ */
+export function nextSessionId(): string {
+  return `00000000-0000-4000-8000-${String(++sessionCounter).padStart(12, "0")}`;
+}
+
+export async function openSession(harness: Harness, cwd: string): Promise<string> {
+  const id = nextSessionId();
+  await harness.server.registry.create({ id, cwd, trustProject: false });
+  return id;
+}
 
 let commandCounter = 0;
 export function nextCommandId(): string {
