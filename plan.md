@@ -207,10 +207,17 @@ The PWA is the product until it stops being enough. Everything here lands in
    presentation (`notify` / `setStatus` / `setWidget` / `setTitle` /
    `set_editor_text`) as snapshotted session state. `custom()` stays a hard
    gap, documented in spec.md.
-4. `@path` file picker backed by daemon directory listing.
-5. Slash commands with `/` autocomplete.
-6. Session controls: model switching, thinking level, compaction UI,
-   interrupt affordance.
+4. `@path` file picker backed by daemon fuzzy search (`GET /files`, git
+   ls-files with a walk fallback, scoped to the session cwd). Matching has to
+   live daemon-side: `addAutocompleteProvider` is a no-op in RPC mode, so an
+   installed picker extension (pi-fzfp) cannot serve the client.
+5. Slash commands with `/` autocomplete. Includes `/name` on
+   `set_session_name`, which also feeds the Phase 7.7 session list.
+6. Session controls: model switching, thinking level, compaction UI
+   (`compact` + `set_auto_compaction`), interrupt affordance.
+7. Session stats from `get_session_stats`, rendered at the foot of the
+   transcript after agent output, behind a Settings toggle. Distinct from the
+   plan-level `/usage` report, which stays.
 
 ---
 
@@ -245,7 +252,9 @@ order inside this phase is expected to churn.
 7. Session list quality: naming, ordering, search, archive/delete, unread and
    busy indicators.
 8. Accessibility and error surfaces: focus order, contrast, every failure has a
-   visible, actionable state.
+   visible, actionable state. Covers events that are parsed but never rendered
+   (`summarization_retry_*`, `setWidget`, `set_editor_text`), provider failures
+   such as rate limits, and `abort_retry` so a visible retry can be cancelled.
 9. Activity-lease reporting: 25s report, 45s TTL, carrying
    `visible` / `focused` / `appState` and warm scopes.
 
@@ -255,12 +264,17 @@ Exit: usable as a daily driver from the phone home screen.
 
 ## Phase 8 - Cleanup and hardening
 
-1. Prune dead code and duplicated view logic surfaced by Phases 6-7.
-2. Test debt: component tests for the chat view, one end-to-end browser smoke
+1. Prune dead code and duplicated view logic surfaced by Phases 6-7. Includes
+   the git integration, which landed unplanned and outside any phase.
+2. Absorb `cc-usage`: read the plan-usage source directly in
+   `packages/server/src/usage.ts` rather than shelling out to a CLI the user
+   has to install separately.
+3. Test debt: component tests for the chat view, one end-to-end browser smoke
    run, fixture-replay coverage for any new events.
-3. Daemon hardening review: auth, path containment, upload limits, token
+4. Daemon hardening review: auth, path containment, upload limits, token
    rotation.
-4. Docs: install path, pairing, systemd unit, troubleshooting.
+5. Docs: install path, pairing, systemd unit, troubleshooting. Include how an
+   agent runs and tests the web app locally.
 
 ---
 

@@ -245,6 +245,7 @@ queue contents.
 | `compaction_start/end` | Context-compaction indicator |
 | `auto_retry_start/end` | "Retrying, provider overloaded" banner |
 | `extension_error` | Surface, do not swallow |
+| `summarization_retry_*` | Same class as `auto_retry`; surface, do not swallow |
 
 Use `agent_settled`, not `agent_end`; `agent_end` may be followed by retry,
 compaction, or queued continuations.
@@ -280,8 +281,32 @@ Degraded in RPC mode (already stubbed): `custom()` returns undefined;
 `setToolsExpanded` are no-ops; `getTheme`/`setTheme` unavailable. `setWidget`
 accepts string arrays only.
 
-`custom()` is the only genuine gap. Extensions using it are invisible in RPC
-mode regardless of what PiOS does.
+`custom()` is the only genuine gap in the dialog/presentation half. Extensions
+using it are invisible in RPC mode regardless of what PiOS does.
+
+The other gap is input, not output: `addAutocompleteProvider` and
+`setEditorComponent` are no-ops in RPC mode, so an extension that replaces `@`
+file completion (pi-fzfp, for example) loads and runs its hooks but its
+provider is dropped. PiOS therefore implements fuzzy file search daemon-side
+rather than borrowing the user's extension. The editor half is inherently
+TUI-shaped and can never cross RPC; the provider half could, since
+`AutocompleteItem` is plain data, and is worth raising upstream as an RPC
+command that runs registered providers and returns their items.
+
+### Unreachable commands
+
+The daemon exposes an allowlist, not a passthrough, so a pi command is only
+reachable once it has a route. Deliberately unrouted today, with the reason:
+
+| Command | Why not |
+|---|---|
+| `cycle_model`, `cycle_thinking_level` | pickers set values explicitly; cycling is a TUI ergonomic |
+| `set_steering_mode`, `set_follow_up_mode` | the composer picks per message instead |
+| `clear_queue` | queue is rendered but rarely needs a bulk drop |
+| `get_messages`, `get_last_assistant_text` | superseded by `get_entries` |
+| `export_html` | no phone use |
+| `bash`, `abort_bash` | not a terminal (gotcha 4); the terminal tab needs its own channel |
+| `clone`, `get_fork_messages`, `get_tree` | branch browsing needs an RPC command to move the leaf, which pi does not expose |
 
 ### Gotchas
 

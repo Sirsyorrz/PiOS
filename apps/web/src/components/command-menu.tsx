@@ -12,6 +12,8 @@ export function slashQuery(text: string): string | null {
 
 export interface MenuEntry {
   name: string;
+  /** Shown instead of `/name`, for entries that are not slash commands. */
+  label?: string;
   description?: string;
   /** Where it comes from: an app screen, or one of pi's own sources. */
   badge: string;
@@ -93,7 +95,7 @@ export function CommandMenu({ entries, active, onPick }: {
           trailing={<span className="muted">{entry.badge}</span>}
           onClick={() => onPick(entry)}
         >
-          <span className="line">/{entry.name}</span>
+          <span className="line">{entry.label ?? `/${entry.name}`}</span>
           {entry.description ? <span className="line muted">{entry.description}</span> : null}
         </ListRowButton>
       ))}

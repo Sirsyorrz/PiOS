@@ -296,6 +296,23 @@ test("files are served from inside the session cwd only", async () => {
   client.close();
 });
 
+test("file search is scoped to the session cwd", async () => {
+  const client = await hello(harness);
+  const cwd = join(harness.dir, "search");
+  mkdirSync(join(cwd, "src"), { recursive: true });
+  writeFileSync(join(cwd, "src", "composer.tsx"), "");
+  writeFileSync(join(harness.dir, "composer-outside.tsx"), "");
+  const sessionId = await createSession(client, cwd);
+
+  const res = await fetch(`${harness.baseUrl}/files?session=${sessionId}&q=composer`, {
+    headers: { authorization: `Bearer ${harness.deviceToken}` },
+  });
+  assert.equal(res.status, 200);
+  const body = (await res.json()) as { files: string[] };
+  assert.deepEqual(body.files, ["src/composer.tsx"]);
+  client.close();
+});
+
 test("uploads land inside the session cwd", async () => {
   const client = await hello(harness);
   const cwd = join(harness.dir, "uploads");

@@ -7,6 +7,7 @@ import { sessionDirName, type SessionRegistry } from "@pios/pi-host";
 import { WIRE_VERSION } from "@pios/protocol";
 import { AuthStore, bearerToken } from "./auth.ts";
 import { gitAction, gitDiff, gitLog, gitStatus, GitError, parseGitAction } from "./git.ts";
+import { searchFiles } from "./file-index.ts";
 import { containedPath } from "./paths.ts";
 import type { PushStore } from "./push.ts";
 import { SERVER_VERSION, type ServerConfig } from "./config.ts";
@@ -41,6 +42,7 @@ const API_PATHS = new Set([
   "/sessions",
   "/dirs",
   "/file",
+  "/files",
   "/upload",
   "/push/key",
   "/push/subscribe",
@@ -114,6 +116,7 @@ export async function handleRequest(
     }
     if (req.method === "GET" && url.pathname === "/dirs") return await listDirs(ctx, url, res);
     if (req.method === "GET" && url.pathname === "/file") return serveFile(ctx, url, res);
+    if (req.method === "GET" && url.pathname === "/files") return await findFiles(ctx, url, res);
     if (req.method === "POST" && url.pathname === "/upload") {
       return await upload(ctx, url, req, res);
     }
@@ -329,6 +332,26 @@ async function gitRoute(
     throw error;
   }
   return json(res, 404, { error: "not_found" });
+}
+
+/**
+ * Fuzzy file search inside a session's cwd, for the composer's `@` picker.
+ *
+ * Scoped to the session rather than to home: what is being completed is an
+ * argument the agent will read, and the agent works in one directory.
+ */
+async function findFiles(ctx: RouteContext, url: URL, res: ServerResponse): Promise<void> {
+  const sessionId = url.searchParams.get("session");
+  const session = sessionId ? ctx.registry.get(sessionId) : null;
+  if (!session) return json(res, 404, { error: "unknown_session" });
+
+  const limit = Number(url.searchParams.get("limit") ?? 30);
+  const files = await searchFiles(
+    session.info.cwd,
+    url.searchParams.get("q") ?? "",
+    Number.isFinite(limit) ? Math.min(Math.max(limit, 1), 100) : 30,
+  );
+  json(res, 200, { cwd: session.info.cwd, files: files.map((match) => match.path) });
 }
 
 function serveFile(ctx: RouteContext, url: URL, res: ServerResponse): void {

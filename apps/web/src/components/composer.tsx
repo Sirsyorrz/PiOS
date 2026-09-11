@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { useSettings } from "../settings.ts";
 import { browserStorage } from "../storage.ts";
 import { CommandMenu, slashQuery, useSlashCommands, type MenuEntry } from "./command-menu.tsx";
+import { applyMention, mentionAt, useFileMatches, type Mention } from "./file-mentions.ts";
 import { PlusIcon, SendIcon, StopIcon } from "./icons.tsx";
 import { nativeCommandFor, openSelect, type NativeCommand } from "./native-commands.ts";
 import { ModelDialog } from "./model-dialog.tsx";
@@ -59,6 +60,9 @@ export function Composer({
   const field = useRef<HTMLTextAreaElement>(null);
   const thinkingSelect = useRef<HTMLSelectElement>(null);
   const [modelDialog, setModelDialog] = useState(false);
+  // Tracked separately from the text: the same text has a different `@` token
+  // under it depending on where the caret is.
+  const [mention, setMention] = useState<Mention | null>(null);
 
   // The dock's own controls, named as pi names them, so `/model` does here
   // what it does in the terminal instead of reaching the model as text.
@@ -79,7 +83,14 @@ export function Composer({
   // native command never becomes text at all.
   const localCommands = [...nativeCommands, ...dockCommands];
   const query = slashQuery(text);
-  const matches = useSlashCommands(sessionId, query, localCommands);
+  const commandMatches = useSlashCommands(sessionId, query, localCommands);
+  const fileMatches = useFileMatches(mention);
+  // A line can only be completing one thing at a time, and a slash command is
+  // always at the very start, so it wins when both somehow match.
+  const matches: MenuEntry[] =
+    commandMatches.length > 0
+      ? commandMatches
+      : fileMatches.map((path) => ({ name: path, label: path, badge: "file" }));
   // The list shrinks under the cursor when pi's answer arrives, so the
   // highlight is clamped where it is read rather than where it is set.
   const highlighted = Math.min(active, Math.max(matches.length - 1, 0));
@@ -108,9 +119,10 @@ export function Composer({
     browserStorage.set(DRAFT_PREFIX + sessionId, editorText);
   }, [editorText, editorTextKey, sessionId]);
 
-  function edit(value: string) {
+  function edit(value: string, caret?: number) {
     setText(value);
     setActive(0);
+    setMention(caret === undefined ? null : mentionAt(value, caret));
     const key = DRAFT_PREFIX + sessionId;
     if (value) browserStorage.set(key, value);
     else browserStorage.remove(key);
@@ -118,6 +130,16 @@ export function Composer({
 
   /** Runs a native command, or completes a pi one: most take arguments. */
   function choose(entry: MenuEntry) {
+    if (entry.badge === "file") {
+      if (!mention) return;
+      const next = applyMention(text, mention, entry.name);
+      edit(next);
+      const caret = mention.start + entry.name.length + 2;
+      field.current?.focus();
+      // After React has written the new value, or the caret snaps to the end.
+      requestAnimationFrame(() => field.current?.setSelectionRange(caret, caret));
+      return;
+    }
     if (!entry.run) {
       edit(`/${entry.name} `);
       field.current?.focus();
@@ -180,7 +202,10 @@ export function Composer({
         value={text}
         rows={1}
         placeholder="Message pi"
-        onChange={(e) => edit(e.target.value)}
+        onChange={(e) => edit(e.target.value, e.target.selectionStart ?? undefined)}
+        // The caret can move without the text changing, which opens or closes
+        // the picker just as much as typing does.
+        onSelect={(e) => setMention(mentionAt(text, e.currentTarget.selectionStart ?? 0))}
         onFocus={() => onComposingChange?.(true)}
         onBlur={() => onComposingChange?.(false)}
         // A screenshot is the fastest way to show the agent something, and on
@@ -200,6 +225,13 @@ export function Composer({
             return;
           }
           if (matches.length > 0) {
+            // Dismiss without losing what was typed: the token may be meant
+            // literally, or the file may simply not be indexed.
+            if (e.key === "Escape" && mention) {
+              e.preventDefault();
+              setMention(null);
+              return;
+            }
             if (e.key === "ArrowDown" || e.key === "ArrowUp") {
               e.preventDefault();
               const step = e.key === "ArrowDown" ? 1 : matches.length - 1;
