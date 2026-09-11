@@ -316,6 +316,13 @@ mode regardless of what PiOS does.
   ([`docs/architecture/terminal-renderers.md`][t3-term]). PTYs stay
   server-owned; renderer choice never crosses the wire. If built early,
   xterm.js in a WebView is the cheap version.
+- **Layout: one list, two presentations.** Wide viewports keep the session
+  list docked beside the chat; narrow ones show it as an overlay over the
+  chat. Crossing the breakpoint changes presentation only: the open session,
+  its scroll position, and the composer draft stay mounted, so a rotation or
+  a resize is never a navigation event. Chat text gets a reading-width cap
+  independent of the window, because a docked list plus a full-bleed
+  transcript is unreadable on a desktop.
 - **PWA first** validates the daemon protocol, chat UI, session sidebar, and
   image rendering with fast iteration. It cannot validate backgrounding, but
   since the daemon owns the sessions, that is fine.

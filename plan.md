@@ -221,19 +221,32 @@ order inside this phase is expected to churn.
 
 1. Design system pass over `ui.tsx` and the CSS utilities: spacing, type scale,
    colour tokens, dark mode, one source for rows/cards/scrollers.
-2. Mobile ergonomics: safe areas, keyboard-aware composer, scroll anchoring on
+2. Session list layout (spec 9). Today the list is a 280px grid column that
+   disappears below 720px, so a phone has no way back to it while chatting.
+   Target: one component, two presentations.
+   - Wide: docked 320px column, list and transcript scroll independently,
+     transcript capped around 760px and centred. No scrim, no blur. Selecting
+     a session or starting a new one leaves it open; a menu button toggles it.
+   - Narrow: overlay drawer over the chat, swipe and scrim, closes on select.
+     Position and backdrop blur driven by one shared progress value.
+   - Crossing the breakpoint re-presents only. Open session, transcript scroll,
+     and composer draft stay mounted.
+   - Not doing: pi-remote's pull-up-from-bottom new-chat gesture. Deliberate.
+     The guard matrix (run state, tools, queue, offline, keyboard, draft,
+     selection) costs more than the button it replaces.
+3. Mobile ergonomics: safe areas, keyboard-aware composer, scroll anchoring on
    stream, pull-to-refresh vs resync, gesture navigation between sessions.
-3. Transcript rendering quality: markdown, code blocks with syntax highlight,
+4. Transcript rendering quality: markdown, code blocks with syntax highlight,
    collapsible tool cards, better diffs, long-output truncation.
-4. Performance: virtualised transcript, delta rendering cost, cold-start time,
+5. Performance: virtualised transcript, delta rendering cost, cold-start time,
    bundle size budget.
-5. PWA shell: manifest, icons, install prompt, offline app-shell caching,
+6. PWA shell: manifest, icons, install prompt, offline app-shell caching,
    standalone-mode routing.
-6. Session list quality: naming, ordering, search, archive/delete, unread and
+7. Session list quality: naming, ordering, search, archive/delete, unread and
    busy indicators.
-7. Accessibility and error surfaces: focus order, contrast, every failure has a
+8. Accessibility and error surfaces: focus order, contrast, every failure has a
    visible, actionable state.
-8. Activity-lease reporting: 25s report, 45s TTL, carrying
+9. Activity-lease reporting: 25s report, 45s TTL, carrying
    `visible` / `focused` / `appState` and warm scopes.
 
 Exit: usable as a daily driver from the phone home screen.
@@ -305,6 +318,11 @@ notification model.
   leaf, which pi does not expose.
 - Text editor
 - Lazygit
+- Extension-authored panels: an extension publishes a declarative view tree
+  (text/list/buttons/input/rows) on pi's event bus, the daemon validates and
+  forwards without interpreting, the client owns styling and sends taps back.
+  Only worth it if third-party extensions want UI we refuse to ship ourselves.
+  Phase 6 item 3 already covers the half that pi emits natively.
 
 ## Unplanned
 - macOS / Windows daemon (path-handling pass + launchd unit).
