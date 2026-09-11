@@ -225,6 +225,12 @@ button.danger {
   color: var(--error);
 }
 
+/* A destructive glyph in a row of glyphs is still chromeless: the colour is
+   the warning, and a boxed trash icon beside a bare plus reads as a mistake. */
+.ghost.danger {
+  border-color: transparent;
+}
+
 /* Progress that does not move the layout: it replaces nothing and reserves
    its own 12px whatever the row beside it is doing. */
 .spinner {
@@ -266,6 +272,25 @@ button.danger {
 
 .row.spread {
   justify-content: space-between;
+}
+
+/* A row of verbs is allowed a second line rather than a horizontal scroll:
+   on a phone the third button is otherwise unreachable. */
+.row.wrap {
+  flex-wrap: wrap;
+}
+
+/* Text that acts: a section's secondary verb, which must not look like a
+   button competing with the rows under it. */
+button.link {
+  min-height: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--accent, var(--text));
+  font-size: 12px;
+  text-transform: none;
+  letter-spacing: normal;
 }
 
 /* One line, clipped with an ellipsis. The default for any list-row text. */
@@ -1390,6 +1415,19 @@ button.scroll-bottom {
   color: var(--muted);
 }
 
+/* The second line of a stacked row: who and when, never the subject itself. */
+.row-sub {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  font-size: 11.5px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* Reuses the extension status chip, tightened for a header that also holds a
    title, a status word and two icon controls. */
 .git-chip {
@@ -1426,20 +1464,233 @@ button.scroll-bottom {
 /* Taller than a picker card: this is a working surface, not a single choice. */
 .git-sheet {
   width: min(560px, 100%);
-  max-height: min(80vh, 720px);
+  max-height: min(86vh, 760px);
 }
 
 .git-sheet .scroll-y {
   flex: 1;
+  min-height: 120px;
 }
 
 .git-section {
-  margin: 8px 0 2px;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 10px 0 2px;
   font-size: 12px;
   font-weight: 500;
   color: var(--muted);
   text-transform: uppercase;
   letter-spacing: 0.04em;
+}
+
+.git-block:first-child .git-section {
+  margin-top: 2px;
+}
+
+.git-empty {
+  padding: 2px 4px 4px;
+  font-size: 12.5px;
+}
+
+.git-summary {
+  margin: 0;
+  font-size: 12.5px;
+}
+
+/* Git's own words, kept as git wrote them: a wrapped push URL is unreadable,
+   and the progress lines only line up as a block. */
+.git-output {
+  display: block;
+  max-height: 96px;
+  overflow: auto;
+  font-family: ui-monospace, monospace;
+  font-size: 11.5px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* One row of equal thirds: the three remote verbs are the same size because
+   no one of them is the default. */
+.git-sync {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.git-sync > .row > .git-sync-btn {
+  flex: 1;
+  gap: 6px;
+  min-width: 0;
+  padding: 0 6px;
+  font-size: 13px;
+}
+
+.git-sync-btn svg {
+  width: 15px;
+  height: 15px;
+  flex: 0 0 auto;
+}
+
+.git-more-toggle {
+  flex: 0 0 auto;
+  width: var(--control);
+  padding: 0;
+}
+
+.git-upstream {
+  margin: 0;
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Tabs, not a segmented control: three destinations that keep their own
+   scroll position, marked by the underline rather than by a filled pill. */
+.git-tabs {
+  display: flex;
+  gap: 2px;
+  border-bottom: 1px solid var(--line);
+}
+
+.git-tab {
+  flex: 1;
+  min-height: 34px;
+  border: none;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: none;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.git-tab.active {
+  color: var(--text);
+  border-bottom-color: var(--text);
+}
+
+.git-commit {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.git-message {
+  width: 100%;
+  resize: vertical;
+  font: inherit;
+  font-size: 14px;
+}
+
+/* A card's labels stack over their field; a tick box sits beside its word. */
+.card .git-check {
+  display: flex;
+  flex-direction: row;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  white-space: nowrap;
+  color: var(--muted);
+}
+
+/* The shared control height would turn a tick box into a 44px slab. */
+.git-check > input[type="checkbox"] {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+}
+
+/* A stash row is informational: it has controls, but the body is not a link. */
+.list-row.static {
+  cursor: default;
+}
+
+.list-row.static:hover {
+  background: none;
+}
+
+.git-sha {
+  font-family: ui-monospace, monospace;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.git-commit-row-item .git-refs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 3px;
+}
+
+.git-ref {
+  padding: 0 6px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-size: 10.5px;
+  color: var(--muted);
+}
+
+.git-more {
+  width: 100%;
+  margin-top: 6px;
+}
+
+.git-branch .line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.git-branch.current {
+  color: var(--text);
+}
+
+.git-current-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ok);
+  flex: 0 0 auto;
+}
+
+.git-count {
+  font-size: 11px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.git-count.warn {
+  color: var(--warn);
+}
+
+/* A confirmation reads as a sentence, so it wraps rather than truncating.
+   Qualified by `.banner`, which is defined further down and would otherwise
+   win on source order and re-centre the row. */
+.banner.git-confirm,
+.banner.git-actions {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+}
+
+/* Verbs on the trailing edge, where the thumb already is. */
+.git-confirm > .row,
+.git-actions > .row {
+  justify-content: flex-end;
+}
+
+.git-confirm-text {
+  white-space: normal;
+}
+
+.git-actions-name {
+  color: var(--text);
+  font-size: 13px;
+  text-align: left;
 }
 
 /* The path is the tap target and takes all the slack; the controls keep their

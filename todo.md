@@ -1,4 +1,3 @@
-- git integration: remote operations (fetch/pull/push), branch switching
 - surface errors (e.g. rate limits), plus summarization_retry_* / setWidget /
   set_editor_text, which are parsed but never rendered
 - /name slash command on set_session_name
@@ -25,5 +24,4 @@
     relay exists. Not needed while the daemon is reached directly.
 - session list: docked column / overlay drawer, one component (plan phase 7.2)
 - add easy way for agents to setup/run/test the webapp
-- clean up git integration in general.
 - fix floating input with no keyboard on app reopen bug

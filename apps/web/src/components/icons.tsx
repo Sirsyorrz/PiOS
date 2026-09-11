@@ -86,6 +86,59 @@ export function TrashIcon(props: SVGProps<SVGSVGElement>) {
   );
 }
 
+export function MinusIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Svg {...props}>
+      <path d="M5 12h14" />
+    </Svg>
+  );
+}
+
+/** Two commits on a branch line: the one glyph that reads as "git". */
+export function BranchIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Svg {...props}>
+      <circle cx="6" cy="6" r="2.5" />
+      <circle cx="6" cy="18" r="2.5" />
+      <circle cx="18" cy="7" r="2.5" />
+      <path d="M6 8.5v7M18 9.5c0 4-4 3.5-6 6.5" />
+    </Svg>
+  );
+}
+
+export function DownloadIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Svg {...props}>
+      <path d="M12 4v11m0 0 4-4m-4 4-4-4M5 19h14" />
+    </Svg>
+  );
+}
+
+export function UploadIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Svg {...props}>
+      <path d="M12 20V9m0 0 4 4m-4-4-4 4M5 5h14" />
+    </Svg>
+  );
+}
+
+export function RefreshIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Svg {...props}>
+      <path d="M20 11a8 8 0 1 0-.6 4M20 5v6h-6" />
+    </Svg>
+  );
+}
+
+/** A box with a lid: the stash. */
+export function ArchiveIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Svg {...props}>
+      <path d="M3 7h18v4H3zM5 11v8h14v-8M10 15h4" />
+    </Svg>
+  );
+}
+
 export function SendIcon(props: SVGProps<SVGSVGElement>) {
   return (
     <Svg {...props}>

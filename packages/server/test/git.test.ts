@@ -6,8 +6,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   gitAction,
+  gitBranches,
   gitDiff,
   gitLog,
+  gitStashes,
   gitStatus,
   invalidateGitCache,
   parseGitAction,
@@ -105,20 +107,20 @@ test("stage, commit and unstage move files between the two sides", async () => {
   const dir = repo();
   writeFileSync(join(dir, "a.txt"), "hello\n");
 
-  let status = (await gitAction(dir, { type: "stage", paths: ["a.txt"] }))!;
+  let status = (await gitAction(dir, { type: "stage", paths: ["a.txt"] }))!.status!;
   assert.equal(status.staged, 1);
   assert.equal(status.untracked, 0);
 
-  status = (await gitAction(dir, { type: "unstage", paths: ["a.txt"] }))!;
+  status = (await gitAction(dir, { type: "unstage", paths: ["a.txt"] }))!.status!;
   assert.equal(status.staged, 0);
   assert.equal(status.untracked, 1);
 
   await gitAction(dir, { type: "stage_all" });
-  status = (await gitAction(dir, { type: "commit", message: "add a" }))!;
+  status = (await gitAction(dir, { type: "commit", message: "add a" }))!.status!;
   assert.equal(status.staged, 0);
   assert.equal(status.untracked, 0);
 
-  const log = (await gitLog(dir, 5))!;
+  const log = (await gitLog(dir, { limit: 5 }))!;
   assert.equal(log[0]!.subject, "add a");
   rmSync(dir, { recursive: true, force: true });
 });
@@ -130,12 +132,14 @@ test("discard stashes rather than destroying the change", async () => {
   await gitAction(dir, { type: "commit", message: "add a" });
 
   writeFileSync(join(dir, "a.txt"), "two\n");
-  let status = (await gitAction(dir, { type: "discard", paths: ["a.txt"] }))!;
+  let status = (await gitAction(dir, { type: "discard", paths: ["a.txt"] }))!.status!;
   assert.equal(status.unstaged, 0);
+  assert.equal(status.stashes, 1);
 
   // Recoverable: the point of stashing instead of checking out.
-  status = (await gitAction(dir, { type: "stash_pop" }))!;
+  status = (await gitAction(dir, { type: "stash_pop" }))!.status!;
   assert.equal(status.unstaged, 1);
+  assert.equal(status.stashes, 0);
   rmSync(dir, { recursive: true, force: true });
 });
 
@@ -155,14 +159,38 @@ test("an untracked file diffs against nothing instead of showing no change", asy
   rmSync(dir, { recursive: true, force: true });
 });
 
+test("an untracked directory shows the files inside it, not nothing", async () => {
+  const dir = repo();
+  mkdirSync(join(dir, "out"), { recursive: true });
+  writeFileSync(join(dir, "out", "one.txt"), "first\n");
+  writeFileSync(join(dir, "out", "two.txt"), "second\n");
+
+  // Status collapses the directory to one entry, so that is what gets tapped.
+  const status = (await gitStatus(dir, { fresh: true }))!;
+  assert.deepEqual(status.files.map((f) => f.path), ["out/"]);
+
+  const result = (await gitDiff(dir, { path: "out/" }))!;
+  assert.equal(result.untracked, true);
+  assert.match(result.diff, /\+first/);
+  assert.match(result.diff, /\+second/);
+  rmSync(dir, { recursive: true, force: true });
+});
+
 test("only known actions are accepted from a client", () => {
-  assert.deepEqual(parseGitAction({ type: "stash" }), { type: "stash" });
+  assert.deepEqual(parseGitAction({ type: "stash" }), { type: "stash", message: undefined });
   assert.deepEqual(parseGitAction({ type: "stage", paths: ["a"] }), { type: "stage", paths: ["a"] });
   assert.equal(parseGitAction({ type: "stage", paths: [] }), null);
   assert.equal(parseGitAction({ type: "commit" }), null);
-  // No remote features: these must not be reachable at all.
-  assert.equal(parseGitAction({ type: "push" }), null);
-  assert.equal(parseGitAction({ type: "pull" }), null);
+  assert.deepEqual(parseGitAction({ type: "pull", rebase: true }), { type: "pull", rebase: true });
+  assert.deepEqual(parseGitAction({ type: "push", setUpstream: true }), {
+    type: "push",
+    remote: undefined,
+    force: false,
+    setUpstream: true,
+  });
+  // A branch operation without a branch names nothing to operate on.
+  assert.equal(parseGitAction({ type: "checkout" }), null);
+  assert.equal(parseGitAction({ type: "delete_branch" }), null);
   assert.equal(parseGitAction({ type: "reset", paths: ["a"] }), null);
   assert.equal(parseGitAction(null), null);
 });
@@ -188,4 +216,172 @@ test("the git routes are authenticated and scoped to a known session", async () 
   assert.equal(rejected.status, 404);
 
   await harness.close();
+});
+
+test("branches report their upstream, divergence and which one is checked out", async () => {
+  const dir = repo();
+  writeFileSync(join(dir, "a.txt"), "one\n");
+  await gitAction(dir, { type: "stage_all" });
+  await gitAction(dir, { type: "commit", message: "add a" });
+
+  await gitAction(dir, { type: "checkout", branch: "feature", create: true });
+  writeFileSync(join(dir, "b.txt"), "two\n");
+  await gitAction(dir, { type: "stage_all" });
+  await gitAction(dir, { type: "commit", message: "add b" });
+
+  const branches = (await gitBranches(dir))!;
+  assert.equal(branches.current, "feature");
+  assert.equal(branches.detached, false);
+  assert.deepEqual(
+    branches.local.map((b) => b.name).sort(),
+    ["feature", "main"],
+  );
+  assert.equal(branches.local.find((b) => b.name === "feature")!.current, true);
+
+  // A merge of the branch just left brings its commit back to main.
+  await gitAction(dir, { type: "checkout", branch: "main" });
+  const merged = (await gitAction(dir, { type: "merge", branch: "feature" }))!.status!;
+  assert.equal(merged.branch, "main");
+  assert.equal((await gitLog(dir, { limit: 1 }))![0]!.subject, "add b");
+
+  const deleted = (await gitAction(dir, { type: "delete_branch", branch: "feature" }))!;
+  assert.equal(deleted.status!.branch, "main");
+  assert.deepEqual((await gitBranches(dir))!.local.map((b) => b.name), ["main"]);
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test("a ref name that could be read as an option is refused", async () => {
+  const dir = repo();
+  await assert.rejects(() => gitAction(dir, { type: "checkout", branch: "--upload-pack=evil" }));
+  await assert.rejects(() => gitAction(dir, { type: "merge", branch: "a b" }));
+  await assert.rejects(() => gitAction(dir, { type: "stash_drop", ref: "stash@{x}" }));
+  await assert.rejects(() => gitDiff(dir, { commit: "-x" }));
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test("a commit's diff is read from the commit, not from the working tree", async () => {
+  const dir = repo();
+  writeFileSync(join(dir, "a.txt"), "one\n");
+  await gitAction(dir, { type: "stage_all" });
+  await gitAction(dir, { type: "commit", message: "add a" });
+  writeFileSync(join(dir, "a.txt"), "uncommitted\n");
+
+  const sha = (await gitLog(dir, { limit: 1 }))![0]!.sha;
+  const result = (await gitDiff(dir, { commit: sha }))!;
+  assert.match(result.diff, /\+one/);
+  assert.doesNotMatch(result.diff, /uncommitted/);
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test("named stashes are listed, applied and dropped", async () => {
+  const dir = repo();
+  writeFileSync(join(dir, "a.txt"), "one\n");
+  await gitAction(dir, { type: "stash", message: "work in progress" });
+
+  const stashes = (await gitStashes(dir))!;
+  assert.equal(stashes.length, 1);
+  assert.equal(stashes[0]!.ref, "stash@{0}");
+  assert.match(stashes[0]!.message, /work in progress/);
+
+  const applied = (await gitAction(dir, { type: "stash_apply", ref: "stash@{0}" }))!.status!;
+  assert.equal(applied.untracked, 1);
+  // Apply keeps the entry; drop is what removes it.
+  assert.equal(applied.stashes, 1);
+  const dropped = (await gitAction(dir, { type: "stash_drop", ref: "stash@{0}" }))!.status!;
+  assert.equal(dropped.stashes, 0);
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test("push publishes a branch to a remote and pull brings a commit back", async () => {
+  const origin = mkdtempSync(join(tmpdir(), "pios-origin-"));
+  execFileSync("git", ["init", "--quiet", "--bare", "--initial-branch", "main", origin]);
+
+  const dir = repo();
+  execFileSync("git", ["remote", "add", "origin", origin], { cwd: dir });
+  writeFileSync(join(dir, "a.txt"), "one\n");
+  await gitAction(dir, { type: "stage_all" });
+  await gitAction(dir, { type: "commit", message: "add a" });
+
+  const published = (await gitAction(dir, { type: "push", setUpstream: true }))!;
+  assert.equal(published.status!.upstream?.name, "origin/main");
+  assert.equal(published.status!.upstream?.ahead, 0);
+
+  // A second clone commits, so the first has something real to pull.
+  const other = mkdtempSync(join(tmpdir(), "pios-clone-"));
+  execFileSync("git", ["clone", "--quiet", origin, other]);
+  execFileSync("git", ["config", "user.email", "other@example.invalid"], { cwd: other });
+  execFileSync("git", ["config", "user.name", "Other"], { cwd: other });
+  writeFileSync(join(other, "b.txt"), "two\n");
+  execFileSync("git", ["add", "-A"], { cwd: other });
+  execFileSync("git", ["commit", "--quiet", "-m", "add b"], { cwd: other });
+  execFileSync("git", ["push", "--quiet"], { cwd: other });
+
+  const fetched = (await gitAction(dir, { type: "fetch" }))!.status!;
+  assert.equal(fetched.upstream?.behind, 1);
+
+  const pulled = (await gitAction(dir, { type: "pull" }))!.status!;
+  assert.equal(pulled.upstream?.behind, 0);
+  assert.equal((await gitLog(dir, { limit: 1 }))![0]!.subject, "add b");
+
+  const branches = (await gitBranches(dir))!;
+  assert.deepEqual(branches.remotes, ["origin"]);
+  assert.ok(branches.remote.some((b) => b.name === "origin/main"));
+
+  for (const path of [dir, origin, other]) rmSync(path, { recursive: true, force: true });
+});
+
+test("an in-progress merge is reported so the UI can say why git refuses", async () => {
+  const dir = repo();
+  writeFileSync(join(dir, "a.txt"), "base\n");
+  await gitAction(dir, { type: "stage_all" });
+  await gitAction(dir, { type: "commit", message: "base" });
+
+  await gitAction(dir, { type: "checkout", branch: "other", create: true });
+  writeFileSync(join(dir, "a.txt"), "theirs\n");
+  await gitAction(dir, { type: "stage_all" });
+  await gitAction(dir, { type: "commit", message: "theirs" });
+
+  await gitAction(dir, { type: "checkout", branch: "main" });
+  writeFileSync(join(dir, "a.txt"), "ours\n");
+  await gitAction(dir, { type: "stage_all" });
+  await gitAction(dir, { type: "commit", message: "ours" });
+
+  await assert.rejects(() => gitAction(dir, { type: "merge", branch: "other" }));
+  invalidateGitCache(dir);
+  const status = (await gitStatus(dir, { fresh: true }))!;
+  assert.equal(status.operation, "merge");
+  assert.equal(status.conflicted, 1);
+
+  // Resolving and continuing is the same two steps the UI offers.
+  writeFileSync(join(dir, "a.txt"), "resolved\n");
+  await gitAction(dir, { type: "stage_all" });
+  const done = (await gitAction(dir, { type: "continue" }))!.status!;
+  assert.equal(done.operation, null);
+  assert.equal(done.conflicted, 0);
+  await assert.rejects(() => gitAction(dir, { type: "continue" }), /nothing in progress/);
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test("aborting a conflicted merge puts the tree back", async () => {
+  const dir = repo();
+  writeFileSync(join(dir, "a.txt"), "base\n");
+  await gitAction(dir, { type: "stage_all" });
+  await gitAction(dir, { type: "commit", message: "base" });
+
+  await gitAction(dir, { type: "checkout", branch: "other", create: true });
+  writeFileSync(join(dir, "a.txt"), "theirs\n");
+  await gitAction(dir, { type: "stage_all" });
+  await gitAction(dir, { type: "commit", message: "theirs" });
+
+  await gitAction(dir, { type: "checkout", branch: "main" });
+  writeFileSync(join(dir, "a.txt"), "ours\n");
+  await gitAction(dir, { type: "stage_all" });
+  await gitAction(dir, { type: "commit", message: "ours" });
+  await assert.rejects(() => gitAction(dir, { type: "merge", branch: "other" }));
+
+  const aborted = (await gitAction(dir, { type: "abort" }))!.status!;
+  assert.equal(aborted.operation, null);
+  assert.equal(aborted.conflicted, 0);
+  assert.equal((await gitLog(dir, { limit: 1 }))![0]!.subject, "ours");
+  rmSync(dir, { recursive: true, force: true });
 });

@@ -269,8 +269,7 @@ Exit: usable as a daily driver from the phone home screen.
 
 ## Phase 8 - Cleanup and hardening
 
-1. Prune dead code and duplicated view logic surfaced by Phases 6-7. Includes
-   the git integration, which landed unplanned and outside any phase.
+1. Prune dead code and duplicated view logic surfaced by Phases 6-7.
 2. Absorb `cc-usage`: read the plan-usage source directly in
    `packages/server/src/usage.ts` rather than shelling out to a CLI the user
    has to install separately.

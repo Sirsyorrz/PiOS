@@ -6,7 +6,16 @@ import { basename, dirname, extname, join, sep } from "node:path";
 import { sessionDirName, type SessionRegistry } from "@pios/pi-host";
 import { WIRE_VERSION } from "@pios/protocol";
 import { AuthStore, bearerToken } from "./auth.ts";
-import { gitAction, gitDiff, gitLog, gitStatus, GitError, parseGitAction } from "./git.ts";
+import {
+  gitAction,
+  gitBranches,
+  gitDiff,
+  gitLog,
+  gitStashes,
+  gitStatus,
+  GitError,
+  parseGitAction,
+} from "./git.ts";
 import { searchFiles } from "./file-index.ts";
 import { containedPath } from "./paths.ts";
 import type { PushStore } from "./push.ts";
@@ -51,6 +60,8 @@ const API_PATHS = new Set([
   "/git/status",
   "/git/diff",
   "/git/log",
+  "/git/branches",
+  "/git/stashes",
   "/git/action",
 ]);
 
@@ -289,7 +300,8 @@ function lastSessionAt(recency: Map<string, number>, cwd: string): number | null
  *
  * Ambient state of the cwd, not conversation state, so it is served here
  * rather than injected into the entry stream, where non-entry data would break
- * the cursor. Local operations only: nothing here touches a remote.
+ * the cursor. Remote operations run non-interactively, so a missing credential
+ * fails with a message instead of blocking on a prompt no one can answer.
  */
 async function gitRoute(
   ctx: RouteContext,
@@ -313,19 +325,33 @@ async function gitRoute(
       const result = await gitDiff(cwd, {
         path: url.searchParams.get("path") ?? undefined,
         staged: url.searchParams.get("staged") === "1",
+        commit: url.searchParams.get("commit") ?? undefined,
       });
       return json(res, 200, result ?? { diff: null });
     }
     if (req.method === "GET" && url.pathname === "/git/log") {
       const limit = Number(url.searchParams.get("limit") ?? 30);
-      return json(res, 200, { commits: await gitLog(cwd, Number.isFinite(limit) ? limit : 30) });
+      const skip = Number(url.searchParams.get("skip") ?? 0);
+      const commits = await gitLog(cwd, {
+        limit: Number.isFinite(limit) ? limit : 30,
+        skip: Number.isFinite(skip) ? skip : 0,
+        ref: url.searchParams.get("ref") ?? undefined,
+      });
+      return json(res, 200, { commits });
+    }
+    if (req.method === "GET" && url.pathname === "/git/branches") {
+      return json(res, 200, { branches: await gitBranches(cwd) });
+    }
+    if (req.method === "GET" && url.pathname === "/git/stashes") {
+      return json(res, 200, { stashes: await gitStashes(cwd) });
     }
     if (req.method === "POST" && url.pathname === "/git/action") {
       const action = parseGitAction(await readJson(req, 64 * 1024));
       if (!action) return json(res, 400, { error: "bad_request" });
       // The recomputed status rides back on the response so the client never
       // needs a follow-up round trip to redraw.
-      return json(res, 200, { status: await gitAction(cwd, action) });
+      const result = await gitAction(cwd, action);
+      return json(res, 200, { status: result?.status ?? null, output: result?.output ?? "" });
     }
   } catch (error) {
     if (error instanceof GitError) return json(res, 422, { error: "git_failed", message: error.message });

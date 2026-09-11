@@ -189,7 +189,14 @@ export class Browser {
   async close(): Promise<void> {
     this.socket.close();
     this.proc.kill();
-    rmSync(this.profileDir, { recursive: true, force: true });
+    // Chrome keeps writing its profile for a moment after the signal, so a
+    // plain remove loses a race and throws ENOTEMPTY over a passing run.
+    await new Promise<void>((resolve) => {
+      if (this.proc.exitCode !== null || this.proc.signalCode !== null) resolve();
+      else this.proc.once("exit", () => resolve());
+      setTimeout(resolve, 2_000);
+    });
+    rmSync(this.profileDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
   }
 }
 

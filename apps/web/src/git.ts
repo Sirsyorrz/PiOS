@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useFileAccess, type FileAccess } from "./files.ts";
 
-/** Mirrors `@pios/server`'s git module. Local operations only, no remotes. */
+/** Mirrors `@pios/server`'s git module. */
 
 export interface GitFile {
   path: string;
@@ -11,6 +11,8 @@ export interface GitFile {
   untracked?: boolean;
   unmerged?: boolean;
 }
+
+export type GitOperation = "merge" | "rebase" | "cherry-pick" | "revert" | "bisect";
 
 export interface GitStatus {
   root: string;
@@ -24,6 +26,46 @@ export interface GitStatus {
   conflicted: number;
   files: GitFile[];
   truncated: boolean;
+  operation: GitOperation | null;
+  stashes: number;
+  remotes: string[];
+  defaultRemote: string | null;
+}
+
+export interface GitLogEntry {
+  sha: string;
+  subject: string;
+  author: string;
+  at: number;
+  refs: string[];
+}
+
+export interface GitBranch {
+  name: string;
+  remote: boolean;
+  current: boolean;
+  sha: string;
+  subject: string;
+  at: number;
+  upstream: string | null;
+  ahead: number;
+  behind: number;
+  gone: boolean;
+}
+
+export interface GitBranches {
+  current: string | null;
+  detached: boolean;
+  local: GitBranch[];
+  remote: GitBranch[];
+  remotes: string[];
+}
+
+export interface GitStash {
+  ref: string;
+  message: string;
+  at: number;
+  branch: string | null;
 }
 
 export type GitAction =
@@ -32,11 +74,86 @@ export type GitAction =
   | { type: "unstage"; paths: string[] }
   | { type: "unstage_all" }
   | { type: "discard"; paths: string[] }
-  | { type: "commit"; message: string };
+  | { type: "commit"; message: string; amend?: boolean }
+  | { type: "stash"; message?: string }
+  | { type: "stash_pop"; ref?: string }
+  | { type: "stash_apply"; ref: string }
+  | { type: "stash_drop"; ref: string }
+  | { type: "checkout"; branch: string; create?: boolean; from?: string }
+  | { type: "delete_branch"; branch: string; force?: boolean }
+  | { type: "merge"; branch: string }
+  | { type: "abort" }
+  | { type: "continue" }
+  | { type: "fetch"; remote?: string; prune?: boolean }
+  | { type: "pull"; rebase?: boolean }
+  | { type: "push"; remote?: string; force?: boolean; setUpstream?: boolean };
 
-/** Destructive enough that the sheet asks first. */
-export function needsConfirmation(action: GitAction): boolean {
-  return action.type === "discard";
+/** Actions that can take a while and whose progress text is worth showing. */
+export function isRemote(action: GitAction): boolean {
+  return action.type === "fetch" || action.type === "pull" || action.type === "push";
+}
+
+/**
+ * A sentence naming what an action will do, for anything not plainly undoable.
+ *
+ * Null means it just runs. Everything destructive is named in full because the
+ * caller cannot see the tree it is about to change.
+ */
+export function confirmationFor(action: GitAction): string | null {
+  switch (action.type) {
+    case "discard":
+      return `Discard changes to ${action.paths.join(", ")}? They are stashed, so \`git stash pop\` brings them back.`;
+    case "stash_drop":
+      return `Drop ${action.ref}? A dropped stash is not recoverable from the UI.`;
+    case "abort":
+      return "Abort the operation in progress? Everything it had applied is undone.";
+    case "delete_branch":
+      return action.force
+        ? `Force-delete ${action.branch}? Unmerged commits on it are lost.`
+        : `Delete ${action.branch}?`;
+    case "commit":
+      return action.amend ? "Amend the last commit? It gets a new hash." : null;
+    case "push":
+      return action.force
+        ? "Force-push with lease? It overwrites the remote branch unless someone else pushed first."
+        : null;
+    default:
+      return null;
+  }
+}
+
+/**
+ * The one action that unsticks a failure, when there is one.
+ *
+ * A refused fast-forward is the common remote failure and its fix is a rebase
+ * pull; offering it beside the error saves reading git's hint block, which
+ * suggests commands there is no terminal here to run.
+ */
+export function recoveryFor(error: string): { label: string; action: GitAction } | null {
+  if (/diverg|fast-forward|fast forward/i.test(error)) {
+    return { label: "Pull with rebase", action: { type: "pull", rebase: true } };
+  }
+  return null;
+}
+
+/** The verb on the confirm button, so it names the deed and not the dialog. */
+export function confirmLabel(action: GitAction): string {
+  switch (action.type) {
+    case "discard":
+      return "Discard";
+    case "stash_drop":
+      return "Drop";
+    case "abort":
+      return "Abort";
+    case "delete_branch":
+      return "Delete";
+    case "commit":
+      return "Amend";
+    case "push":
+      return "Force push";
+    default:
+      return "Confirm";
+  }
 }
 
 async function call(
@@ -74,10 +191,18 @@ export interface Git {
   status: GitStatus | null;
   loading: boolean;
   error: string | null;
+  /** Git's own output from the last remote operation, cleared on the next one. */
+  notice: string | null;
   busy: boolean;
+  /** Names the running action so a button can show where the wait is. */
+  pending: GitAction["type"] | null;
   refresh: () => void;
-  run: (action: GitAction) => Promise<void>;
-  diff: (path: string, staged: boolean) => Promise<string>;
+  clearMessages: () => void;
+  run: (action: GitAction) => Promise<boolean>;
+  diff: (options: { path?: string; staged?: boolean; commit?: string }) => Promise<string>;
+  log: (options?: { skip?: number; limit?: number }) => Promise<GitLogEntry[]>;
+  branches: () => Promise<GitBranches | null>;
+  stashes: () => Promise<GitStash[]>;
 }
 
 /**
@@ -92,79 +217,140 @@ export function useGitStatus(settled: unknown): Git {
   const access = useFileAccess();
   const [status, setStatus] = useState<GitStatus | null>(null);
   const [loading, setLoading] = useState(true);
-  const [busy, setBusy] = useState(false);
+  const [pending, setPending] = useState<GitAction["type"] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
 
   const sessionId = access?.sessionId;
   const baseUrl = access?.baseUrl;
+  // Reads started before a refresh must not overwrite the newer answer.
+  const generation = useRef(0);
 
   useEffect(() => {
     if (!access?.baseUrl) return;
-    let cancelled = false;
+    const mine = ++generation.current;
     setLoading(true);
-    call(access, "/git/status")
+    call(access, "/git/status", { search: { fresh: tick > 0 ? "1" : undefined } })
       .then((body) => {
-        if (cancelled) return;
+        if (generation.current !== mine) return;
         setStatus(((body as { status?: GitStatus | null })?.status ?? null) as GitStatus | null);
         setError(null);
       })
       .catch((cause) => {
-        if (!cancelled) setError(cause instanceof Error ? cause.message : String(cause));
+        if (generation.current === mine) setError(messageOf(cause));
       })
       .finally(() => {
-        if (!cancelled) setLoading(false);
+        if (generation.current === mine) setLoading(false);
       });
-    return () => {
-      cancelled = true;
-    };
     // `access` is memoised by the provider; the identity fields are listed so
     // a re-render with the same session does not refetch.
   }, [baseUrl, sessionId, settled, tick]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const refresh = useCallback(() => setTick((n) => n + 1), []);
+  const clearMessages = useCallback(() => {
+    setError(null);
+    setNotice(null);
+  }, []);
 
   const run = useCallback(
     async (action: GitAction) => {
-      if (!access) return;
-      setBusy(true);
+      if (!access) return false;
+      setPending(action.type);
+      setError(null);
+      setNotice(null);
       try {
-        const body = await call(access, "/git/action", {
+        const body = (await call(access, "/git/action", {
           method: "POST",
           body: JSON.stringify(action),
-        });
+        })) as { status?: GitStatus | null; output?: string };
         // The action response carries the recomputed status, so the sheet
         // redraws without a second round trip.
-        setStatus((body as { status?: GitStatus | null })?.status ?? null);
-        setError(null);
+        setStatus(body?.status ?? null);
+        if (isRemote(action) && body?.output) setNotice(body.output);
+        return true;
       } catch (cause) {
-        setError(cause instanceof Error ? cause.message : String(cause));
+        setError(messageOf(cause));
+        return false;
       } finally {
-        setBusy(false);
+        setPending(null);
       }
     },
     [access],
   );
 
   const diff = useCallback(
-    async (path: string, staged: boolean) => {
+    async (options: { path?: string; staged?: boolean; commit?: string }) => {
       if (!access) return "";
       const body = await call(access, "/git/diff", {
-        search: { path, staged: staged ? "1" : undefined },
+        search: {
+          path: options.path,
+          staged: options.staged ? "1" : undefined,
+          commit: options.commit,
+        },
       });
       return typeof (body as { diff?: unknown })?.diff === "string"
-        ? ((body as { diff: string }).diff)
+        ? (body as { diff: string }).diff
         : "";
     },
     [access],
   );
 
-  return { status, loading, error, busy, refresh, run, diff };
+  const log = useCallback(
+    async (options: { skip?: number; limit?: number } = {}) => {
+      if (!access) return [];
+      const body = await call(access, "/git/log", {
+        search: {
+          skip: options.skip ? String(options.skip) : undefined,
+          limit: String(options.limit ?? 40),
+        },
+      });
+      return ((body as { commits?: GitLogEntry[] })?.commits ?? []) as GitLogEntry[];
+    },
+    [access],
+  );
+
+  const branches = useCallback(async () => {
+    if (!access) return null;
+    const body = await call(access, "/git/branches");
+    return ((body as { branches?: GitBranches | null })?.branches ?? null) as GitBranches | null;
+  }, [access]);
+
+  const stashes = useCallback(async () => {
+    if (!access) return [];
+    const body = await call(access, "/git/stashes");
+    return ((body as { stashes?: GitStash[] })?.stashes ?? []) as GitStash[];
+  }, [access]);
+
+  return useMemo(
+    () => ({
+      status,
+      loading,
+      error,
+      notice,
+      busy: pending !== null,
+      pending,
+      refresh,
+      clearMessages,
+      run,
+      diff,
+      log,
+      branches,
+      stashes,
+    }),
+    [status, loading, error, notice, pending, refresh, clearMessages, run, diff, log, branches, stashes],
+  );
+}
+
+function messageOf(cause: unknown): string {
+  return cause instanceof Error ? cause.message : String(cause);
 }
 
 /** Short summary for the chat header: branch plus what is uncommitted. */
 export function statusChip(status: GitStatus): string {
   const parts: string[] = [status.branch ?? status.head ?? "detached"];
+  if (status.upstream?.behind) parts.push(`↓${status.upstream.behind}`);
+  if (status.upstream?.ahead) parts.push(`↑${status.upstream.ahead}`);
   if (status.conflicted > 0) parts.push(`!${status.conflicted}`);
   if (status.staged > 0) parts.push(`+${status.staged}`);
   if (status.unstaged > 0) parts.push(`~${status.unstaged}`);
@@ -181,6 +367,16 @@ export function fileMark(file: GitFile): { mark: string; tone: "add" | "remove" 
   if (code === "A") return { mark: "A", tone: "add" };
   if (code === "R") return { mark: "R", tone: "add" };
   return { mark: "M", tone: "add" };
+}
+
+/** What the working tree amounts to, in words, for the sheet's subtitle. */
+export function summarise(status: GitStatus): string {
+  const parts: string[] = [];
+  if (status.conflicted) parts.push(`${status.conflicted} conflicted`);
+  if (status.staged) parts.push(`${status.staged} staged`);
+  if (status.unstaged) parts.push(`${status.unstaged} changed`);
+  if (status.untracked) parts.push(`${status.untracked} untracked`);
+  return parts.length ? parts.join(" · ") : "Working tree clean";
 }
 
 export type PatchLine = { kind: "add" | "remove" | "same" | "meta"; text: string };

@@ -1,4 +1,15 @@
 /** The directory name alone; callers show the full path elsewhere. */
+/**
+ * Keeps a string's own reading order inside a right-to-left box.
+ *
+ * Truncating a path from the front needs `direction: rtl`, which also moves a
+ * trailing `/` to the head: "tmp/" renders as "/tmp". The isolate marks the
+ * text as one left-to-right run without changing where the ellipsis lands.
+ */
+export function isolate(text: string): string {
+  return `\u2066${text}\u2069`;
+}
+
 export function basename(path: string): string {
   return path.split("/").filter(Boolean).at(-1) ?? path;
 }
