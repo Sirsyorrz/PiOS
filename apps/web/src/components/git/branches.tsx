@@ -3,7 +3,10 @@ import { relativeTime } from "../../format.ts";
 import type { Git, GitAction, GitBranch, GitBranches } from "../../git.ts";
 import type { GitRun } from "../git-view.tsx";
 import { PlusIcon } from "../icons.tsx";
-import { Empty, GitSection } from "./parts.tsx";
+import { Empty, GitSection, lastSeen } from "./parts.tsx";
+
+/** What the tab drew last, so returning to it does not blank the list. */
+const cache = lastSeen<GitBranches>();
 
 /**
  * Branches, local first.
@@ -14,21 +17,26 @@ import { Empty, GitSection } from "./parts.tsx";
  * live.
  */
 export function BranchesTab({ git, run }: { git: Git; run: GitRun }) {
-  const [data, setData] = useState<GitBranches | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [filter, setFilter] = useState("");
-  const [creating, setCreating] = useState("");
-  const [selected, setSelected] = useState<GitBranch | null>(null);
-
   const { branches } = git;
   // The status object changes after every action, which is exactly when the
   // branch list can have moved.
   const stamp = `${git.status?.branch}:${git.status?.head}`;
 
+  const [data, setData] = useState<GitBranches | null>(() => cache.get(stamp) ?? null);
+  const [error, setError] = useState<string | null>(null);
+  const [filter, setFilter] = useState("");
+  const [creating, setCreating] = useState("");
+  const [selected, setSelected] = useState<GitBranch | null>(null);
+
   useEffect(() => {
     let cancelled = false;
+    setData(cache.get(stamp) ?? null);
     branches()
-      .then((result) => !cancelled && setData(result))
+      .then((result) => {
+        if (cancelled || !result) return;
+        cache.set(stamp, result);
+        setData(result);
+      })
       .catch((cause: unknown) => !cancelled && setError(String((cause as Error)?.message ?? cause)));
     return () => {
       cancelled = true;

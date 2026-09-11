@@ -1461,10 +1461,12 @@ button.scroll-bottom {
   overflow-x: auto;
 }
 
-/* Taller than a picker card: this is a working surface, not a single choice. */
+/* Taller than a picker card: this is a working surface, not a single choice.
+   A fixed height, not a maximum: a tab that is still loading must not make the
+   card shrink and then jump back when its list arrives. */
 .git-sheet {
   width: min(560px, 100%);
-  max-height: min(86vh, 760px);
+  height: min(86vh, 760px);
 }
 
 .git-sheet .scroll-y {
@@ -1531,6 +1533,15 @@ button.scroll-bottom {
   width: 15px;
   height: 15px;
   flex: 0 0 auto;
+}
+
+/* Qualifiers share the row evenly; they are alternatives to each other, not
+   to the primary verbs above them. */
+.git-sync-more > button {
+  flex: 1;
+  min-width: 0;
+  padding: 0 6px;
+  font-size: 13px;
 }
 
 .git-more-toggle {

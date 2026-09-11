@@ -331,16 +331,18 @@ function SyncBar({ status, git, run }: { status: GitStatus; git: Git; run: GitRu
         </button>
       </div>
       {more ? (
-        <div className="row wrap git-sync-more">
+        // One line, so the sheet's height does not depend on a disclosure:
+        // the verbs above name the operation, these only qualify it.
+        <div className="row git-sync-more">
           <button type="button" disabled={git.busy} onClick={() => void run({ type: "fetch", prune: true })}>
-            Fetch + prune
+            Prune
           </button>
           <button
             type="button"
             disabled={git.busy || publish}
             onClick={() => void run({ type: "pull", rebase: true })}
           >
-            Pull rebase
+            Rebase
           </button>
           <button
             type="button"

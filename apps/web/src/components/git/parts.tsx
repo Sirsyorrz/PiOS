@@ -3,6 +3,24 @@ import { fileMark, patchLines, type GitFile } from "../../git.ts";
 
 /** Pieces shared by the git sheet's tabs. Nothing here fetches on its own. */
 
+/**
+ * A tiny keyed store for what a tab drew last.
+ *
+ * Bounded, because the key is a commit id: an hour of committing would
+ * otherwise keep every list the session ever rendered.
+ */
+export function lastSeen<T>(limit = 4) {
+  const entries = new Map<string, T>();
+  return {
+    get: (key: string) => entries.get(key),
+    set(key: string, value: T) {
+      entries.delete(key);
+      entries.set(key, value);
+      for (const stale of [...entries.keys()].slice(0, entries.size - limit)) entries.delete(stale);
+    },
+  };
+}
+
 export function GitSection({ title, action, children }: {
   title: string;
   action?: ReactNode;
