@@ -1,0 +1,24 @@
+{
+  "name": "@pios/sandbox",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "bin": {
+    "pios-sandbox": "./src/cli.ts"
+  },
+  "scripts": {
+    "test": "node --test 'test/*.test.ts'"
+  },
+  "dependencies": {
+    "@pios/pi-host": "workspace:*",
+    "@pios/protocol": "workspace:*",
+    "@pios/server": "workspace:*",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/ws": "^8.5.13"
+  }
+}

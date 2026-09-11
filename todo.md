@@ -7,7 +7,10 @@
 - compaction UI: compact + set_auto_compaction
 - absorb cc-usage into packages/server/src/usage.ts instead of shelling out
 - pios sessions in background, do we need to keep them open/running?
-- terminal
+- one-shot bash over rpc: single command, streamed via bash_execution_update,
+  abort_bash to cancel, excludeFromContext toggle per command. Serialised per
+  session (abort_bash has no id). Not the terminal.
+- terminal (needs a real PTY; one-shot bash does not grow into it)
 - text editor
 - add missing native commands
 - @ fuzzy picker must be daemon-side: RPC mode no-ops addAutocompleteProvider

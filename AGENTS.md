@@ -13,7 +13,13 @@ Do not duplicate either file here.
 pnpm install
 pnpm test
 pnpm -F <pkg> dev
+pnpm sandbox                  # live app + fake agent, prints a URL that pairs itself
+pnpm sandbox:shot --tap api   # phone-sized screenshots into .sandbox/shots
 ```
+
+UI work goes through the sandbox (`packages/sandbox/README.md`): real daemon,
+stubbed pi, scenarios as data, temp dirs only. Never test the UI against a
+real agent or a real repository.
 
 ## Invariants
 

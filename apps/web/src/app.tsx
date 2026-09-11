@@ -19,13 +19,14 @@ import type { NativeCommand } from "./components/native-commands.ts";
 import { SessionList } from "./components/session-list.tsx";
 import { SettingsView } from "./components/settings-view.tsx";
 import { loadSettings, saveSettings, SettingsProvider, type Settings } from "./settings.ts";
+import { adoptSandboxMachine } from "./sandbox.ts";
 import { useUnreadMarks } from "./seen.ts";
 import { useAttentionReport } from "./attention.ts";
 import { useLaunchSession } from "./launch-session.ts";
 import { useKeepPushRegistered } from "./push.ts";
 
 export function App() {
-  const [store, setStore] = useState<MachineStore>(loadMachines);
+  const [store, setStore] = useState<MachineStore>(() => adoptSandboxMachine() ?? loadMachines());
   const [settings, setSettingsState] = useState<Settings>(loadSettings);
 
   function update(next: MachineStore) {

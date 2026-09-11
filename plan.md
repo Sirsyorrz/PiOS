@@ -215,7 +215,12 @@ The PWA is the product until it stops being enough. Everything here lands in
    `set_session_name`, which also feeds the Phase 7.7 session list.
 6. Session controls: model switching, thinking level, compaction UI
    (`compact` + `set_auto_compaction`), interrupt affordance.
-7. Session stats from `get_session_stats`, rendered at the foot of the
+7. One-shot `bash`: run a single command in the session cwd, stream
+   `bash_execution_update` deltas, render `BashResult` (exit code, truncation),
+   `abort_bash` to cancel, per-command `excludeFromContext` toggle. Serialised
+   one at a time per session, since `abort_bash` carries no id. Not the
+   terminal tab: no PTY, no interactivity.
+8. Session stats from `get_session_stats`, rendered at the foot of the
    transcript after agent output, behind a Settings toggle. Distinct from the
    plan-level `/usage` report, which stays.
 
@@ -324,9 +329,10 @@ notification model.
 
 ## Phase 11 - Later
 
-- Raw terminal tab: daemon-owned PTY, separate shell channel (RPC `bash` is not
-  a terminal). Renderer decision deferred; xterm.js in a WebView is the cheap
-  first cut.
+- Raw terminal tab: daemon-owned PTY, separate shell channel. The one-shot
+  `bash` of Phase 6.7 cannot grow into this: no TTY, no interactivity, output
+  lands in conversation context. Renderer decision deferred; xterm.js in a
+  WebView is the cheap first cut.
 - Branch browsing (`clone`, `get_fork_messages`, `get_tree`). Rewind-to-a-turn
   ships on `fork`; browsing the whole tree needs an RPC command to move the
   leaf, which pi does not expose.

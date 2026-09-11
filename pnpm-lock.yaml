@@ -68,6 +68,25 @@ importers:
         specifier: ^4.4.3
         version: 4.4.3
 
+  packages/sandbox:
+    dependencies:
+      '@pios/pi-host':
+        specifier: workspace:*
+        version: link:../pi-host
+      '@pios/protocol':
+        specifier: workspace:*
+        version: link:../protocol
+      '@pios/server':
+        specifier: workspace:*
+        version: link:../server
+      ws:
+        specifier: ^8.18.0
+        version: 8.21.3
+    devDependencies:
+      '@types/ws':
+        specifier: ^8.5.13
+        version: 8.18.1
+
   packages/server:
     dependencies:
       '@pios/pi-host':

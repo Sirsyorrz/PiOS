@@ -305,7 +305,7 @@ reachable once it has a route. Deliberately unrouted today, with the reason:
 | `clear_queue` | queue is rendered but rarely needs a bulk drop |
 | `get_messages`, `get_last_assistant_text` | superseded by `get_entries` |
 | `export_html` | no phone use |
-| `bash`, `abort_bash` | not a terminal (gotcha 4); the terminal tab needs its own channel |
+| (none for bash) | `bash` / `abort_bash` are routed for one-shot commands; see below |
 | `clone`, `get_fork_messages`, `get_tree` | branch browsing needs an RPC command to move the leaf, which pi does not expose |
 
 ### Gotchas
@@ -324,6 +324,30 @@ reachable once it has a route. Deliberately unrouted today, with the reason:
 4. **Bash is not a terminal.** The RPC `bash` command adds output to
    conversation context and only reaches the LLM on the next prompt. The
    terminal tab needs a separate shell channel.
+
+### One-shot bash
+
+PiOS routes `bash` for single commands only: check a build, read a log, run a
+test, from the phone without spending a turn. It is not the terminal tab, and
+the distinction is load-bearing because the two differ in kind.
+
+- No PTY, so no interactivity. Anything that expects a TTY, prompts for input,
+  or paints a full-screen UI hangs until `abort_bash`. The client makes the
+  one-shot shape obvious rather than pretending to be a shell.
+- Output is conversation state by default. `excludeFromContext` keeps a
+  command out of the transcript, and the client chooses per command: a command
+  the user ran to inform themselves should not silently become context the
+  agent then reasons about.
+- `bash_execution_update` streams output deltas keyed by the command `id`;
+  `BashResult` closes it with `exitCode`, `cancelled`, `truncated`, and
+  optionally `fullOutputPath` for output past the truncation threshold, which
+  the file route can serve.
+- An extension can intercept via `user_bash` and return its own result, so the
+  client must not assume the command actually ran as written.
+- One command at a time per session: `abort_bash` takes no id, so a second
+  concurrent command makes cancellation ambiguous. The daemon serialises.
+- Same trust and containment rules as everything else. This runs arbitrary
+  code as the user, and the auth boundary is the only boundary there is.
 
 ---
 
