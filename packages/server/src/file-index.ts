@@ -31,7 +31,8 @@ const MAX_OUTPUT = 8 * 1024 * 1024;
 const CACHE_TTL_MS = 5_000;
 const cache = new Map<string, { at: number; files: Promise<string[]> }>();
 
-const SKIP_DIRS = new Set([
+/** Directories nobody browses to and nobody searches in. */
+export const SKIP_DIRS = new Set([
   ".git",
   "node_modules",
   ".venv",

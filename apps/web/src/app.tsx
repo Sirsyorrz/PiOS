@@ -20,6 +20,7 @@ import { SessionList } from "./components/session-list.tsx";
 import { SettingsView } from "./components/settings-view.tsx";
 import { loadSettings, saveSettings, SettingsProvider, type Settings } from "./settings.ts";
 import { adoptSandboxMachine } from "./sandbox.ts";
+import { dropSessionDrafts } from "./file-edit.ts";
 import { useUnreadMarks } from "./seen.ts";
 import { useAttentionReport } from "./attention.ts";
 import { useLaunchSession } from "./launch-session.ts";
@@ -240,6 +241,8 @@ function Workspace({ machine, settings, onSettingsChange, onMachineChange, onFor
           onResume={() => setResuming(true)}
           onDispose={(sessionId) => {
             client.disposeSession(sessionId);
+            // Drafts belong to a conversation; the conversation is gone.
+            void dropSessionDrafts(sessionId);
             if (sessionId === activeId) setActiveId(null);
           }}
         />

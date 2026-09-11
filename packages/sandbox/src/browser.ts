@@ -133,16 +133,22 @@ export class Browser {
   }
 
   /**
-   * Taps the innermost clickable element whose text contains `text`.
+   * Taps the innermost clickable element whose text or label contains `text`.
    *
    * Innermost matters: a row's `li` wrapper also contains the text, and
-   * clicking it dispatches an event no handler is listening for.
+   * clicking it dispatches an event no handler is listening for. Labels count
+   * too, or an icon-only control could not be reached at all.
    */
   async tapText(text: string): Promise<boolean> {
     return this.eval<boolean>(`(() => {
       const needle = ${JSON.stringify(text)};
       const nodes = [...document.querySelectorAll('button, a, [role="button"], .list-row')];
-      const matches = nodes.filter((n) => (n.textContent || '').includes(needle));
+      const byText = nodes.filter((n) => (n.textContent || '').includes(needle));
+      // Labels are the fallback, never a rival: a row's own delete button is
+      // labelled after the row, and tapping it is not what was asked for.
+      const matches = byText.length
+        ? byText
+        : nodes.filter((n) => (n.getAttribute('aria-label') || '').includes(needle));
       const hit = matches.findLast((n) => !matches.some((o) => o !== n && n.contains(o)));
       if (!hit) return false;
       hit.click();

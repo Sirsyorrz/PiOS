@@ -12,7 +12,9 @@ import type { NativeCommand } from "./native-commands.ts";
 import { sessionState } from "../session-status.ts";
 import { DialogSheet } from "./dialog-sheet.tsx";
 import { GitControl } from "./git-view.tsx";
-import { ChevronDownIcon, ChevronLeftIcon, PlusIcon } from "./icons.tsx";
+import { FileView } from "./file-view.tsx";
+import { recallOpenFile, rememberOpenFile } from "../file-edit.ts";
+import { ChevronDownIcon, ChevronLeftIcon, FileIcon, PlusIcon } from "./icons.tsx";
 import { MessageBubble, StreamingBubble } from "./message.tsx";
 
 /** Extension widgets for one slot. pi defaults an unplaced widget above. */
@@ -114,6 +116,32 @@ export function ChatView({
     [baseUrl, deviceToken, sessionId],
   );
 
+  // The open file survives the app being backgrounded, so coming back lands
+  // where the work was, and the header icon reopens it in one tap.
+  const [openPath, setOpenPath] = useState<string | null>(() => recallOpenFile(sessionId));
+  const [showFiles, setShowFiles] = useState(false);
+  useEffect(() => {
+    setOpenPath(recallOpenFile(sessionId));
+    setShowFiles(false);
+  }, [sessionId]);
+
+  if (showFiles && baseUrl && session) {
+    return (
+      <FileAccessContext.Provider value={files}>
+        <FileView
+          access={{ ...files, baseUrl }}
+          cwd={session.cwd}
+          path={openPath}
+          onOpen={(path) => {
+            setOpenPath(path);
+            rememberOpenFile(sessionId, path);
+          }}
+          onClose={() => setShowFiles(false)}
+        />
+      </FileAccessContext.Provider>
+    );
+  }
+
   return (
     <FileAccessContext.Provider value={files}>
     <section className={`chat${composing ? " composing" : ""}`} ref={pane} {...edgeSwipe}>
@@ -124,6 +152,14 @@ export function ChatView({
         <span className="title line">
           {view?.presentation.title ?? session?.name ?? (session ? collapseHome(session.cwd) : undefined) ?? sessionId}
         </span>
+        <button
+          type="button"
+          className="icon ghost"
+          onClick={() => setShowFiles(true)}
+          aria-label={openPath ? `open ${openPath}` : "browse files"}
+        >
+          <FileIcon />
+        </button>
         <GitControl running={view?.running ?? false} />
         {/* One source for the word and its colour, shared with the list. */}
         <span className={`status ${rowState.tone}`}>

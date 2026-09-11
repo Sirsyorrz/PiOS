@@ -296,6 +296,66 @@ test("files are served from inside the session cwd only", async () => {
   client.close();
 });
 
+test("editing a file goes through its etag", async () => {
+  const client = await hello(harness);
+  const cwd = join(harness.dir, "edit");
+  mkdirSync(cwd, { recursive: true });
+  writeFileSync(join(cwd, "a.txt"), "one\n");
+  const sessionId = await createSession(client, cwd);
+  const auth = { authorization: `Bearer ${harness.deviceToken}` };
+  const file = `${harness.baseUrl}/file?session=${sessionId}&path=a.txt`;
+
+  const loaded = await fetch(`${file}&text=1`, { headers: auth });
+  const body = (await loaded.json()) as { text: string; etag: string; editable: boolean };
+  assert.equal(body.text, "one\n");
+  assert.equal(body.editable, true);
+
+  const stale = await fetch(file, {
+    method: "PUT",
+    headers: { ...auth, "if-match": '"stale"' },
+    body: "mine\n",
+  });
+  assert.equal(stale.status, 409);
+
+  const saved = await fetch(file, {
+    method: "PUT",
+    headers: { ...auth, "if-match": body.etag },
+    body: "two\n",
+  });
+  assert.equal(saved.status, 200);
+  assert.equal(await (await fetch(file, { headers: auth })).text(), "two\n");
+
+  const escape = await fetch(`${harness.baseUrl}/file?session=${sessionId}&path=../out.txt`, {
+    method: "PUT",
+    headers: auth,
+    body: "nope",
+  });
+  assert.equal(escape.status, 404);
+  client.close();
+});
+
+test("the session file tree lists files and skips noise", async () => {
+  const client = await hello(harness);
+  const cwd = join(harness.dir, "tree");
+  mkdirSync(join(cwd, "node_modules"), { recursive: true });
+  mkdirSync(join(cwd, "src"), { recursive: true });
+  writeFileSync(join(cwd, "readme.md"), "");
+  const sessionId = await createSession(client, cwd);
+
+  const res = await fetch(`${harness.baseUrl}/dirs?session=${sessionId}&files=1`, {
+    headers: { authorization: `Bearer ${harness.deviceToken}` },
+  });
+  const listing = (await res.json()) as {
+    root: string;
+    entries: { name: string; dir: boolean }[];
+  };
+  assert.deepEqual(
+    listing.entries.map((e) => e.name),
+    ["src", "readme.md"],
+  );
+  client.close();
+});
+
 test("file search is scoped to the session cwd", async () => {
   const client = await hello(harness);
   const cwd = join(harness.dir, "search");

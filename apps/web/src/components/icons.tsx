@@ -175,6 +175,33 @@ export function FolderUpIcon(props: SVGProps<SVGSVGElement>) {
   );
 }
 
+export function FileIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Svg {...props}>
+      <path d="M6.5 3.5h7l4.5 4.5v12a1 1 0 0 1-1 1h-10.5a1 1 0 0 1-1-1v-15a1 1 0 0 1 1-1Z" />
+      <path d="M13.5 3.5V8h4.5" />
+    </Svg>
+  );
+}
+
+export function UndoIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Svg {...props}>
+      <path d="M4 9h10a5 5 0 0 1 0 10H9" />
+      <path d="m7.5 5.5-3.5 3.5 3.5 3.5" />
+    </Svg>
+  );
+}
+
+export function RedoIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Svg {...props}>
+      <path d="M20 9H10a5 5 0 0 0 0 10h5" />
+      <path d="m16.5 5.5 3.5 3.5-3.5 3.5" />
+    </Svg>
+  );
+}
+
 export function SearchIcon(props: SVGProps<SVGSVGElement>) {
   return (
     <Svg {...props}>

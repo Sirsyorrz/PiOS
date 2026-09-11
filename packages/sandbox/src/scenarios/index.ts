@@ -1,11 +1,12 @@
 import type { Scenario } from "../scenario.ts";
 import chat from "./chat.ts";
 import empty from "./empty.ts";
+import files from "./files.ts";
 import gitConflict from "./git-conflict.ts";
 import gitDirty from "./git-dirty.ts";
 import manySessions from "./many-sessions.ts";
 
-export const scenarios: Scenario[] = [empty, chat, gitDirty, gitConflict, manySessions];
+export const scenarios: Scenario[] = [empty, chat, files, gitDirty, gitConflict, manySessions];
 
 export function findScenario(name: string): Scenario {
   const found = scenarios.find((s) => s.name === name);

@@ -1,4 +1,4 @@
-import { createReadStream, statSync } from "node:fs";
+import { createReadStream, readFileSync, statSync, type Dirent } from "node:fs";
 import { mkdir, readdir, stat, writeFile } from "node:fs/promises";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { homedir } from "node:os";
@@ -16,7 +16,8 @@ import {
   GitError,
   parseGitAction,
 } from "./git.ts";
-import { searchFiles } from "./file-index.ts";
+import { invalidateFileIndex, searchFiles, SKIP_DIRS } from "./file-index.ts";
+import { etagOf, MAX_EDIT_BYTES, readTextFile, writeTextFile } from "./file-edit.ts";
 import { containedPath } from "./paths.ts";
 import type { PushStore } from "./push.ts";
 import { SERVER_VERSION, type ServerConfig } from "./config.ts";
@@ -126,7 +127,11 @@ export async function handleRequest(
       return json(res, 200, { usage });
     }
     if (req.method === "GET" && url.pathname === "/dirs") return await listDirs(ctx, url, res);
-    if (req.method === "GET" && url.pathname === "/file") return serveFile(ctx, url, res);
+    if (req.method === "GET" && url.pathname === "/file") {
+      if (url.searchParams.get("text") === "1") return await serveFileText(ctx, url, res);
+      return serveFile(ctx, url, res);
+    }
+    if (req.method === "PUT" && url.pathname === "/file") return await saveFile(ctx, url, req, res);
     if (req.method === "GET" && url.pathname === "/files") return await findFiles(ctx, url, res);
     if (req.method === "POST" && url.pathname === "/upload") {
       return await upload(ctx, url, req, res);
@@ -227,7 +232,14 @@ async function pushSubscribe(
  * the directory someone wants next is nearly always one they worked in.
  */
 async function listDirs(ctx: RouteContext, url: URL, res: ServerResponse): Promise<void> {
-  const root = homedir();
+  const sessionId = url.searchParams.get("session");
+  // Session mode roots the browse at that session's cwd and includes files:
+  // it answers "what is in this project", not "where do I start a session".
+  const session = sessionId ? ctx.registry.get(sessionId) : null;
+  if (sessionId && !session) return json(res, 404, { error: "unknown_session" });
+  const root = session ? session.info.cwd : homedir();
+  const withFiles = Boolean(session) && url.searchParams.get("files") === "1";
+
   const requested = url.searchParams.get("path") ?? root;
   const path = containedPath(root, requested);
   if (!path) return json(res, 404, { error: "not_found" });
@@ -238,6 +250,8 @@ async function listDirs(ctx: RouteContext, url: URL, res: ServerResponse): Promi
   } catch {
     return json(res, 404, { error: "not_found" });
   }
+
+  if (withFiles) return json(res, 200, treeListing(root, path, dirents));
 
   const recency = await sessionRecency(ctx.config.sessionDir);
   const entries = dirents
@@ -401,13 +415,90 @@ function serveFile(ctx: RouteContext, url: URL, res: ServerResponse): void {
   }
   if (!stat.isFile()) return json(res, 404, { error: "not_found" });
 
+  const bytes = readFileSync(path);
   res.writeHead(200, {
     "content-type": CONTENT_TYPES[extname(path).toLowerCase()] ?? "application/octet-stream",
     "content-length": stat.size,
     // The agent rewrites files under the same path constantly.
     "cache-control": "no-store",
+    etag: etagOf(bytes),
   });
-  createReadStream(path).pipe(res);
+  res.end(bytes);
+}
+
+/**
+ * The editor's view of a file: text plus everything needed to save it back.
+ *
+ * The etag is the save precondition, and the eol/trailing-newline flags are
+ * restored on write so opening a CRLF file and changing one line does not
+ * rewrite every line of it.
+ */
+async function serveFileText(ctx: RouteContext, url: URL, res: ServerResponse): Promise<void> {
+  const path = sessionPath(ctx, url);
+  if (!path) return json(res, 404, { error: "not_found" });
+
+  const file = await readTextFile(path);
+  if (!file) return json(res, 404, { error: "not_found" });
+  res.setHeader("cache-control", "no-store");
+  json(res, 200, file);
+}
+
+async function saveFile(
+  ctx: RouteContext,
+  url: URL,
+  req: IncomingMessage,
+  res: ServerResponse,
+): Promise<void> {
+  const path = sessionPath(ctx, url);
+  if (!path) return json(res, 404, { error: "not_found" });
+
+  const body = await readBody(req, MAX_EDIT_BYTES);
+  if (!body) return json(res, 413, { error: "too_large" });
+
+  const ifMatch = req.headers["if-match"];
+  const outcome = await writeTextFile(path, body.toString("utf8"), {
+    ifMatch: typeof ifMatch === "string" ? ifMatch : undefined,
+    eol: url.searchParams.get("eol") === "crlf" ? "crlf" : "lf",
+    trailingNewline: url.searchParams.get("nl") !== "0",
+  });
+
+  if (outcome.ok) {
+    // Only a new path changes what the fuzzy index should return.
+    if (outcome.created) invalidateFileIndex();
+    res.setHeader("etag", outcome.etag);
+    return json(res, 200, { etag: outcome.etag, bytes: outcome.bytes });
+  }
+  if (outcome.error === "conflict") {
+    return json(res, 409, { error: "conflict", etag: outcome.etag });
+  }
+  if (outcome.error === "exists") return json(res, 409, { error: "exists" });
+  return json(res, 413, { error: "too_large" });
+}
+
+/** The contained absolute path a `session` + `path` pair names, if any. */
+function sessionPath(ctx: RouteContext, url: URL): string | null {
+  const sessionId = url.searchParams.get("session");
+  const requested = url.searchParams.get("path");
+  if (!sessionId || !requested) return null;
+  const session = ctx.registry.get(sessionId);
+  if (!session) return null;
+  return containedPath(session.info.cwd, requested);
+}
+
+/** Directories first, then files, both alphabetical: a file tree, not a picker. */
+function treeListing(root: string, path: string, dirents: Dirent[]) {
+  const entries = dirents
+    .filter((d) => (d.isDirectory() || d.isFile()) && !SKIP_DIRS.has(d.name))
+    .map((d) => ({ name: d.name, path: join(path, d.name), dir: d.isDirectory() }))
+    .sort((a, b) => Number(b.dir) - Number(a.dir) || a.name.localeCompare(b.name));
+
+  return {
+    root,
+    path,
+    name: basename(path) || path,
+    parent: path === root ? null : dirname(path),
+    entries,
+  };
 }
 
 async function upload(
@@ -449,8 +540,9 @@ function cors(req: IncomingMessage, res: ServerResponse): void {
   if (!origin) return;
   res.setHeader("access-control-allow-origin", origin);
   res.setHeader("vary", "origin");
-  res.setHeader("access-control-allow-methods", "GET, POST, OPTIONS");
-  res.setHeader("access-control-allow-headers", "authorization, content-type");
+  res.setHeader("access-control-allow-methods", "GET, POST, PUT, OPTIONS");
+  res.setHeader("access-control-allow-headers", "authorization, content-type, if-match");
+  res.setHeader("access-control-expose-headers", "etag");
   res.setHeader("access-control-max-age", "600");
 }
 

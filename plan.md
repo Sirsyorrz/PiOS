@@ -267,6 +267,38 @@ Exit: usable as a daily driver from the phone home screen.
 
 ---
 
+## Phase 7.5 - File viewer and editor - DONE
+
+Opening, reading and editing a file in the session directory, without asking
+the agent to do it. Its own phase because it adds a write route and a
+persisted structure, and both need their own exit criteria.
+
+1. `packages/server/src/file-edit.ts`: `GET /file?text=1` (LF-normalised text,
+   sha256 etag, eol + trailing-newline flags, refusal reason) and
+   `PUT /file` guarded by `If-Match`. No `If-Match` means create and refuses to
+   clobber. Caps: 1 MB, NUL in the first 8 KB, invalid UTF-8, 50k-char lines;
+   over the cap degrades to a read-only head preview. Rename, delete and mkdir
+   stay out: that is a file manager, and the agent is better at it.
+2. `GET /dirs?session=..&files=1` roots the browse at the session cwd and
+   includes files, minus the shared skip list. Search keeps `GET /files`, which
+   is gitignore-aware; browsing is explicit intent and shows what git hides.
+3. `apps/web`: a header file button opening a full-screen view (search on top,
+   tree below when the query is empty), read mode by default, explicit Edit and
+   Save, dirty dot, and a two-button conflict banner (Reload / Overwrite).
+4. `code-editor.tsx`: lazily imported CodeMirror 6, soft wrap, line numbers,
+   a fixed set of languages per extension, an accessory row (indent, outdent,
+   undo, redo) above the keyboard. No find panel yet.
+5. Unsaved buffers persist on the device only (IndexedDB, capped, dropped on
+   save or on disposing the session); the open file lives in `sessionStorage`,
+   so backgrounding keeps it and a real close forgets it.
+
+Exit: `pnpm sandbox --scenario files` browses, reads, edits and saves; a file
+rewritten underneath the buffer shows the conflict banner; oversized, binary
+and minified files degrade to a preview. Covered by `packages/server/test/
+file-edit.test.ts` and `packages/sandbox/test/files.test.ts`.
+
+---
+
 ## Phase 8 - Cleanup and hardening
 
 1. Prune dead code and duplicated view logic surfaced by Phases 6-7.
@@ -335,7 +367,8 @@ notification model.
 - Branch browsing (`clone`, `get_fork_messages`, `get_tree`). Rewind-to-a-turn
   ships on `fork`; browsing the whole tree needs an RPC command to move the
   leaf, which pi does not expose.
-- Text editor
+- Editor extras deferred from Phase 7.5: find-in-file, a wider language set,
+  and rename/delete once the header has room for them
 - Lazygit
 - Extension-authored panels: an extension publishes a declarative view tree
   (text/list/buttons/input/rows) on pi's event bus, the daemon validates and
