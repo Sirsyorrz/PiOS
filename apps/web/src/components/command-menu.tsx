@@ -93,6 +93,9 @@ export function CommandMenu({ entries, active, onPick }: {
           key={`${entry.badge}/${entry.name}`}
           className={index === active ? "active" : undefined}
           trailing={<span className="muted">{entry.badge}</span>}
+          // Picking must not blur the field: a blur closes the keyboard and
+          // drops the caret, and the completion lands back in the text.
+          onMouseDown={(event) => event.preventDefault()}
           onClick={() => onPick(entry)}
         >
           <span className="line">{entry.label ?? `/${entry.name}`}</span>

@@ -1,4 +1,4 @@
-import type { FormEvent, ReactNode } from "react";
+import type { FormEvent, MouseEventHandler, ReactNode } from "react";
 import { CloseIcon, SearchIcon } from "./icons.tsx";
 
 function withBase(base: string, className?: string): string {
@@ -34,9 +34,11 @@ export function ModalCard({ className, overlay, onSubmit, children }: {
  * A full-width, left-aligned, stacked-content tap target: session rows,
  * endpoint rows, directory rows. One style so lists cannot drift apart.
  */
-export function ListRowButton({ className, onClick, icon, trailing, children }: {
+export function ListRowButton({ className, onClick, onMouseDown, icon, trailing, children }: {
   className?: string;
   onClick: () => void;
+  /** Escape hatch for rows that must not steal focus from a field. */
+  onMouseDown?: MouseEventHandler<HTMLButtonElement>;
   /** Leading glyph. Turns the row into an icon + stacked-text layout. */
   icon?: ReactNode;
   trailing?: ReactNode;
@@ -44,7 +46,12 @@ export function ListRowButton({ className, onClick, icon, trailing, children }: 
 }) {
   const base = icon || trailing ? "list-row iconic" : "list-row";
   return (
-    <button type="button" className={withBase(base, className)} onClick={onClick}>
+    <button
+      type="button"
+      className={withBase(base, className)}
+      onClick={onClick}
+      onMouseDown={onMouseDown}
+    >
       {icon ? <span className="row-icon">{icon}</span> : null}
       {icon || trailing ? <span className="row-main">{children}</span> : children}
       {trailing ? <span className="row-trail">{trailing}</span> : null}

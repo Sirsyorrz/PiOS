@@ -1521,6 +1521,7 @@ button.scroll-bottom {
 /* Input and its controls are one surface, so only the outer edge is drawn:
    a bordered textarea inside a bordered bar is two boxes for one field. */
 .composer {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -1537,11 +1538,21 @@ button.scroll-bottom {
 /* Sits inside the composer surface, above the field: the list is about what
    is being typed, so it must not read as a separate panel. Bounded so a long
    list scrolls instead of pushing the transcript off screen. */
+/* Floated over the transcript rather than inserted into the dock: an in-flow
+   list pushes the field down as it opens, which moves the caret out from
+   under the finger and makes the browser scroll-correct on the next key. */
 .command-menu {
-  flex: none;
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(100% + 6px);
+  z-index: 2;
   max-height: min(40vh, 260px);
-  border-bottom: 1px solid var(--line);
-  padding-bottom: 4px;
+  padding: 4px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  box-shadow: 0 12px 32px rgb(0 0 0 / 0.35);
 }
 
 .command-menu .list-row.active {
@@ -1623,7 +1634,6 @@ button.scroll-bottom {
   align-items: flex-end;
 }
 
-.chat.composing .command-menu,
 .chat.composing .attachments {
   flex: 0 0 100%;
 }
