@@ -18,8 +18,12 @@ export function sessionState(
   live?: { running?: boolean; interrupting?: boolean; blocked?: boolean; unseen?: boolean },
 ): SessionState {
   // Untrusted comes first: nothing else the session reports is meaningful
-  // until the user decides whether its project may load code.
-  if (session && !session.trusted) return { tone: "untrusted", label: "untrusted" };
+  // until the user decides whether its project may load code. Except when the
+  // session is cold: nothing is loaded, nothing is running, and labelling a
+  // whole history "untrusted" says something about the future, not the row.
+  if (session && !session.trusted && session.status !== "cold") {
+    return { tone: "untrusted", label: "untrusted" };
+  }
   // Blocked on a dialog beats running. The agent has a turn in flight, but it
   // is stopped on a human, and only "waiting" tells the user to act.
   if (live?.blocked || session?.awaitingInput) return { tone: "waiting", label: "waiting" };

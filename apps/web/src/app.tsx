@@ -91,6 +91,9 @@ function Workspace({ machine, settings, onSettingsChange, onMachineChange, onFor
   // choose where to start.
   const [pickerStart, setPickerStart] = useState<string | null>(null);
   const [drafts, setDrafts] = useState<Draft[]>(() => loadDrafts(machine.id));
+  // Narrow viewports show the list over the chat rather than instead of it,
+  // so the open session keeps its scroll position and its composer draft.
+  const [drawerOpen, setDrawerOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [showSettings, setShowSettings] = useState(false);
   // Session commands are not queued, so a dropped one has to be said out loud.
@@ -213,6 +216,7 @@ function Workspace({ machine, settings, onSettingsChange, onMachineChange, onFor
           };
           updateDrafts([draft, ...drafts]);
           setActiveId(draft.id);
+          setDrawerOpen(false);
           setPickerStart(null);
         }}
       />
@@ -220,7 +224,7 @@ function Workspace({ machine, settings, onSettingsChange, onMachineChange, onFor
   }
 
   return (
-    <div className={`workspace ${activeId ? "chatting" : ""}`}>
+    <div className={`workspace ${activeId ? "chatting" : ""} ${drawerOpen ? "drawer" : ""}`}>
       <aside className="sidebar">
         {/* Machine and link state are one subject, so they are one control;
             it opens the same screen the gear does. */}
@@ -258,13 +262,26 @@ function Workspace({ machine, settings, onSettingsChange, onMachineChange, onFor
           loading={state.transport === "connected" && state.sessions.length === 0}
           hasMore={state.hasMoreSessions}
           onQuery={setSearch}
-          onSelect={setActiveId}
+          onSelect={(id) => {
+            setActiveId(id);
+            setDrawerOpen(false);
+          }}
           onCreate={() => setPickerStart("")}
           onLoadMore={() =>
             client.listSessions({ query: search || undefined, offset: state.sessions.length })
           }
         />
       </aside>
+
+      {/* Dismisses the drawer without acting on whatever is behind it. */}
+      {drawerOpen ? (
+        <button
+          type="button"
+          className="scrim"
+          aria-label="close the session list"
+          onClick={() => setDrawerOpen(false)}
+        />
+      ) : null}
 
       {activeId ? (
         <ChatView
@@ -274,7 +291,7 @@ function Workspace({ machine, settings, onSettingsChange, onMachineChange, onFor
           state={state}
           baseUrl={base}
           deviceToken={machine.deviceToken}
-          onBack={() => setActiveId(null)}
+          onBack={() => setDrawerOpen(true)}
           onNewSession={() => setPickerStart(session?.cwd ?? "")}
           nativeCommands={screenCommands()}
           onTrust={trustActive}

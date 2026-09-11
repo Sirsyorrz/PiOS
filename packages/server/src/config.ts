@@ -12,6 +12,8 @@ export interface ServerConfig {
    * and PiOS see one set of sessions and can resume each other's work.
    */
   sessionDir: string;
+  /** pi's own config directory, which holds the project-trust decisions. */
+  agentDir: string;
   /**
    * How sessions run: `subprocess` spawns `pi --mode rpc` per session,
    * `in-process` drives an `AgentSession` inside the daemon.
@@ -74,6 +76,7 @@ export function defaultConfig(overrides: Partial<ServerConfig> = {}): ServerConf
       overrides.sessionDir ??
       process.env.PIOS_SESSION_DIR ??
       join(homedir(), ".pi", "agent", "sessions"),
+    agentDir: overrides.agentDir ?? process.env.PI_AGENT_DIR ?? join(homedir(), ".pi", "agent"),
     sessionHostMode: overrides.sessionHostMode ?? sessionHostMode(process.env.PIOS_HOST),
     sessionIdleMs: overrides.sessionIdleMs ?? 30 * 60_000,
     maxUploadBytes: overrides.maxUploadBytes ?? 25 * 1024 * 1024,

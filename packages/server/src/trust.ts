@@ -1,58 +1,46 @@
-import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
 import { dirname, resolve } from "node:path";
+import { ProjectTrustStore } from "@earendil-works/pi-coding-agent";
 
 /**
  * Which project directories may load their own extensions, settings and
  * packages.
  *
- * Trust belongs to a directory, not to a conversation: a session is started
- * lazily and restarted whenever it is woken, and asking the same question once
- * per session forever is not a decision, it is a nag.
+ * pi's own store, not a second one: the TUI and this daemon run the same
+ * projects, and a directory the user already trusted there must not be asked
+ * about again here.
+ *
+ * Trust belongs to a directory, not to a conversation. A session is started
+ * lazily and restarted whenever it is woken, so asking per session would ask
+ * the same question forever.
  */
-
-const VERSION = 1;
-
-interface TrustFile {
-  version: number;
-  trusted: string[];
-}
-
 export class TrustStore {
-  private readonly file: string;
-  private readonly trusted = new Set<string>();
+  private readonly store: ProjectTrustStore;
 
-  constructor(file: string) {
-    this.file = file;
-    try {
-      const raw = JSON.parse(readFileSync(file, "utf8")) as TrustFile;
-      if (raw.version === VERSION) for (const path of raw.trusted ?? []) this.trusted.add(path);
-    } catch {
-      // No file yet, or one from another version. Nothing is trusted, which is
-      // the safe answer to lose to.
-    }
+  constructor(agentDir: string) {
+    this.store = new ProjectTrustStore(agentDir);
   }
 
+  /**
+   * Trust for a directory, inherited from the nearest answered ancestor.
+   *
+   * pi records a decision for the path the user answered about, which may be a
+   * parent of the project; walking up is what makes one answer cover the
+   * repositories underneath it.
+   */
   isTrusted(cwd: string): boolean {
-    return this.trusted.has(resolve(cwd));
+    let path = resolve(cwd);
+    const stop = resolve(homedir(), "..");
+    for (;;) {
+      const decision = this.store.get(path);
+      if (decision !== null) return decision;
+      const parent = dirname(path);
+      if (parent === path || path === stop) return false;
+      path = parent;
+    }
   }
 
   set(cwd: string, trusted: boolean): void {
-    const path = resolve(cwd);
-    if (trusted === this.trusted.has(path)) return;
-    if (trusted) this.trusted.add(path);
-    else this.trusted.delete(path);
-    this.persist();
-  }
-
-  private persist(): void {
-    const payload: TrustFile = { version: VERSION, trusted: [...this.trusted] };
-    try {
-      mkdirSync(dirname(this.file), { recursive: true, mode: 0o700 });
-      const temporary = `${this.file}.tmp`;
-      writeFileSync(temporary, JSON.stringify(payload, null, 2), { mode: 0o600 });
-      renameSync(temporary, this.file);
-    } catch (error) {
-      console.error("[pios] could not save trust settings", error);
-    }
+    this.store.set(resolve(cwd), trusted);
   }
 }

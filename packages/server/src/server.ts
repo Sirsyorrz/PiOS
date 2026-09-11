@@ -51,7 +51,7 @@ export class PiosServer {
         sessionDir: this.config.sessionDir,
         cacheFile: join(this.config.dataDir, "session-index.json"),
       });
-    this.trust = new TrustStore(join(this.config.dataDir, "trust.json"));
+    this.trust = new TrustStore(this.config.agentDir);
     // A change on disk invalidates what was skimmed for it and nudges every
     // client; the TUI writes to the same store this daemon reads.
     this.watcher = new SessionStoreWatcher(this.config.sessionDir, () => {

@@ -117,7 +117,8 @@ export class Connection {
   private async dispatch(frame: Exclude<ClientFrame, { type: "hello" }>): Promise<void> {
     switch (frame.type) {
       case "list_sessions": {
-        const page = await listSessions(this.deps.index, this.deps.registry, {
+        const trust = (cwd: string) => this.deps.trust.isTrusted(cwd);
+        const page = await listSessions(this.deps.index, this.deps.registry, trust, {
           cwd: frame.cwd,
           query: frame.query,
           limit: frame.limit,
@@ -523,7 +524,12 @@ export class Connection {
       commandId,
       sessionId: session.id,
       summary:
-        summaryFor(this.deps.index, this.deps.registry, session.id) ?? liveSummary(session.info),
+        summaryFor(
+          this.deps.index,
+          this.deps.registry,
+          (cwd) => this.deps.trust.isTrusted(cwd),
+          session.id,
+        ) ?? liveSummary(session.info),
     });
   }
 

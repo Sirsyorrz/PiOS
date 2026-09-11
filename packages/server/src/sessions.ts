@@ -17,6 +17,9 @@ export interface SessionPage {
   hasMore: boolean;
 }
 
+/** Answers whether a project directory may load its own code. */
+export type TrustLookup = (cwd: string) => boolean;
+
 export interface ListQuery {
   cwd?: string;
   query?: string;
@@ -27,6 +30,7 @@ export interface ListQuery {
 export async function listSessions(
   index: SessionIndex,
   registry: SessionRegistry,
+  isTrusted: TrustLookup,
   query: ListQuery = {},
 ): Promise<SessionPage> {
   const page = await index.list(query);
@@ -35,7 +39,7 @@ export async function listSessions(
   const rows = page.sessions.map((record) => {
     const info = live.get(record.id);
     live.delete(record.id);
-    return info ? liveSummary(info, record) : coldSummary(record);
+    return info ? liveSummary(info, record) : coldSummary(record, isTrusted);
   });
 
   // Only on the first page: a session with no file yet is brand new, and
@@ -54,12 +58,13 @@ export async function listSessions(
 export function summaryFor(
   index: SessionIndex,
   registry: SessionRegistry,
+  isTrusted: TrustLookup,
   sessionId: string,
 ): SessionSummary | undefined {
   const info = registry.get(sessionId)?.info;
   const record = index.recordFor(sessionId);
   if (info) return liveSummary(info, record);
-  return record ? coldSummary(record) : undefined;
+  return record ? coldSummary(record, isTrusted) : undefined;
 }
 
 export function liveSummary(info: SessionInfo, record?: SessionRecord): SessionSummary {
@@ -83,15 +88,15 @@ export function liveSummary(info: SessionInfo, record?: SessionRecord): SessionS
   };
 }
 
-function coldSummary(record: SessionRecord): SessionSummary {
+function coldSummary(record: SessionRecord, isTrusted: TrustLookup): SessionSummary {
   return {
     sessionId: record.id,
     name: record.name,
     cwd: record.cwd,
     status: "cold",
     awaitingInput: false,
-    // Trust is answered when the session is woken, from the project's setting.
-    trusted: false,
+    // The directory's answer, which is what the session will be woken with.
+    trusted: isTrusted(record.cwd),
     // A cold session's cursor lives in its file; `get_entries` reads it there.
     leafId: null,
     lastSeq: 0,

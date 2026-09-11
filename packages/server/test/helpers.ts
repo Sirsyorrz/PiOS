@@ -30,6 +30,8 @@ export async function startHarness(index?: SessionIndex): Promise<Harness> {
     port: 0,
     dataDir: join(dir, "data"),
     sessionDir: join(dir, "sessions"),
+    // Never the developer's own: trust decisions are read and written here.
+    agentDir: join(dir, "agent"),
     helloTimeoutMs: 300,
     sessionHost: subprocessHost({
       command: process.execPath,
