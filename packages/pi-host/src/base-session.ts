@@ -5,6 +5,7 @@ import {
   messagePreview,
   previewText,
   type AgentEvent,
+  type BashResult,
   type SessionEntry,
   type ExtensionUiRequest,
   type ModelOption,
@@ -77,7 +78,48 @@ export abstract class BaseSession {
     this.branchSessionFile = args.branchSessionFile;
   }
 
+  /** A command is in flight; a second one has nothing to cancel it with. */
+  private bashRunning = false;
+
   abstract getEntries(since?: string): Promise<EntriesPage>;
+
+  /**
+   * Serialises one shell command per session and announces both ends of it.
+   *
+   * The deltas pi emits carry no command text and no terminator, so a client
+   * that only sees them cannot tell what ran or when it stopped.
+   */
+  protected async withBash(
+    command: string,
+    excludeFromContext: boolean,
+    run: () => Promise<BashResult>,
+  ): Promise<BashResult> {
+    if (this.bashRunning) throw new Error("a command is already running in this session");
+    this.bashRunning = true;
+    this.publish({ type: "bash_state", command, excludeFromContext, running: true });
+    try {
+      const result = await run();
+      this.publish({ type: "bash_state", command, excludeFromContext, running: false, result });
+      return result;
+    } catch (error) {
+      // Reported as a cancelled run rather than swallowed: a client showing a
+      // live command has to be told it will never finish.
+      this.publish({
+        type: "bash_state",
+        command,
+        excludeFromContext,
+        running: false,
+        result: {
+          output: error instanceof Error ? error.message : String(error),
+          cancelled: true,
+          truncated: false,
+        },
+      });
+      throw error;
+    } finally {
+      this.bashRunning = false;
+    }
+  }
 
   /**
    * Same for both hosts: the branch is cut from the file, never from the

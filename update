@@ -1,0 +1,5 @@
+#!/bin/bash
+
+pnpm build:web
+
+systemctl --user restart pios-server.service

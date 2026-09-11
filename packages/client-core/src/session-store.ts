@@ -5,6 +5,7 @@ import {
   isDialogRequest,
   stripAnsi,
   type AgentEvent,
+  type BashResult,
   type ExtensionUiRequest,
   type SessionEntry,
   type SessionPresentation,
@@ -20,6 +21,17 @@ export interface Notice {
   id: string;
   message: string;
   type: "info" | "warning" | "error";
+}
+
+/** A `!` command in flight, or the one that just finished. */
+export interface BashRun {
+  command: string;
+  /** Ran with `!!`: shown here, never sent to the model. */
+  excludeFromContext: boolean;
+  /** Deltas so far, which is all there is until the entry is persisted. */
+  output: string;
+  running: boolean;
+  result?: BashResult;
 }
 
 export interface SessionCache {
@@ -66,6 +78,8 @@ export class SessionStore {
   private readonly presentations = new Map<string, SessionPresentation>();
   /** Transient extension messages, newest last. Never restored on reconnect. */
   private readonly notices = new Map<string, Notice[]>();
+  /** Live `!` command per session. pi runs one at a time. */
+  private readonly bashRuns = new Map<string, BashRun>();
   private noticeCounter = 0;
   private readonly storage: StorageAdapter | null;
   private readonly listeners = new Set<(sessionId: string) => void>();
@@ -129,6 +143,12 @@ export class SessionStore {
       }
     }
     cache.cursor = leafId ?? cache.entries.at(-1)?.id ?? null;
+    // A finished command is held on screen until pi's own entry for it lands,
+    // so the output never blinks out between the two.
+    const bash = this.bashRuns.get(sessionId);
+    if (bash && !bash.running && entries.some((entry) => isBashEntry(entry, bash.command))) {
+      this.bashRuns.delete(sessionId);
+    }
     this.persist(cache);
     return { reset, applied: entries.length };
   }
@@ -158,6 +178,7 @@ export class SessionStore {
     const cache = this.get(sessionId);
     cache.lastSeq = Math.max(cache.lastSeq, seq);
     this.assembler(sessionId).apply(localise(event, at));
+    if (event.type === "bash_execution_update") this.appendBashOutput(sessionId, event.delta);
     if (event.type === "agent_settled") this.interrupting.delete(sessionId);
     this.notify(sessionId);
   }
@@ -191,6 +212,35 @@ export class SessionStore {
 
   isInterrupting(sessionId: string): boolean {
     return this.interrupting.has(sessionId);
+  }
+
+  /** A command started. Output arrives afterwards, as deltas. */
+  startBash(sessionId: string, command: string, excludeFromContext: boolean): void {
+    this.bashRuns.set(sessionId, { command, excludeFromContext, output: "", running: true });
+    this.notify(sessionId);
+  }
+
+  finishBash(sessionId: string, result: BashResult): void {
+    const run = this.bashRuns.get(sessionId);
+    if (!run) return;
+    // pi's result carries the whole output; the deltas were only the preview.
+    this.bashRuns.set(sessionId, {
+      ...run,
+      running: false,
+      result,
+      output: result.output || run.output,
+    });
+    this.notify(sessionId);
+  }
+
+  bash(sessionId: string): BashRun | null {
+    return this.bashRuns.get(sessionId) ?? null;
+  }
+
+  private appendBashOutput(sessionId: string, delta: string): void {
+    const run = this.bashRuns.get(sessionId);
+    if (!run || !run.running) return;
+    this.bashRuns.set(sessionId, { ...run, output: run.output + delta });
   }
 
   openDialog(sessionId: string, request: ExtensionUiRequest): void {
@@ -269,6 +319,7 @@ export class SessionStore {
     this.blockedSince.delete(sessionId);
     this.presentations.delete(sessionId);
     this.notices.delete(sessionId);
+    this.bashRuns.delete(sessionId);
     this.storage?.remove(STORAGE_PREFIX + sessionId);
     this.notify(sessionId);
   }
@@ -316,6 +367,10 @@ export class SessionStore {
  * latency: a running tool then reads as at-least-this-old rather than
  * in-the-future, which is the safe direction for a live counter.
  */
+function isBashEntry(entry: SessionEntry, command: string): boolean {
+  return entry.message?.role === "bashExecution" && entry.message.command === command;
+}
+
 function localise(event: AgentEvent, at?: number): AgentEvent {
   if (event.type !== "tool_execution_start" || event.startedAt === undefined) return event;
   const skew = at === undefined ? 0 : Date.now() - at;

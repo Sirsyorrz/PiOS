@@ -398,3 +398,67 @@ test("slash commands are asked for and cached per session", async () => {
   client.disposeSession("s1");
   assert.deepEqual(client.getCommands("s1"), [], "a disposed session keeps nothing");
 });
+
+test("a bash run streams into the view and is held until its entry lands", async () => {
+  const { transports, client } = setup();
+  await flush();
+  transports.last.acceptHello([summary({ sessionId: "s1", leafId: null })]);
+  client.watch("s1");
+
+  client.runBash("s1", "ls", true);
+  const [sent] = transports.last.sentOfType("run_bash");
+  assert.equal(sent?.command, "ls");
+  assert.equal(sent?.excludeFromContext, true);
+
+  transports.last.emit({
+    v: WIRE_VERSION,
+    type: "bash_state",
+    sessionId: "s1",
+    command: "ls",
+    excludeFromContext: true,
+    running: true,
+  });
+  transports.last.emit({
+    v: WIRE_VERSION,
+    type: "agent_event",
+    sessionId: "s1",
+    seq: 3,
+    event: { type: "bash_execution_update", delta: "a\n" },
+  });
+  assert.equal(client.sessions.bash("s1")?.output, "a\n");
+  assert.equal(client.sessions.bash("s1")?.running, true);
+
+  transports.last.emit({
+    v: WIRE_VERSION,
+    type: "bash_state",
+    sessionId: "s1",
+    command: "ls",
+    excludeFromContext: true,
+    running: false,
+    result: { output: "a\nb\n", exitCode: 0, cancelled: false, truncated: false },
+  });
+  assert.equal(client.sessions.bash("s1")?.running, false);
+  assert.equal(client.sessions.bash("s1")?.output, "a\nb\n", "the result supersedes the deltas");
+  assert.equal(
+    transports.last.sentOfType("get_entries").length,
+    2,
+    "no agent_settled follows a bare command, so the entry is fetched here",
+  );
+
+  transports.last.emit({
+    v: WIRE_VERSION,
+    type: "entries",
+    sessionId: "s1",
+    entries: [
+      {
+        id: "e1",
+        parentId: null,
+        type: "message",
+        message: { role: "bashExecution", command: "ls", output: "a\nb\n", exitCode: 0 },
+      },
+    ],
+    leafId: "e1",
+    reset: false,
+  });
+  assert.equal(client.sessions.bash("s1"), null, "the persisted entry takes over the card");
+});

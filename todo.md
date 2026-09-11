@@ -4,9 +4,6 @@
 - compaction UI: compact + set_auto_compaction
 - absorb cc-usage into packages/server/src/usage.ts instead of shelling out
 - pios sessions in background, do we need to keep them open/running?
-- one-shot bash over rpc: single command, streamed via bash_execution_update,
-  abort_bash to cancel, excludeFromContext toggle per command. Serialised per
-  session (abort_bash has no id). Not the terminal.
 - terminal (needs a real PTY; one-shot bash does not grow into it)
 - chat header: too many controls in one flex row. Split into smaller pieces
   with room to expand (overflow menu or a second row), then move the file

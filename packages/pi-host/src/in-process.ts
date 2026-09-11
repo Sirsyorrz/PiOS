@@ -1,12 +1,13 @@
 import type {
   AgentEvent,
+  BashResult,
   CommandOption,
   ImageContent,
   ModelOption,
   SessionEntry,
   SessionStats,
 } from "@pios/protocol";
-import { AgentEventSchema, SessionStatsSchema } from "@pios/protocol";
+import { AgentEventSchema, BashResultSchema, SessionStatsSchema } from "@pios/protocol";
 import { BaseSession } from "./base-session.ts";
 import { sliceEntriesSince } from "./entries.ts";
 import type {
@@ -82,6 +83,13 @@ export interface AgentSessionLike {
   steer(text: string, images?: ImageContent[]): Promise<void>;
   followUp(text: string, images?: ImageContent[]): Promise<void>;
   abort(): Promise<void>;
+  /** Emits its own `bash_execution_update` events, so nothing is forwarded here. */
+  executeBash?(
+    command: string,
+    onChunk?: (chunk: string) => void,
+    options?: { excludeFromContext?: boolean },
+  ): Promise<unknown>;
+  abortBash?(): void;
   dispose(): void;
 }
 
@@ -301,6 +309,22 @@ export class InProcessSession extends BaseSession implements PiSession {
   async interrupt(): Promise<void> {
     await this.requireAgent().abort();
     this.setStatus("idle");
+  }
+
+  async runBash(command: string, options: { excludeFromContext?: boolean } = {}): Promise<BashResult> {
+    const agent = this.requireAgent();
+    if (!agent.executeBash) throw new Error("this host cannot run shell commands");
+    return this.withBash(command, options.excludeFromContext ?? false, async () =>
+      BashResultSchema.parse(
+        (await agent.executeBash!(command, undefined, {
+          excludeFromContext: options.excludeFromContext,
+        })) ?? {},
+      ),
+    );
+  }
+
+  async abortBash(): Promise<void> {
+    this.agent?.abortBash?.();
   }
 
   /**

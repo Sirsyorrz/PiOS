@@ -30,6 +30,7 @@ export function Composer({
   editorTextKey,
   nativeCommands = [],
   onSend,
+  onBash,
   onInterrupt,
   onComposingChange,
 }: {
@@ -49,6 +50,8 @@ export function Composer({
   /** App-level commands, e.g. `/new`. The dock's own are added here. */
   nativeCommands?: NativeCommand[];
   onSend: (text: string, images: ImageContent[], behavior?: StreamingBehavior) => void;
+  /** A `!` line: one shell command in the session cwd, not a prompt. */
+  onBash: (command: string, excludeFromContext: boolean) => void;
   onInterrupt: () => void;
   /** Focus of the field, so the pane can give the keyboard more room. */
   onComposingChange?: (composing: boolean) => void;
@@ -158,6 +161,15 @@ export function Composer({
     if (native) {
       edit("");
       native.run();
+      return;
+    }
+    // pi's own shell prefixes: `!` runs a command and keeps the output in the
+    // conversation, `!!` runs it for the reader alone. Images are ignored
+    // rather than silently dropped into a shell that has no use for them.
+    const bash = bashCommand(trimmed);
+    if (bash) {
+      onBash(bash.command, bash.excludeFromContext);
+      edit("");
       return;
     }
     // Mandatory while the agent streams, ignored otherwise; sending it always
@@ -305,6 +317,14 @@ export function Composer({
       </div>
     </div>
   );
+}
+
+/** Splits pi's `!` / `!!` prefix off a line, if it has one. */
+function bashCommand(text: string): { command: string; excludeFromContext: boolean } | null {
+  if (!text.startsWith("!")) return null;
+  const excludeFromContext = text.startsWith("!!");
+  const command = text.slice(excludeFromContext ? 2 : 1).trim();
+  return command ? { command, excludeFromContext } : null;
 }
 
 // A phone photo is ~4000px and several megabytes; the model gains nothing

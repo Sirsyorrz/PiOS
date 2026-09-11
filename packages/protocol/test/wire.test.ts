@@ -93,3 +93,24 @@ test("unknown fields on a known event survive validation", () => {
   assert.ok(result.ok);
   assert.deepEqual((result.value as Record<string, unknown>).futureField, { nested: true });
 });
+
+test("a bash frame defaults to keeping its output in context", () => {
+  const parsed = ClientFrameSchema.parse({
+    v: WIRE_VERSION,
+    type: "run_bash",
+    commandId: "c1",
+    sessionId: "s1",
+    command: "pnpm test",
+  });
+  assert.equal(parsed.type === "run_bash" && parsed.excludeFromContext, false);
+
+  const result = ServerFrameSchema.parse({
+    v: WIRE_VERSION,
+    type: "bash_state",
+    sessionId: "s1",
+    command: "pnpm test",
+    running: false,
+    result: { output: "ok\n", exitCode: 0 },
+  });
+  assert.equal(result.type === "bash_state" && result.result?.cancelled, false);
+});

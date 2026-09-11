@@ -9,6 +9,7 @@
  */
 import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { JsonlFramer, encodeJsonl } from "@pios/protocol/jsonl";
+import { runFakeBash } from "./fake-bash.ts";
 
 const argv = process.argv.slice(2);
 const arg = (name: string) => {
@@ -45,6 +46,7 @@ try {
 let counter = entries.length;
 let streaming = false;
 let aborted = false;
+let bashAborted = false;
 
 const write = (value: unknown) => process.stdout.write(encodeJsonl(value));
 const persist = () => writeFileSync(statePath, JSON.stringify(entries));
@@ -287,6 +289,34 @@ function handle(command: Record<string, any>) {
 
     case "abort":
       aborted = true;
+      return respond({ success: true });
+
+    // Mirrors pi: the response carries the whole BashResult, the deltas go out
+    // as events on the way, and the run is persisted as an entry of its own.
+    case "bash": {
+      bashAborted = false;
+      void runFakeBash(
+        command.command,
+        (delta) => write({ type: "bash_execution_update", id: command.id, delta }),
+        () => bashAborted,
+      ).then((result) => {
+        addEntry({
+          role: "bashExecution",
+          command: command.command,
+          output: result.output,
+          exitCode: result.exitCode ?? null,
+          cancelled: result.cancelled,
+          truncated: result.truncated,
+          timestamp: Date.now(),
+          excludeFromContext: command.excludeFromContext,
+        });
+        respond({ success: true, data: result });
+      });
+      return;
+    }
+
+    case "abort_bash":
+      bashAborted = true;
       return respond({ success: true });
 
     default:

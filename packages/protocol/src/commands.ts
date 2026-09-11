@@ -42,7 +42,12 @@ export const RpcCommandSchema = z.discriminatedUnion("type", [
   withId({ type: z.literal("set_auto_compaction"), enabled: z.boolean() }),
   withId({ type: z.literal("set_auto_retry"), enabled: z.boolean() }),
   withId({ type: z.literal("abort_retry") }),
-  withId({ type: z.literal("bash"), command: z.string() }),
+  withId({
+    type: z.literal("bash"),
+    command: z.string(),
+    /** Runs the command but keeps its output out of the LLM context (`!!`). */
+    excludeFromContext: z.boolean().optional(),
+  }),
   withId({ type: z.literal("abort_bash") }),
   withId({ type: z.literal("new_session"), parentSession: z.string().optional() }),
   withId({ type: z.literal("switch_session"), sessionPath: z.string() }),
@@ -126,6 +131,21 @@ export const SessionStatsSchema = z.looseObject({
     .optional(),
 });
 export type SessionStats = z.infer<typeof SessionStatsSchema>;
+
+/**
+ * Outcome of one `bash` command.
+ *
+ * `exitCode` is absent when the process was killed rather than exiting, and
+ * `fullOutputPath` appears only once pi has truncated the output.
+ */
+export const BashResultSchema = z.looseObject({
+  output: z.string().default(""),
+  exitCode: z.number().nullable().optional(),
+  cancelled: z.boolean().default(false),
+  truncated: z.boolean().default(false),
+  fullOutputPath: z.string().nullable().optional(),
+});
+export type BashResult = z.infer<typeof BashResultSchema>;
 
 export const ThinkingLevelsDataSchema = z.looseObject({
   levels: z.array(z.string()),

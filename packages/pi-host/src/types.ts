@@ -1,5 +1,6 @@
 import type {
   AgentEvent,
+  BashResult,
   CommandOption,
   ModelOption,
   ExtensionUiRequest,
@@ -22,6 +23,13 @@ export type SessionStatus = "starting" | "idle" | "running" | "crashed" | "dispo
  */
 export type HostEvent =
   | { type: "agent_event"; event: AgentEvent }
+  | {
+      type: "bash_state";
+      command: string;
+      excludeFromContext: boolean;
+      running: boolean;
+      result?: BashResult;
+    }
   | { type: "extension_ui_request"; request: ExtensionUiRequest }
   | { type: "extension_ui_closed"; id: string }
   | { type: "status"; status: SessionStatus }
@@ -129,6 +137,17 @@ export interface PiSession {
 
   interrupt(): Promise<void>;
   dispose(): Promise<void>;
+
+  /**
+   * Runs one shell command in the session cwd, as pi's `!` does.
+   *
+   * One at a time per session: `abort_bash` carries no id, so a second
+   * concurrent command would make cancellation ambiguous. Output is recorded
+   * in the transcript unless `excludeFromContext` keeps it out of the model's
+   * view.
+   */
+  runBash(command: string, options?: { excludeFromContext?: boolean }): Promise<BashResult>;
+  abortBash(): Promise<void>;
 
   /** Dialogs waiting on a human, oldest first. Survives client reconnects. */
   readonly pendingDialogs: ExtensionUiRequest[];

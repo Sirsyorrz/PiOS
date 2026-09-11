@@ -601,3 +601,30 @@ test("a device registers a push subscription and takes it back", async () => {
   assert.equal(gone.status, 200);
   assert.equal(harness.server.push.list().length, 0);
 });
+
+test("a bash command streams to every subscriber and is acked once", async () => {
+  const client = await hello(harness);
+  const cwd = join(harness.dir, "bash");
+  mkdirSync(cwd, { recursive: true });
+  const sessionId = await createSession(client, cwd);
+  await client.waitForCommand(client.send({ type: "subscribe", sessionId }));
+
+  const commandId = client.send({ type: "run_bash", sessionId, command: "echo hi", excludeFromContext: true });
+  const started = await client.waitFor((f) => f.type === "bash_state" && f.running);
+  assert.equal(started.type === "bash_state" && started.excludeFromContext, true);
+
+  const ack = await client.waitForCommand(commandId);
+  assert.equal(ack.type, "ack");
+
+  const finished = await client.waitFor((f) => f.type === "bash_state" && !f.running);
+  assert.equal(finished.type === "bash_state" && finished.result?.exitCode, 0);
+
+  // A redelivery must not run the command a second time. Matched on the flag
+  // as well as the id: the first ack for it is already in `received`.
+  client.send({ type: "run_bash", sessionId, command: "echo hi", excludeFromContext: true, commandId });
+  await client.waitFor((f) => f.type === "ack" && f.commandId === commandId && f.duplicate);
+
+  const entries = await client.waitForCommand(client.send({ type: "get_entries", sessionId }));
+  assert.equal(entries.type === "entries" && entries.entries.length, 1);
+  client.close();
+});

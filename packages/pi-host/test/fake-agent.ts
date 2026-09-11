@@ -6,6 +6,7 @@
  */
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import type { SessionEntry } from "@pios/protocol";
+import { runFakeBash } from "./fake-bash.ts";
 import type { AgentModelLike, AgentSessionLike } from "../src/in-process.ts";
 import type { CreateSessionOptions } from "../src/types.ts";
 
@@ -45,6 +46,7 @@ export class FakeAgentSession implements AgentSessionLike {
   private counter = 0;
   private listeners = new Set<(event: unknown) => void>();
   private aborted = false;
+  private bashAborted = false;
   disposed = false;
 
   getSessionStats() {
@@ -157,6 +159,37 @@ export class FakeAgentSession implements AgentSessionLike {
   async abort(): Promise<void> {
     this.aborted = true;
     this.isStreaming = false;
+  }
+
+  async executeBash(
+    command: string,
+    onChunk?: (chunk: string) => void,
+    options?: { excludeFromContext?: boolean },
+  ) {
+    this.bashAborted = false;
+    const result = await runFakeBash(
+      command,
+      (delta) => {
+        onChunk?.(delta);
+        this.emit({ type: "bash_execution_update", delta });
+      },
+      () => this.bashAborted,
+    );
+    this.addEntry({
+      role: "bashExecution",
+      command,
+      output: result.output,
+      exitCode: result.exitCode ?? null,
+      cancelled: result.cancelled,
+      truncated: result.truncated,
+      timestamp: Date.now(),
+      excludeFromContext: options?.excludeFromContext,
+    });
+    return result;
+  }
+
+  abortBash(): void {
+    this.bashAborted = true;
   }
 
   dispose(): void {

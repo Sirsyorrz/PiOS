@@ -1,6 +1,7 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { SettingsManager } from "@earendil-works/pi-coding-agent";
 import type {
+  BashResult,
   CommandOption,
   ExtensionUiResponse,
   ImageContent,
@@ -9,6 +10,7 @@ import type {
 } from "@pios/protocol";
 import {
   AgentEventSchema,
+  BashResultSchema,
   ExtensionUiRequestSchema,
   GetEntriesDataSchema,
   RpcResponseSchema,
@@ -46,11 +48,14 @@ export interface SubprocessOptions {
   /** Overridable so tests can branch a stub's session format. */
   branchSessionFile?: BranchSessionFile;
   requestTimeoutMs?: number;
+  /** Separate from `requestTimeoutMs`: a build or a test run is not a hang. */
+  bashTimeoutMs?: number;
   /** Upper bound on an unanswered extension dialog. See `dialogTimers`. */
   dialogTimeoutMs?: number;
 }
 
 const DEFAULT_REQUEST_TIMEOUT_MS = 120_000;
+const DEFAULT_BASH_TIMEOUT_MS = 30 * 60_000;
 const DEFAULT_DIALOG_TIMEOUT_MS = 10 * 60_000;
 
 /**
@@ -248,7 +253,7 @@ export class SubprocessSession extends BaseSession implements PiSession {
     waiter.resolve(response);
   }
 
-  private request(command: Record<string, unknown>): Promise<RpcResponse> {
+  private request(command: Record<string, unknown>, timeoutMs?: number): Promise<RpcResponse> {
     const proc = this.proc;
     if (!proc || this.disposed) {
       return Promise.resolve({
@@ -268,7 +273,7 @@ export class SubprocessSession extends BaseSession implements PiSession {
           success: false,
           error: "timed out waiting for pi",
         });
-      }, this.options.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS);
+      }, timeoutMs ?? this.options.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS);
       this.pending.set(id, { resolve, timer });
       proc.stdin.write(encodeJsonl({ ...command, id }));
     });
@@ -439,6 +444,22 @@ export class SubprocessSession extends BaseSession implements PiSession {
   async interrupt(): Promise<void> {
     await this.request({ type: "abort" });
     this.setStatus("idle");
+  }
+
+  async runBash(command: string, options: { excludeFromContext?: boolean } = {}): Promise<BashResult> {
+    const exclude = options.excludeFromContext ?? false;
+    return this.withBash(command, exclude, async () => {
+      const response = await this.request(
+        { type: "bash", command, excludeFromContext: exclude },
+        this.options.bashTimeoutMs ?? DEFAULT_BASH_TIMEOUT_MS,
+      );
+      if (!response.success) throw new Error(response.error ?? "bash failed");
+      return BashResultSchema.parse(response.data ?? {});
+    });
+  }
+
+  async abortBash(): Promise<void> {
+    await this.request({ type: "abort_bash" });
   }
 
   async dispose(): Promise<void> {

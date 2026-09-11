@@ -8,7 +8,7 @@ import {
   type TranscriptStatus,
 } from "@pios/protocol";
 import type { OutboxEntry } from "./outbox.ts";
-import type { Notice, SessionStore } from "./session-store.ts";
+import type { BashRun, Notice, SessionStore } from "./session-store.ts";
 
 export type ViewItem =
   /** `entryId` is present only once the entry is persisted; live messages have none. */
@@ -30,6 +30,8 @@ export interface SessionView {
   presentation: SessionPresentation;
   /** Transient extension messages awaiting dismissal. */
   notices: Notice[];
+  /** A `!` command running now, or the last one until its entry lands. */
+  bash: BashRun | null;
   status: TranscriptStatus;
 }
 
@@ -116,6 +118,7 @@ export function sessionView(
     dialogs: store.openDialogs(sessionId),
     presentation: store.presentation(sessionId),
     notices: store.openNotices(sessionId),
+    bash: store.bash(sessionId),
     status: transcript.status,
   };
 }

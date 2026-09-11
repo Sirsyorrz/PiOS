@@ -98,6 +98,8 @@ export const BashExecutionMessageSchema = z.looseObject({
   truncated: z.boolean().optional(),
   fullOutputPath: z.string().nullable().optional(),
   timestamp: z.number().optional(),
+  /** Ran with `!!`: shown in the transcript, never sent to the model. */
+  excludeFromContext: z.boolean().optional(),
 });
 
 export const AgentMessageSchema = z.discriminatedUnion("role", [

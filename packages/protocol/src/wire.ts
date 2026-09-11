@@ -2,7 +2,12 @@ import { z } from "zod";
 import { AgentEventSchema, ExtensionUiRequestSchema } from "./events.ts";
 import { SessionPresentationSchema } from "./presentation.ts";
 import { ImageContentSchema, SessionEntrySchema } from "./messages.ts";
-import { SessionStateSchema, SessionStatsSchema, StreamingBehaviorSchema } from "./commands.ts";
+import {
+  BashResultSchema,
+  SessionStateSchema,
+  SessionStatsSchema,
+  StreamingBehaviorSchema,
+} from "./commands.ts";
 
 /**
  * PiOS wire protocol: the client-to-daemon envelope carried over one
@@ -106,6 +111,22 @@ export const ClientFrameSchema = z.discriminatedUnion("type", [
     streamingBehavior: StreamingBehaviorSchema.optional(),
   }),
   Envelope({ type: z.literal("interrupt"), sessionId: z.string() }),
+  /**
+   * One shell command in the session cwd, as pi's `!` does. Not a terminal:
+   * there is no PTY, so anything interactive hangs until `abort_bash`.
+   *
+   * Never queued. A shell command replayed minutes later, against a tree that
+   * has moved on, is not what the user asked for.
+   */
+  Envelope({
+    type: z.literal("run_bash"),
+    sessionId: z.string(),
+    command: z.string(),
+    /** pi's `!!`: the output is shown but never reaches the model. */
+    excludeFromContext: z.boolean().default(false),
+  }),
+  /** Cancels the running command. Carries no id: pi allows only one. */
+  Envelope({ type: z.literal("abort_bash"), sessionId: z.string() }),
   /**
    * Continues the conversation from just before a user turn, in a new session.
    *
@@ -339,6 +360,21 @@ export const ServerFrameSchema = z.discriminatedUnion("type", [
     type: z.literal("extension_ui_state"),
     sessionId: z.string(),
     presentation: SessionPresentationSchema,
+  }),
+  /**
+   * A shell command started or finished, broadcast to every subscriber.
+   *
+   * Output arrives in between as `bash_execution_update` agent events, which
+   * carry no command text, so this is what gives them a heading and an end.
+   */
+  ServerEnvelope({
+    type: z.literal("bash_state"),
+    sessionId: z.string(),
+    command: z.string(),
+    excludeFromContext: z.boolean().default(false),
+    running: z.boolean(),
+    /** Present once the command has finished. */
+    result: BashResultSchema.optional(),
   }),
   /** Reply to `rewind`: where the branch now lives, and what to re-compose. */
   ServerEnvelope({

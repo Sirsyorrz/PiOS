@@ -15,7 +15,7 @@ import { GitControl } from "./git-view.tsx";
 import { FileView } from "./file-view.tsx";
 import { recallOpenFile, rememberOpenFile } from "../file-edit.ts";
 import { ChevronDownIcon, ChevronLeftIcon, FileIcon, PlusIcon } from "./icons.tsx";
-import { MessageBubble, StreamingBubble } from "./message.tsx";
+import { BashCard, MessageBubble, StreamingBubble } from "./message.tsx";
 import { SessionStatsFooter } from "./session-stats.tsx";
 import { useSettings } from "../settings.ts";
 
@@ -215,7 +215,21 @@ export function ChatView({
             </div>
           );
         })}
+        {/* Held until pi's own entry for the run arrives, so the output does
+            not blink out between the last delta and the transcript. */}
+        {view?.bash ? (
+          <BashCard
+            command={view.bash.command}
+            output={view.bash.output}
+            exitCode={view.bash.result?.exitCode ?? undefined}
+            cancelled={view.bash.result?.cancelled}
+            excludeFromContext={view.bash.excludeFromContext}
+            running={view.bash.running}
+            onAbort={() => client.abortBash(sessionId)}
+          />
+        ) : null}
         {settings.showSessionStats ? (
+
           <SessionStatsFooter
             sessionId={sessionId}
             running={view?.running ?? false}
@@ -296,6 +310,9 @@ export function ChatView({
           editorTextKey={rewound?.at}
           nativeCommands={nativeCommands}
           onSend={send}
+          onBash={(command, excludeFromContext) =>
+            client.runBash(sessionId, command, excludeFromContext)
+          }
           onInterrupt={() => client.interrupt(sessionId)}
           onComposingChange={setComposing}
         />

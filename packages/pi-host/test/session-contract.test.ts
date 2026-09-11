@@ -176,6 +176,50 @@ for (const harness of harnesses) {
       assert.equal(stats.contextUsage?.contextWindow, 200_000);
     });
 
+    test("a bash command streams, announces both ends, and is persisted", async () => {
+      const local = await harness.start(dir, "sbash");
+      const seen: string[] = [];
+      let deltas = "";
+      const off = local.subscribe((b) => {
+        if (b.event.type === "bash_state") seen.push(b.event.running ? "start" : "end");
+        if (b.event.type === "agent_event" && b.event.event.type === "bash_execution_update") {
+          deltas += b.event.event.delta;
+        }
+      });
+
+      const result = await local.runBash("echo hi");
+      off();
+
+      assert.deepEqual(seen, ["start", "end"]);
+      assert.equal(result.exitCode, 0);
+      assert.equal(result.cancelled, false);
+      assert.equal(deltas, result.output, "the deltas add up to the result");
+
+      const page = await local.getEntries();
+      const entry = page.entries.at(-1)!;
+      assert.equal(entry.message?.role, "bashExecution");
+      assert.equal((entry.message as { command: string }).command, "echo hi");
+      await local.dispose();
+    });
+
+    test("a !! command is recorded as excluded from context", async () => {
+      const local = await harness.start(dir, "sbash2");
+      await local.runBash("echo secret", { excludeFromContext: true });
+      const entry = (await local.getEntries()).entries.at(-1)!;
+      assert.equal((entry.message as { excludeFromContext?: boolean }).excludeFromContext, true);
+      await local.dispose();
+    });
+
+    test("a running command can be cancelled, and only one runs at a time", async () => {
+      const local = await harness.start(dir, "sbash3");
+      const running = local.runBash("SLOW_BASH");
+      await assert.rejects(() => local.runBash("echo second"), /already running/);
+      await local.abortBash();
+      const result = await running;
+      assert.equal(result.cancelled, true);
+      await local.dispose();
+    });
+
     test("replay returns the tail after a seq and flags nothing missing", async () => {
       const before = session.replay();
       assert.equal(before.gap, false);

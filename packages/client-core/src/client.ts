@@ -390,6 +390,22 @@ export class PiosClient {
   }
 
   /**
+   * Runs one shell command in the session cwd, as pi's `!` does.
+   *
+   * Not queued, unlike a prompt: a command replayed after a reconnect would
+   * run against a tree that has moved on. Output arrives as events, and the
+   * daemon broadcasts start and end, so every attached device sees the run.
+   */
+  runBash(sessionId: string, command: string, excludeFromContext = false): boolean {
+    return this.send({ type: "run_bash", sessionId, command, excludeFromContext });
+  }
+
+  /** Cancels the session's running command. pi runs one at a time. */
+  abortBash(sessionId: string): boolean {
+    return this.send({ type: "abort_bash", sessionId });
+  }
+
+  /**
    * Answers an open extension dialog.
    *
    * Closed locally on send rather than on the daemon's echo: the agent is
@@ -550,6 +566,19 @@ export class PiosClient {
       case "extension_ui_closed":
         this.sessions.closeDialog(frame.sessionId, frame.requestId);
         break;
+      case "bash_state": {
+        if (frame.running) {
+          this.sessions.startBash(frame.sessionId, frame.command, frame.excludeFromContext);
+          break;
+        }
+        this.sessions.finishBash(frame.sessionId, frame.result ?? { output: "", cancelled: false, truncated: false });
+        // pi persists the run as an entry of its own, and no `agent_settled`
+        // follows a bare command, so nothing else would go and fetch it.
+        if (this.subscribed.has(frame.sessionId)) {
+          this.fetchEntries(frame.sessionId, this.sessions.cursor(frame.sessionId));
+        }
+        break;
+      }
       case "rewound": {
         const text = frame.text ?? "";
         this.rewoundText.set(frame.branchSessionId, text);

@@ -37,10 +37,13 @@ export function MessageBubble({ message, tools, cwd, blocked, onRewind }: {
   }
   if (message.role === "bashExecution") {
     return (
-      <div className="bubble bash">
-        <div className="muted">$ {message.command}</div>
-        <pre>{message.output}</pre>
-      </div>
+      <BashCard
+        command={message.command}
+        output={message.output}
+        exitCode={message.exitCode ?? undefined}
+        cancelled={message.cancelled}
+        excludeFromContext={message.excludeFromContext}
+      />
     );
   }
   if (message.role === "toolResult") {
@@ -67,6 +70,63 @@ export function MessageBubble({ message, tools, cwd, blocked, onRewind }: {
       })}
     </div>
   );
+}
+
+/**
+ * One `!` command: what ran, what it printed, how it ended.
+ *
+ * Shared by the live run and the entry pi persists for it, so the card does
+ * not change shape underneath the reader when the command finishes.
+ */
+export function BashCard({
+  command,
+  output,
+  exitCode,
+  cancelled,
+  excludeFromContext,
+  running,
+  onAbort,
+}: {
+  command: string;
+  output: string;
+  exitCode?: number;
+  cancelled?: boolean;
+  /** Ran with `!!`: shown here, never sent to the model. */
+  excludeFromContext?: boolean;
+  running?: boolean;
+  onAbort?: () => void;
+}) {
+  return (
+    <div className={`bubble bash${excludeFromContext ? " excluded" : ""}`}>
+      <div className="row">
+        <span className="muted line">$ {command}</span>
+        <span className="spacer" />
+        {running && onAbort ? (
+          <button type="button" className="ghost" onClick={onAbort}>
+            stop
+          </button>
+        ) : null}
+      </div>
+      {output ? <pre>{output}</pre> : null}
+      <div className="muted">{bashFooter({ running, cancelled, exitCode, excludeFromContext })}</div>
+    </div>
+  );
+}
+
+function bashFooter(state: {
+  running?: boolean;
+  cancelled?: boolean;
+  exitCode?: number;
+  excludeFromContext?: boolean;
+}): string {
+  const parts: string[] = [];
+  if (state.running) parts.push("running");
+  else if (state.cancelled) parts.push("cancelled");
+  else if (state.exitCode !== undefined && state.exitCode !== 0) {
+    parts.push(`exit ${state.exitCode}`);
+  }
+  if (state.excludeFromContext) parts.push("not in context");
+  return parts.join(" \u00b7 ");
 }
 
 /** The in-flight assistant message: same shapes, none of them final. */

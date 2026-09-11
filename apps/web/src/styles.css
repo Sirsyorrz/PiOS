@@ -1255,6 +1255,23 @@ button.scroll-bottom {
   }
 }
 
+/* A `!` run is the user's own command, not the agent's, so it sits on the
+   same side as their prompts; `!!` output never reaches the model, and the
+   dashed edge is what says so without a label in the way. */
+.bubble.bash {
+  align-self: flex-end;
+  max-width: min(95%, 46rem);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 8px 10px;
+}
+
+.bubble.bash.excluded {
+  border-style: dashed;
+  opacity: 0.75;
+}
+
+.bubble.bash pre,
 .tool pre {
   background: rgba(0, 0, 0, 0.35);
   border: 1px solid var(--line);

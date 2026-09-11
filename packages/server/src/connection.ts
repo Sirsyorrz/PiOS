@@ -286,6 +286,37 @@ export class Connection {
         return this.ack(frame.commandId);
       }
 
+      case "run_bash": {
+        const session = this.require(frame.sessionId, frame.commandId);
+        if (!session) return;
+        // Running arbitrary shell twice is worse than not running it at all,
+        // so a redelivered frame is acked rather than replayed.
+        if (!this.deps.ledger.claim(frame.commandId)) {
+          return this.ack(frame.commandId, true);
+        }
+        try {
+          // The result reaches every subscriber as `bash_state`; this only
+          // tells the caller the command was accepted.
+          await session.runBash(frame.command, {
+            excludeFromContext: frame.excludeFromContext,
+          });
+        } catch (error) {
+          return this.fail(
+            frame.commandId,
+            "agent_busy",
+            error instanceof Error ? error.message : String(error),
+          );
+        }
+        return this.ack(frame.commandId);
+      }
+
+      case "abort_bash": {
+        const session = this.require(frame.sessionId, frame.commandId);
+        if (!session) return;
+        await session.abortBash();
+        return this.ack(frame.commandId);
+      }
+
       case "rewind": {
         const session = this.require(frame.sessionId, frame.commandId);
         if (!session) return;
@@ -490,6 +521,16 @@ function forwardFrame(
   switch (event.type) {
     case "agent_event":
       return { v: WIRE_VERSION, type: "agent_event", sessionId, seq, at, event: event.event };
+    case "bash_state":
+      return {
+        v: WIRE_VERSION,
+        type: "bash_state",
+        sessionId,
+        command: event.command,
+        excludeFromContext: event.excludeFromContext,
+        running: event.running,
+        result: event.result,
+      };
     case "extension_ui_request":
       return { v: WIRE_VERSION, type: "extension_ui_request", sessionId, request: event.request };
     case "extension_ui_closed":
