@@ -1,5 +1,6 @@
 - git integration: remote operations (fetch/pull/push), branch switching
 - surface errors (e.g. rate limits)
+- pios sessions in background, do we need to keep them open?
 - terminal
 - text editor
 - @ fuzzy file picker

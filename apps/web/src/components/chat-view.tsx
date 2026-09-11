@@ -1,6 +1,7 @@
 import type { ImageContent, SessionSummary, StreamingBehavior } from "@pios/protocol";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useClient, useSessionView } from "../client-provider.tsx";
+import { useEdgeSwipe } from "../edge-swipe.ts";
 import { FileAccessContext } from "../files.ts";
 import { collapseHome } from "../format.ts";
 import { useStickToBottom } from "../scroll.ts";
@@ -66,6 +67,8 @@ export function ChatView({
   // Typing collapses the chrome around the field, so the keyboard leaves as
   // much transcript on screen as possible.
   const [composing, setComposing] = useState(false);
+  // Same destination as the back button, for the gesture that replaces it.
+  const edgeSwipe = useEdgeSwipe(onBack);
 
   // The dock floats over the transcript, so the transcript has to reserve
   // exactly as much room as the dock currently takes. That reservation is
@@ -113,7 +116,7 @@ export function ChatView({
 
   return (
     <FileAccessContext.Provider value={files}>
-    <section className={`chat${composing ? " composing" : ""}`} ref={pane}>
+    <section className={`chat${composing ? " composing" : ""}`} ref={pane} {...edgeSwipe}>
       <header className="chat-header">
         <button type="button" className="back icon ghost" onClick={onBack} aria-label="back to sessions">
           <ChevronLeftIcon />
