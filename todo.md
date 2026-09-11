@@ -25,3 +25,6 @@
     change, but notifications still come only from a live process
   - the list is ordered by mtime; a long unattended run outranks the
     conversation you were just in
+
+- when editing a file while agent is running, every time the agent updates transcript, the text editor refreshes
+- the git status pill sometimes doesnt show in header?
