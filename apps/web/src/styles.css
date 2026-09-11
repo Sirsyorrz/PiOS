@@ -1160,6 +1160,10 @@ button.scroll-bottom {
   border-collapse: collapse;
   font-size: 0.95em;
   line-height: 1.4;
+  /* Size to content, not to the viewport: without this the table shrinks to
+     the wrapper and auto-layout collapses each column to its longest word. */
+  width: max-content;
+  max-width: none;
 }
 
 .md-table th,
@@ -1168,6 +1172,9 @@ button.scroll-bottom {
   border: 1px solid var(--border, rgba(255, 255, 255, 0.15));
   text-align: left;
   vertical-align: top;
+  /* A prose column would otherwise make the whole table scroll for pages. */
+  max-width: 36ch;
+  overflow-wrap: break-word;
 }
 
 .md-table th {
