@@ -1000,6 +1000,18 @@ button.scroll-bottom {
   margin-top: auto;
 }
 
+/* Accounting, not conversation: it sits under the last turn and stays quiet. */
+.session-stats {
+  display: flex;
+  /* The transcript is a flex column: without this the row is squeezed flat. */
+  flex: none;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 4px 12px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
 .transcript {
   display: flex;
   flex-direction: column;

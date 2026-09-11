@@ -47,6 +47,19 @@ export class FakeAgentSession implements AgentSessionLike {
   private aborted = false;
   disposed = false;
 
+  getSessionStats() {
+    return {
+      sessionId: this.sessionId,
+      userMessages: 2,
+      assistantMessages: 2,
+      toolCalls: 1,
+      totalMessages: 5,
+      tokens: { input: 1200, output: 300, cacheRead: 800, cacheWrite: 100, total: 2400 },
+      cost: 0.0125,
+      contextUsage: { tokens: 24_000, contextWindow: 200_000, percent: 12 },
+    };
+  }
+
   readonly sessionManager = {
     getEntries: () => this.entries,
     getLeafId: () => this.entries.at(-1)?.id ?? null,

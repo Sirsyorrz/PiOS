@@ -16,6 +16,8 @@ import { FileView } from "./file-view.tsx";
 import { recallOpenFile, rememberOpenFile } from "../file-edit.ts";
 import { ChevronDownIcon, ChevronLeftIcon, FileIcon, PlusIcon } from "./icons.tsx";
 import { MessageBubble, StreamingBubble } from "./message.tsx";
+import { SessionStatsFooter } from "./session-stats.tsx";
+import { useSettings } from "../settings.ts";
 
 /** Extension widgets for one slot. pi defaults an unplaced widget above. */
 function widgets(view: SessionView | null, placement: "aboveEditor" | "belowEditor") {
@@ -63,6 +65,7 @@ export function ChatView({
 }) {
   const client = useClient();
   const view = useSessionView(sessionId);
+  const settings = useSettings();
   const pane = useRef<HTMLElement>(null);
   const dock = useRef<HTMLDivElement>(null);
   const transcript = useStickToBottom(view);
@@ -212,6 +215,13 @@ export function ChatView({
             </div>
           );
         })}
+        {settings.showSessionStats ? (
+          <SessionStatsFooter
+            sessionId={sessionId}
+            running={view?.running ?? false}
+            onResize={transcript.settle}
+          />
+        ) : null}
       </div>
 
       <div className="dock" ref={dock}>

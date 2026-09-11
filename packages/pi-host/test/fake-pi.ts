@@ -207,6 +207,22 @@ function handle(command: Record<string, any>) {
         },
       });
 
+    case "get_session_stats":
+      return respond({
+        success: true,
+        data: {
+          sessionFile: statePath,
+          sessionId,
+          userMessages: 2,
+          assistantMessages: 2,
+          toolCalls: 1,
+          totalMessages: 5,
+          tokens: { input: 1200, output: 300, cacheRead: 800, cacheWrite: 100, total: 2400 },
+          cost: 0.0125,
+          contextUsage: { tokens: 24_000, contextWindow: 200_000, percent: 12 },
+        },
+      });
+
     case "get_available_models":
       return respond({ success: true, data: { models: catalogue } });
 

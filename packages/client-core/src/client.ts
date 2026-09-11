@@ -6,6 +6,7 @@ import {
   type CommandOption,
   type ModelOption,
   type ResumableSessionWire,
+  type SessionStats,
   type SessionSummary,
   type StreamingBehavior,
 } from "@pios/protocol";
@@ -92,6 +93,9 @@ export class PiosClient {
   private readonly commandHandlers = new Set<
     (sessionId: string, commands: CommandOption[]) => void
   >();
+  /** Session accounting by session, from the last `requestStats`. */
+  private readonly stats = new Map<string, SessionStats>();
+  private readonly statsHandlers = new Set<(sessionId: string, stats: SessionStats) => void>();
   /** Failures of one-off commands, for the UI to say out loud. */
   private readonly commandErrorHandlers = new Set<(error: CommandError) => void>();
   private readonly rewindHandlers = new Set<(branchSessionId: string, text: string) => void>();
@@ -246,6 +250,25 @@ export class PiosClient {
     return () => this.commandHandlers.delete(handler);
   }
 
+  /**
+   * Asks for the session's token, cost and context accounting.
+   *
+   * Not queued: the numbers move with every turn, so a reply to a question
+   * asked before a reconnect describes a session that no longer exists.
+   */
+  requestStats(sessionId: string): boolean {
+    return this.send({ type: "get_stats", sessionId });
+  }
+
+  getStats(sessionId: string): SessionStats | null {
+    return this.stats.get(sessionId) ?? null;
+  }
+
+  onStats(handler: (sessionId: string, stats: SessionStats) => void): () => void {
+    this.statsHandlers.add(handler);
+    return () => this.statsHandlers.delete(handler);
+  }
+
   onModels(handler: (sessionId: string, listing: ModelListing) => void): () => void {
     this.modelHandlers.add(handler);
     return () => this.modelHandlers.delete(handler);
@@ -344,6 +367,7 @@ export class PiosClient {
     this.subscribed.delete(sessionId);
     this.models.delete(sessionId);
     this.commands.delete(sessionId);
+    this.stats.delete(sessionId);
     this.sessions.clear(sessionId);
     this.supervisor.forgetSession(sessionId);
     return this.send({ type: "dispose_session", sessionId });
@@ -497,6 +521,11 @@ export class PiosClient {
         this.commands.set(frame.sessionId, frame.commands);
         for (const handler of [...this.commandHandlers])
           handler(frame.sessionId, frame.commands);
+        break;
+      }
+      case "session_stats": {
+        this.stats.set(frame.sessionId, frame.stats);
+        for (const handler of [...this.statsHandlers]) handler(frame.sessionId, frame.stats);
         break;
       }
       case "models": {

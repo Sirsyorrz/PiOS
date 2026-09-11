@@ -12,6 +12,8 @@ export interface Settings {
   showThinking: boolean;
   /** Finished tool cards start expanded. A running one always is. */
   expandTools: boolean;
+  /** Token, cost and context accounting under the transcript. */
+  showSessionStats: boolean;
   /** What a prompt typed mid-turn does: steer now, or queue as a follow-up. */
   steeringMode: StreamingBehavior;
   directorySort: DirectorySort;
@@ -20,6 +22,7 @@ export interface Settings {
 export const DEFAULT_SETTINGS: Settings = {
   showThinking: true,
   expandTools: false,
+  showSessionStats: false,
   steeringMode: "steer",
   directorySort: "recent",
 };
@@ -42,6 +45,7 @@ export function loadSettings(): Settings {
   return {
     showThinking: bool(record.showThinking, DEFAULT_SETTINGS.showThinking),
     expandTools: bool(record.expandTools, DEFAULT_SETTINGS.expandTools),
+    showSessionStats: bool(record.showSessionStats, DEFAULT_SETTINGS.showSessionStats),
     steeringMode:
       record.steeringMode === "steer" || record.steeringMode === "followUp"
         ? record.steeringMode

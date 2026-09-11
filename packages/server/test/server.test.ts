@@ -556,6 +556,18 @@ test("the slash command list crosses the wire", async () => {
   client.close();
 });
 
+test("session stats cross the wire", async () => {
+  const client = await hello(harness);
+  const cwd = join(harness.dir, "stats");
+  mkdirSync(cwd, { recursive: true });
+
+  const sessionId = await createSession(client, cwd);
+  const reply = await client.waitForCommand(client.send({ type: "get_stats", sessionId }));
+  assert.equal(reply.type, "session_stats");
+  assert.equal(reply.type === "session_stats" ? reply.stats.tokens?.total : null, 2400);
+  client.close();
+});
+
 test("a device registers a push subscription and takes it back", async () => {
   const key = await fetch(`${harness.baseUrl}/push/key`, {
     headers: { authorization: `Bearer ${harness.deviceToken}` },

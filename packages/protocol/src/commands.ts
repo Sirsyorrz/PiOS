@@ -96,6 +96,37 @@ export const GetEntriesDataSchema = z.looseObject({
 });
 export type GetEntriesData = z.infer<typeof GetEntriesDataSchema>;
 
+/**
+ * Token, cost and context accounting for one session.
+ *
+ * `contextUsage` is absent until pi knows the model's window, and its numbers
+ * are null right after a compaction until a fresh response reports usage.
+ */
+export const SessionStatsSchema = z.looseObject({
+  userMessages: z.number().optional(),
+  assistantMessages: z.number().optional(),
+  toolCalls: z.number().optional(),
+  totalMessages: z.number().optional(),
+  tokens: z
+    .looseObject({
+      input: z.number().optional(),
+      output: z.number().optional(),
+      cacheRead: z.number().optional(),
+      cacheWrite: z.number().optional(),
+      total: z.number().optional(),
+    })
+    .optional(),
+  cost: z.number().optional(),
+  contextUsage: z
+    .looseObject({
+      tokens: z.number().nullable().optional(),
+      contextWindow: z.number().optional(),
+      percent: z.number().nullable().optional(),
+    })
+    .optional(),
+});
+export type SessionStats = z.infer<typeof SessionStatsSchema>;
+
 export const ThinkingLevelsDataSchema = z.looseObject({
   levels: z.array(z.string()),
 });

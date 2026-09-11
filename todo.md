@@ -1,8 +1,6 @@
 - surface errors (e.g. rate limits), plus summarization_retry_* / setWidget /
   set_editor_text, which are parsed but never rendered
 - /name slash command on set_session_name
-- session stats (get_session_stats) at the foot of the transcript, after agent
-  output, behind a Settings toggle. Separate from the /usage plan report
 - compaction UI: compact + set_auto_compaction
 - absorb cc-usage into packages/server/src/usage.ts instead of shelling out
 - pios sessions in background, do we need to keep them open/running?

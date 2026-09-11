@@ -4,8 +4,9 @@ import type {
   ImageContent,
   ModelOption,
   SessionEntry,
+  SessionStats,
 } from "@pios/protocol";
-import { AgentEventSchema } from "@pios/protocol";
+import { AgentEventSchema, SessionStatsSchema } from "@pios/protocol";
 import { BaseSession } from "./base-session.ts";
 import { sliceEntriesSince } from "./entries.ts";
 import type {
@@ -58,6 +59,7 @@ export interface AgentSessionLike {
   readonly resourceLoader?: {
     getSkills(): { skills: readonly CommandSourceLike[] };
   };
+  getSessionStats?(): unknown;
   readonly thinkingLevel?: string;
   setThinkingLevel?(level: string): void;
   getAvailableThinkingLevels?(): string[];
@@ -256,6 +258,12 @@ export class InProcessSession extends BaseSession implements PiSession {
       ...templates.map((template) => toCommandOption(template, "prompt")),
       ...skills.map((skill) => toCommandOption(skill, "skill", "skill:")),
     ].filter((command) => command.name.length > 0);
+  }
+
+  async getStats(): Promise<SessionStats> {
+    const agent = this.requireAgent();
+    if (!agent.getSessionStats) throw new Error("this host cannot report session stats");
+    return SessionStatsSchema.parse(agent.getSessionStats() ?? {});
   }
 
   async setModel(provider: string, modelId: string): Promise<void> {

@@ -2,7 +2,7 @@ import { z } from "zod";
 import { AgentEventSchema, ExtensionUiRequestSchema } from "./events.ts";
 import { SessionPresentationSchema } from "./presentation.ts";
 import { ImageContentSchema, SessionEntrySchema } from "./messages.ts";
-import { SessionStateSchema, StreamingBehaviorSchema } from "./commands.ts";
+import { SessionStateSchema, SessionStatsSchema, StreamingBehaviorSchema } from "./commands.ts";
 
 /**
  * PiOS wire protocol: the client-to-daemon envelope carried over one
@@ -76,6 +76,8 @@ export const ClientFrameSchema = z.discriminatedUnion("type", [
   Envelope({ type: z.literal("list_models"), sessionId: z.string(), all: z.boolean().default(false) }),
   /** Slash commands this session can invoke, for composer completion. */
   Envelope({ type: z.literal("list_commands"), sessionId: z.string() }),
+  /** Token, cost and context accounting for one session. */
+  Envelope({ type: z.literal("get_stats"), sessionId: z.string() }),
   Envelope({
     type: z.literal("set_model"),
     sessionId: z.string(),
@@ -280,6 +282,11 @@ export const ServerFrameSchema = z.discriminatedUnion("type", [
     type: z.literal("commands"),
     sessionId: z.string(),
     commands: z.array(CommandOptionSchema),
+  }),
+  ServerEnvelope({
+    type: z.literal("session_stats"),
+    sessionId: z.string(),
+    stats: SessionStatsSchema,
   }),
   ServerEnvelope({
     type: z.literal("session_state"),

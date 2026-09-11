@@ -351,6 +351,30 @@ test("only blocking dialogs become sheets; presentation requests are not", async
   assert.deepEqual(client.sessions.openDialogs("s1"), []);
 });
 
+test("session stats are asked for and cached per session", async () => {
+  const { transports, client } = setup();
+  await flush();
+  transports.last.acceptHello([summary({ sessionId: "s1" })]);
+
+  const seen: string[] = [];
+  client.onStats((sessionId) => seen.push(sessionId));
+  client.requestStats("s1");
+  assert.equal(transports.last.sentOfType("get_stats").length, 1);
+
+  transports.last.emit({
+    v: WIRE_VERSION,
+    type: "session_stats",
+    sessionId: "s1",
+    stats: { cost: 0.5, tokens: { total: 2400 } },
+  });
+  assert.equal(client.getStats("s1")?.cost, 0.5);
+  assert.deepEqual(seen, ["s1"]);
+  assert.equal(client.getStats("s2"), null, "another session has its own numbers");
+
+  client.disposeSession("s1");
+  assert.equal(client.getStats("s1"), null, "a disposed session keeps nothing");
+});
+
 test("slash commands are asked for and cached per session", async () => {
   const { transports, client } = setup();
   await flush();

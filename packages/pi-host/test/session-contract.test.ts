@@ -169,6 +169,13 @@ for (const harness of harnesses) {
       assert.equal(commands[1]?.path, "/proj/fix-tests.md");
     });
 
+    test("session stats report tokens, cost and context use", async () => {
+      const stats = await session.getStats();
+      assert.equal(stats.tokens?.total, 2400);
+      assert.equal(stats.cost, 0.0125);
+      assert.equal(stats.contextUsage?.contextWindow, 200_000);
+    });
+
     test("replay returns the tail after a seq and flags nothing missing", async () => {
       const before = session.replay();
       assert.equal(before.gap, false);

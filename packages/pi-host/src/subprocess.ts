@@ -5,6 +5,7 @@ import type {
   ExtensionUiResponse,
   ImageContent,
   ModelOption,
+  SessionStats,
 } from "@pios/protocol";
 import {
   AgentEventSchema,
@@ -12,6 +13,7 @@ import {
   GetEntriesDataSchema,
   RpcResponseSchema,
   SessionStateSchema,
+  SessionStatsSchema,
   ThinkingLevelsDataSchema,
   isDialogRequest,
   isUnknownCursorError,
@@ -358,6 +360,14 @@ export class SubprocessSession extends BaseSession implements PiSession {
     if (!response.success) throw new Error(response.error ?? "get_commands failed");
     const commands = (response.data as { commands?: RpcSlashCommand[] } | undefined)?.commands ?? [];
     return commands.filter((command) => command?.name).map(toCommandOption);
+  }
+
+  async getStats(): Promise<SessionStats> {
+    const response = await this.request({ type: "get_session_stats" });
+    if (!response.success) throw new Error(response.error ?? "get_session_stats failed");
+    // Loose parse: pi adds counters over time, and an unknown one is not a
+    // reason to deny the client the ones it does understand.
+    return SessionStatsSchema.parse(response.data ?? {});
   }
 
   private scopePatterns(): string[] {

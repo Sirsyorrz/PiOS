@@ -7,6 +7,7 @@ import type {
   ImageContent,
   SessionPresentation,
   SessionEntry,
+  SessionStats,
   StreamingBehavior,
 } from "@pios/protocol";
 
@@ -140,6 +141,8 @@ export interface PiSession {
   listModels(options?: { all?: boolean }): Promise<ModelListing>;
   /** Slash commands invokable via `prompt`; excludes built-in TUI commands. */
   listCommands(): Promise<CommandOption[]>;
+  /** Tokens, cost and context window for the session so far. */
+  getStats(): Promise<SessionStats>;
   setModel(provider: string, modelId: string): Promise<void>;
   setThinkingLevel(level: string): Promise<void>;
 

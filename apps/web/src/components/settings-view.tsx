@@ -40,6 +40,12 @@ export function SettingsView({ settings, machine, onChange, onMachineChange, onF
           checked={settings.expandTools}
           onChange={(expandTools) => patch({ expandTools })}
         />
+        <Toggle
+          label="Show session stats"
+          hint="Tokens, cost and context use under the last message."
+          checked={settings.showSessionStats}
+          onChange={(showSessionStats) => patch({ showSessionStats })}
+        />
       </div>
 
       <div className="settings-group">
