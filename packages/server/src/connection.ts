@@ -149,7 +149,10 @@ export class Connection {
       }
 
       case "list_models": {
-        const session = await this.requireLive(frame.sessionId, frame.commandId);
+        // `create` for a draft: the catalogue only exists behind an agent, and
+        // the session is started under the id the draft composed against, so
+        // the first prompt lands on it rather than on a second session.
+        const session = await this.requireLive(frame.sessionId, frame.commandId, frame.create);
         if (!session) return;
         const listing = await session.listModels({ all: frame.all });
         return this.send({

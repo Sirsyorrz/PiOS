@@ -1,4 +1,4 @@
-import type { ModelListing } from "@pios/client-core";
+import type { ModelListing, SessionCreate } from "@pios/client-core";
 import type { ModelOption } from "@pios/protocol";
 import { useEffect, useState } from "react";
 import { useClient } from "../client-provider.tsx";
@@ -10,8 +10,10 @@ import { useClient } from "../client-provider.tsx";
  * can choose from, and it fits a native select. The full catalogue stays
  * behind `/model`, where a search field makes it usable.
  */
-export function ModelPicker({ sessionId, current }: {
+export function ModelPicker({ sessionId, create, current }: {
   sessionId: string;
+  /** Set for a draft: the catalogue lives behind an agent, so asking starts one. */
+  create?: SessionCreate;
   current?: ModelOption;
 }) {
   const client = useClient();
@@ -29,8 +31,8 @@ export function ModelPicker({ sessionId, current }: {
   // is asked again whenever the session changes rather than cached forever.
   useEffect(() => {
     setListing(client.getModels(sessionId));
-    client.listModels(sessionId, { all: false });
-  }, [client, sessionId]);
+    client.listModels(sessionId, { all: false, create });
+  }, [client, sessionId, create]);
 
   // `/model` replaces the cached listing with the whole catalogue; the dock
   // stays short by keeping only the scope out of it. A session without a

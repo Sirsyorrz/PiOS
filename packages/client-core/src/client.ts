@@ -55,7 +55,7 @@ export interface ListQuery {
   offset?: number;
 }
 
-/** What it takes to bring a session into being, sent with its first prompt. */
+/** What it takes to bring a session into being, sent by whatever needs it first. */
 export interface SessionCreate {
   cwd: string;
   name?: string;
@@ -228,8 +228,18 @@ export class PiosClient {
    * now, so a reply to a question asked before a reconnect is not worth
    * replaying.
    */
-  listModels(sessionId: string, options: { all?: boolean } = {}): boolean {
-    return this.send({ type: "list_models", sessionId, all: options.all ?? false });
+  listModels(
+    sessionId: string,
+    options: { all?: boolean; create?: SessionCreate } = {},
+  ): boolean {
+    return this.send({
+      type: "list_models",
+      sessionId,
+      all: options.all ?? false,
+      create: options.create
+        ? { ...options.create, trustProject: options.create.trustProject ?? false }
+        : undefined,
+    });
   }
 
   getModels(sessionId: string): ModelListing {

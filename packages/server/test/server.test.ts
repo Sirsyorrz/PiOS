@@ -535,6 +535,28 @@ test("thinking levels follow the model and a switch crosses the wire", async () 
   client.close();
 });
 
+test("a draft can list models before its first prompt", async () => {
+  const client = await hello(harness);
+  const cwd = join(harness.dir, "draft-models");
+  mkdirSync(cwd, { recursive: true });
+
+  // The id the draft composed against: the session it starts is the one the
+  // first prompt will land on, not a second one.
+  const sessionId = "00000000-0000-4000-8000-bbbbbbbbbbbb";
+  const listed = await client.waitForCommand(
+    client.send({ type: "list_models", sessionId, all: false, create: { cwd, trustProject: false } }),
+  );
+  assert.equal(listed.type, "models");
+  assert.ok(listed.type === "models" && listed.models.length >= 2);
+
+  const page = await client.waitForCommand(client.send({ type: "list_sessions" }));
+  assert.ok(
+    page.type === "sessions" && page.sessions.some((s) => s.sessionId === sessionId),
+    "the draft's id is the session's id",
+  );
+  client.close();
+});
+
 test("the model list and a model switch cross the wire", async () => {
   const client = await hello(harness);
   const cwd = join(harness.dir, "models");

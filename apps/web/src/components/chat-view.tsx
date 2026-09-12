@@ -94,6 +94,14 @@ export function ChatView({
     return () => measure.disconnect();
   }, [transcript.settle]);
 
+  // A draft has no session behind it yet, so everything a session would answer
+  // for comes from the draft: its directory, and what it takes to start it.
+  const create = useMemo(
+    () => (draft ? { cwd: draft.cwd, trustProject: draft.trustProject } : undefined),
+    [draft],
+  );
+  const cwd = session?.cwd ?? draft?.cwd;
+
   function send(text: string, images: ImageContent[], behavior?: StreamingBehavior) {
     client.prompt({
       sessionId,
@@ -102,7 +110,7 @@ export function ChatView({
       streamingBehavior: behavior,
       // The first prompt of a draft is what creates the session, so the
       // directory travels with it rather than ahead of it.
-      create: draft ? { cwd: draft.cwd, trustProject: draft.trustProject } : undefined,
+      create,
     });
   }
 
@@ -140,12 +148,12 @@ export function ChatView({
     setShowFiles(false);
   }, [sessionId]);
 
-  if (showFiles && baseUrl && session) {
+  if (showFiles && baseUrl && cwd) {
     return (
       <FileAccessContext.Provider value={files}>
         <FileView
           access={{ ...files, baseUrl }}
-          cwd={session.cwd}
+          cwd={cwd}
           path={openPath}
           onOpen={(path) => {
             setOpenPath(path);
@@ -165,7 +173,9 @@ export function ChatView({
           <ChevronLeftIcon />
         </button>
         <span className="title line">
-          {view?.presentation.title ?? session?.name ?? (session ? collapseHome(session.cwd) : undefined) ?? sessionId}
+          {/* Never the id: it is random text, and a directory is what the
+              person picked. */}
+          {view?.presentation.title ?? session?.name ?? (cwd ? collapseHome(cwd) : "New session")}
         </span>
         <button
           type="button"
@@ -251,7 +261,9 @@ export function ChatView({
             onAbort={() => client.abortBash(sessionId)}
           />
         ) : null}
-        {settings.showSessionStats ? (
+        {/* Not for a draft: there is nothing accounted for yet, and asking
+            would be a question about a session that does not exist. */}
+        {settings.showSessionStats && !draft ? (
 
           <SessionStatsFooter
             sessionId={sessionId}
@@ -324,6 +336,7 @@ export function ChatView({
       ) : (
         <Composer
           sessionId={sessionId}
+          create={create}
           model={session?.model}
           thinkingLevel={session?.thinkingLevel}
           thinkingLevels={session?.thinkingLevels}

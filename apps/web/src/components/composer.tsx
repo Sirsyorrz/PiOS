@@ -1,4 +1,5 @@
 import type { ImageContent, ModelOption, StreamingBehavior } from "@pios/protocol";
+import type { SessionCreate } from "@pios/client-core";
 import { useEffect, useRef, useState } from "react";
 import { useSettings } from "../settings.ts";
 import { browserStorage } from "../storage.ts";
@@ -21,6 +22,7 @@ const DRAFT_PREFIX = "pios.draft.";
  */
 export function Composer({
   sessionId,
+  create,
   model,
   thinkingLevel,
   thinkingLevels,
@@ -35,6 +37,8 @@ export function Composer({
   onComposingChange,
 }: {
   sessionId: string;
+  /** Set while this is a draft: what it takes to start the session behind it. */
+  create?: SessionCreate;
   /** An extension asked to replace what is typed, e.g. a prompt template. */
   editorText?: string;
   /** Changes when the same text is handed over again, e.g. a second rewind. */
@@ -190,7 +194,12 @@ export function Composer({
   return (
     <div className="composer">
       {modelDialog ? (
-        <ModelDialog sessionId={sessionId} current={model} onClose={() => setModelDialog(false)} />
+        <ModelDialog
+          sessionId={sessionId}
+          create={create}
+          current={model}
+          onClose={() => setModelDialog(false)}
+        />
       ) : null}
 
       <CommandMenu entries={matches} active={highlighted} onPick={choose} />
@@ -280,7 +289,7 @@ export function Composer({
           <PlusIcon />
         </label>
 
-        <ModelPicker sessionId={sessionId} current={model} />
+        <ModelPicker sessionId={sessionId} create={create} current={model} />
 
         <ThinkingPicker
           sessionId={sessionId}

@@ -35,6 +35,21 @@ const ClientBase = z.object({
 // literal loses per-member optionality when the type is inferred.
 const Envelope = <T extends z.ZodRawShape>(shape: T) => ClientBase.extend(shape);
 
+/**
+ * Brings a session into being under an id the client already composed against.
+ *
+ * A session with no first prompt is an empty composer, not a session, so the
+ * draft holds a client-generated id and whichever frame first needs an agent
+ * carries this to create it under that exact id.
+ */
+const SessionCreateSchema = z.object({
+  cwd: z.string(),
+  name: z.string().optional(),
+  /** Explicit: pi's headless trust default is not something to inherit. */
+  trustProject: z.boolean().default(false),
+  model: z.string().optional(),
+});
+
 export const ClientFrameSchema = z.discriminatedUnion("type", [
   // Must succeed before the supervisor reports `connected`.
   Envelope({ type: z.literal("hello"), deviceToken: z.string(), clientVersion: z.string() }),
@@ -71,7 +86,19 @@ export const ClientFrameSchema = z.discriminatedUnion("type", [
    * Models this session can switch to. Scoped only by default: the whole
    * catalogue is hundreds of rows, and asking for it is a deliberate act.
    */
-  Envelope({ type: z.literal("list_models"), sessionId: z.string(), all: z.boolean().default(false) }),
+  Envelope({
+    type: z.literal("list_models"),
+    sessionId: z.string(),
+    all: z.boolean().default(false),
+    /**
+     * Starts the session when it does not exist yet, as `prompt` does.
+     *
+     * A draft has to offer a model before its first prompt, and the catalogue
+     * only exists behind an agent. The id is the one the draft was composed
+     * against, so the prompt that follows lands on this same session.
+     */
+    create: SessionCreateSchema.optional(),
+  }),
   /** Slash commands this session can invoke, for composer completion. */
   Envelope({ type: z.literal("list_commands"), sessionId: z.string() }),
   /** Token, cost and context accounting for one session. */
@@ -106,22 +133,8 @@ export const ClientFrameSchema = z.discriminatedUnion("type", [
   Envelope({
     type: z.literal("prompt"),
     sessionId: z.string(),
-    /**
-     * Starts the session when it does not exist yet.
-     *
-     * A session with no first prompt is an empty composer, not a session, so
-     * the composer holds a client-generated id and the first prompt is what
-     * brings the session into being under that exact id.
-     */
-    create: z
-      .object({
-        cwd: z.string(),
-        name: z.string().optional(),
-        /** Explicit: pi's headless trust default is not something to inherit. */
-        trustProject: z.boolean().default(false),
-        model: z.string().optional(),
-      })
-      .optional(),
+    /** Starts the session when it does not exist yet. */
+    create: SessionCreateSchema.optional(),
     /** Stable per composed message, survives app restart in the outbox. */
     messageId: z.string(),
     text: z.string(),

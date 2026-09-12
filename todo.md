@@ -28,3 +28,5 @@
 
 - when editing a file while agent is running, every time the agent updates transcript, the text editor refreshes
 - the git status pill sometimes doesnt show in header?
+
+- opening sessions in new directories, the name is random string of characters, header doesnt work for files and such

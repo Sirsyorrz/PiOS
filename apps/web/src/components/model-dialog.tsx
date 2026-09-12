@@ -1,4 +1,4 @@
-import type { ModelListing } from "@pios/client-core";
+import type { ModelListing, SessionCreate } from "@pios/client-core";
 import type { ModelOption } from "@pios/protocol";
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
@@ -12,8 +12,10 @@ import { ListRowButton, ModalCard, PickerHeader, SearchField } from "./ui.tsx";
  * providers expose, which is hundreds of rows. A native select cannot be
  * searched, so the command opens this instead.
  */
-export function ModelDialog({ sessionId, current, onClose }: {
+export function ModelDialog({ sessionId, create, current, onClose }: {
   sessionId: string;
+  /** Set for a draft: the catalogue lives behind an agent, so asking starts one. */
+  create?: SessionCreate;
   current?: ModelOption;
   onClose: () => void;
 }) {
@@ -34,9 +36,9 @@ export function ModelDialog({ sessionId, current, onClose }: {
       if (changed === sessionId) setListing(next);
     });
     setListing(client.getModels(sessionId));
-    setAsked(client.listModels(sessionId, { all: true }));
+    setAsked(client.listModels(sessionId, { all: true, create }));
     return off;
-  }, [client, sessionId]);
+  }, [client, sessionId, create]);
 
   // The cached listing can be the scoped one the dock asked for, so the wait
   // is for an answer that covers everything, not merely for any answer.
