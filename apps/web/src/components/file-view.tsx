@@ -23,6 +23,16 @@ import {
 } from "./icons.tsx";
 import { ListRowButton, SearchField } from "./ui.tsx";
 
+/**
+ * Identity of an access, for effect dependencies.
+ *
+ * The chat re-renders on every streamed entry, and an effect keyed on the
+ * access object would refetch the file each time one arrives.
+ */
+function accessKey(access: FileAccess): string {
+  return `${access.baseUrl}\u0000${access.deviceToken}\u0000${access.sessionId}`;
+}
+
 const CodeEditor = lazy(() =>
   import("./code-editor.tsx").then((module) => ({ default: module.CodeEditor })),
 );
@@ -76,31 +86,34 @@ function FilePicker({ access, onPick, onClose }: {
   const [query, setQuery] = useState("");
   const [matches, setMatches] = useState<string[]>([]);
   const [listing, setListing] = useState<TreeListing | null>(null);
-  const [at, setAt] = useState<string | undefined>(undefined);
+  const [dir, setDir] = useState<string | undefined>(undefined);
   const [error, setError] = useState<string | null>(null);
+  const at = useRef(access);
+  at.current = access;
+  const key = accessKey(access);
 
   useEffect(() => {
     if (!query.trim()) return;
     let live = true;
     // The daemon caches its index, so a keystroke is cheap; a debounce would
     // cost more in perceived lag than it saves in requests.
-    void searchFiles(access, query)
+    void searchFiles(at.current, query)
       .then((files) => live && setMatches(files))
       .catch(() => live && setError("Search unavailable."));
     return () => {
       live = false;
     };
-  }, [access, query]);
+  }, [key, query]);
 
   useEffect(() => {
     let live = true;
-    void loadTree(access, at)
+    void loadTree(at.current, dir)
       .then((next) => live && setListing(next))
       .catch(() => live && setError("This directory could not be read."));
     return () => {
       live = false;
     };
-  }, [access, at]);
+  }, [key, dir]);
 
   const browsing = !query.trim();
   // At the top it is the project; below it, the path inside the project.
@@ -121,7 +134,7 @@ function FilePicker({ access, onPick, onClose }: {
         {browsing ? (
           <>
             {listing?.parent ? (
-              <ListRowButton icon={<FolderIcon />} onClick={() => setAt(listing.parent!)}>
+              <ListRowButton icon={<FolderIcon />} onClick={() => setDir(listing.parent!)}>
                 ..
               </ListRowButton>
             ) : null}
@@ -129,7 +142,7 @@ function FilePicker({ access, onPick, onClose }: {
               <ListRowButton
                 key={entry.path}
                 icon={entry.dir ? <FolderIcon /> : <FileIcon />}
-                onClick={() => (entry.dir ? setAt(entry.path) : onPick(entry.path))}
+                onClick={() => (entry.dir ? setDir(entry.path) : onPick(entry.path))}
               >
                 {isolate(entry.name)}
               </ListRowButton>
@@ -164,6 +177,9 @@ function FileEditor({ access, path, onBrowse, onClose }: {
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const handle = useRef<EditorHandle | null>(null);
+  const at = useRef(access);
+  at.current = access;
+  const key = accessKey(access);
 
   useEffect(() => {
     let live = true;
@@ -176,8 +192,8 @@ function FileEditor({ access, path, onBrowse, onClose }: {
 
     void (async () => {
       try {
-        const loaded = await loadTextFile(access, path);
-        const draft = await loadDraft(access.sessionId, path);
+        const loaded = await loadTextFile(at.current, path);
+        const draft = await loadDraft(at.current.sessionId, path);
         if (!live) return;
         setFile(loaded);
         // A draft from an older version of the file is still the user's work:
@@ -193,7 +209,7 @@ function FileEditor({ access, path, onBrowse, onClose }: {
     return () => {
       live = false;
     };
-  }, [access, path]);
+  }, [key, path]);
 
   function edited(next: string) {
     setText(next);

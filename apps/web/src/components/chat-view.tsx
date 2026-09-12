@@ -151,8 +151,10 @@ export function ChatView({
   if (showFiles && baseUrl && cwd) {
     return (
       <FileAccessContext.Provider value={files}>
+        {/* The same object the context carries: a fresh one on every
+            streaming re-render would remount the editor. */}
         <FileView
-          access={{ ...files, baseUrl }}
+          access={files}
           cwd={cwd}
           path={openPath}
           onOpen={(path) => {
