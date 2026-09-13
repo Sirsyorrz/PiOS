@@ -4,9 +4,6 @@
 - compaction UI: compact + set_auto_compaction
 - absorb cc-usage into packages/server/src/usage.ts instead of shelling out
 - terminal (needs a real PTY; one-shot bash does not grow into it)
-- chat header: too many controls in one flex row. Split into smaller pieces
-  with room to expand (overflow menu or a second row), then move the file
-  button into it properly
 - add missing native commands
 - @ fuzzy picker must be daemon-side: RPC mode no-ops addAutocompleteProvider
   and setEditorComponent, so pi-fzfp cannot serve the client. Upstream idea:
@@ -26,7 +23,10 @@
   - the list is ordered by mtime; a long unattended run outranks the
     conversation you were just in
 
-- when editing a file while agent is running, every time the agent updates transcript, the text editor refreshes
-- the git status pill sometimes doesnt show in header?
+- when editing a file while agent is running, every time the agent updates
+  transcript, the text editor refreshes
+- draft sessions: /dirs, /files and /file are session-scoped, so browsing and
+  the @ picker do nothing until the first prompt creates the session. Git now
+  addresses the directory instead; the file routes could do the same
 
-- opening sessions in new directories, the name is random string of characters, header doesnt work for files and such
+- resuming sessions without a running pi session has some bugs, missing models, sending a message kicks off the pi session but invisibly to us.

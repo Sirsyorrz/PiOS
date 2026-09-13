@@ -108,7 +108,10 @@ export async function startSandbox(options: SandboxOptions = {}): Promise<Sandbo
 
 /** Writes the session's repo and its transcript where the stub pi will find it. */
 function seed(spec: SessionSpec, projects: string, sessionRoot: string): SandboxSession {
-  const cwd = createRepo(join(projects, spec.id), spec.repo);
+  const dir = join(projects, spec.id);
+  let cwd = dir;
+  if (spec.repo === false) mkdirSync(dir, { recursive: true });
+  else cwd = createRepo(dir, spec.repo);
   const stateDir = projectSessionDir(cwd, sessionRoot);
   mkdirSync(stateDir, { recursive: true });
   const entries = buildEntries(spec.id, spec.entries ?? []);

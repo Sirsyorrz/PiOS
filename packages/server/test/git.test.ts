@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   gitAction,
@@ -215,7 +215,67 @@ test("the git routes are authenticated and scoped to a known session", async () 
   });
   assert.equal(rejected.status, 404);
 
+  // A directory outside what the picker can reach is refused, whether or not
+  // it happens to hold a repository.
+  const escaped = await fetch(
+    `${harness.baseUrl}/git/status?cwd=${encodeURIComponent("/etc/../etc")}`,
+    { headers: bearer },
+  );
+  assert.equal(escaped.status, 404);
+
   await harness.close();
+});
+
+test("a draft addresses git by directory, with no session to name", async () => {
+  const { startHarness } = await import("./helpers.ts");
+  const harness = await startHarness();
+  const bearer = { authorization: `Bearer ${harness.deviceToken}` };
+  // Only what the directory picker can reach is addressable, and it is rooted
+  // at home, so the test repository has to live there.
+  const dir = mkdtempSync(join(homedir(), ".pios-draft-git-"));
+
+  try {
+    const cwd = encodeURIComponent(dir);
+    const read = async (response: Response) =>
+      (await response.json()) as { status: { root: string } | null };
+
+    const before = await fetch(`${harness.baseUrl}/git/status?cwd=${cwd}`, { headers: bearer });
+    assert.equal(before.status, 200);
+    // Not an error: a directory with no repository is a normal answer.
+    assert.equal((await read(before)).status, null);
+
+    const init = await fetch(`${harness.baseUrl}/git/action?cwd=${cwd}`, {
+      method: "POST",
+      headers: bearer,
+      body: JSON.stringify({ type: "init" }),
+    });
+    assert.equal(init.status, 200);
+    assert.ok((await read(init)).status);
+
+    const after = await fetch(`${harness.baseUrl}/git/status?cwd=${cwd}&fresh=1`, {
+      headers: bearer,
+    });
+    assert.ok((await read(after)).status);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+    await harness.close();
+  }
+});
+
+test("init makes a repository where there was none, and is idempotent", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "pios-init-"));
+  try {
+    assert.equal(await gitStatus(dir), null);
+
+    const result = (await gitAction(dir, { type: "init" }))!;
+    assert.ok(result.status, "init reports the fresh status");
+    assert.equal(result.status!.root, realpathSync(dir));
+
+    // Re-running on a repository is git's own no-op, not an error.
+    assert.ok((await gitAction(dir, { type: "init" }))?.status);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test("branches report their upstream, divergence and which one is checked out", async () => {

@@ -608,6 +608,7 @@ export type GitAction =
   | { type: "merge"; branch: string }
   | { type: "abort" }
   | { type: "continue" }
+  | { type: "init" }
   | { type: "fetch"; remote?: string; prune?: boolean }
   | { type: "pull"; rebase?: boolean }
   | { type: "push"; remote?: string; force?: boolean; setUpstream?: boolean };
@@ -628,6 +629,16 @@ export interface GitActionResult {
  * the recoverable one.
  */
 export async function gitAction(cwd: string, action: GitAction): Promise<GitActionResult | null> {
+  // The one action whose whole point is that there is no repository yet.
+  if (action.type === "init") {
+    try {
+      await git(cwd, ["init"]);
+    } finally {
+      invalidateGitCache(cwd);
+    }
+    return { status: await gitStatus(cwd, { fresh: true }), output: "" };
+  }
+
   const root = await repoRoot(cwd);
   if (!root) return null;
 
@@ -800,6 +811,7 @@ export function parseGitAction(body: unknown): GitAction | null {
     }
     case "abort":
     case "continue":
+    case "init":
       return { type };
     case "fetch":
       return { type, remote: text("remote"), prune: record.prune === true };

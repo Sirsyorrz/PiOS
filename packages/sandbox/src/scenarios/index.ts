@@ -5,9 +5,19 @@ import empty from "./empty.ts";
 import files from "./files.ts";
 import gitConflict from "./git-conflict.ts";
 import gitDirty from "./git-dirty.ts";
+import gitNone from "./git-none.ts";
 import manySessions from "./many-sessions.ts";
 
-export const scenarios: Scenario[] = [empty, chat, cold, files, gitDirty, gitConflict, manySessions];
+export const scenarios: Scenario[] = [
+  empty,
+  chat,
+  cold,
+  files,
+  gitDirty,
+  gitNone,
+  gitConflict,
+  manySessions,
+];
 
 export function findScenario(name: string): Scenario {
   const found = scenarios.find((s) => s.name === name);

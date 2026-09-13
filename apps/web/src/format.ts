@@ -19,6 +19,29 @@ export function collapseHome(path: string): string {
   return path.replace(/^\/(?:home|Users)\/[^/]+/, "~");
 }
 
+/**
+ * What to call a session on screen.
+ *
+ * A name that is really an id says nothing a person picked, so the directory
+ * wins: old sessions were already born with id-shaped names and the fallback
+ * has to be defensive about them.
+ */
+export function sessionTitle(
+  name: string | undefined,
+  cwd: string | undefined,
+): { text: string; path: boolean } {
+  if (name && !looksGenerated(name)) return { text: name, path: false };
+  if (cwd) return { text: collapseHome(cwd), path: true };
+  return { text: "New session", path: false };
+}
+
+/** A uuid, or a bare run of hex long enough that nobody typed it. */
+function looksGenerated(name: string): boolean {
+  const text = name.trim();
+  if (/\s/.test(text)) return false;
+  return /^[0-9a-f-]{8,}$/i.test(text) && /[0-9]/.test(text);
+}
+
 export function shortenPath(path: string): string {
   const parts = path.split("/").filter(Boolean);
   return parts.length <= 2 ? path : `.../${parts.slice(-2).join("/")}`;

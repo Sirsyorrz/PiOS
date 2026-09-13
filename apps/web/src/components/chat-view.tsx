@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useClient, useSessionView } from "../client-provider.tsx";
 import { useEdgeSwipe } from "../edge-swipe.ts";
 import { FileAccessContext } from "../files.ts";
-import { collapseHome } from "../format.ts";
+import { basename, isolate, sessionTitle } from "../format.ts";
 import { useStickToBottom } from "../scroll.ts";
 import type { SessionView, SupervisorState } from "@pios/client-core";
 import { Banners } from "./banners.tsx";
@@ -14,11 +14,38 @@ import { DialogSheet } from "./dialog-sheet.tsx";
 import { GitControl } from "./git-view.tsx";
 import { FileView } from "./file-view.tsx";
 import { recallOpenFile, rememberOpenFile } from "../file-edit.ts";
-import { ChevronDownIcon, ChevronLeftIcon, FileIcon, PlusIcon } from "./icons.tsx";
+import {
+  ChevronDownIcon,
+  ChevronLeftIcon,
+  FileIcon,
+  PauseIcon,
+  PlusIcon,
+  WarningIcon,
+} from "./icons.tsx";
+import type { SessionState } from "../session-status.ts";
 import { BashCard, MessageBubble, StreamingBubble } from "./message.tsx";
 import { SessionStatsFooter } from "./session-stats.tsx";
 import { useSettings } from "../settings.ts";
 import type { Draft } from "../drafts.ts";
+
+/**
+ * The session's state as a glyph, or nothing at all when it is idle.
+ *
+ * Idle is the default and restating it costs a quarter of the row; the states
+ * that change what you do next are told apart by shape, since a single dot
+ * cannot distinguish "waiting on you" from "broken". The word survives in the
+ * session list and in the label here.
+ */
+function StatusMark({ state }: { state: SessionState }) {
+  if (state.tone === "idle" || state.tone === "cold" || state.tone === "complete") return null;
+  return (
+    <span className={`status-mark ${state.tone}`} role="img" aria-label={state.label} title={state.label}>
+      {state.tone === "running" ? <span className="spinner" /> : null}
+      {state.tone === "waiting" ? <PauseIcon /> : null}
+      {state.tone === "crashed" || state.tone === "untrusted" ? <WarningIcon /> : null}
+    </span>
+  );
+}
 
 /** Extension widgets for one slot. pi defaults an unplaced widget above. */
 function widgets(view: SessionView | null, placement: "aboveEditor" | "belowEditor") {
@@ -97,10 +124,22 @@ export function ChatView({
   // A draft has no session behind it yet, so everything a session would answer
   // for comes from the draft: its directory, and what it takes to start it.
   const create = useMemo(
-    () => (draft ? { cwd: draft.cwd, trustProject: draft.trustProject } : undefined),
+    () =>
+      draft
+        ? {
+            cwd: draft.cwd,
+            // Named for the directory at birth, so the list never shows a
+            // session whose name is the id it was given.
+            name: basename(draft.cwd),
+            trustProject: draft.trustProject,
+          }
+        : undefined,
     [draft],
   );
   const cwd = session?.cwd ?? draft?.cwd;
+  const title = view?.presentation.title
+    ? { text: view.presentation.title, path: false }
+    : sessionTitle(session?.name, cwd);
 
   function send(text: string, images: ImageContent[], behavior?: StreamingBehavior) {
     client.prompt({
@@ -174,11 +213,12 @@ export function ChatView({
         <button type="button" className="back icon ghost" onClick={onBack} aria-label="back to sessions">
           <ChevronLeftIcon />
         </button>
-        <span className="title line">
-          {/* Never the id: it is random text, and a directory is what the
-              person picked. */}
-          {view?.presentation.title ?? session?.name ?? (cwd ? collapseHome(cwd) : "New session")}
+        {/* A path falls back to the directory it names, and is cut at the
+            front: the end of a path is what tells two of them apart. */}
+        <span className={`title line${title.path ? " tail" : ""}`}>
+          {title.path ? isolate(title.text) : title.text}
         </span>
+        <StatusMark state={rowState} />
         <button
           type="button"
           className="icon ghost"
@@ -187,18 +227,20 @@ export function ChatView({
         >
           <FileIcon />
         </button>
-        <GitControl running={view?.running ?? false} />
-        {/* One source for the word and its colour, shared with the list. */}
-        <span className={`status ${rowState.tone}`}>
-          {rowState.tone === "running" ? <span className="spinner" /> : null}
-          {rowState.label}
-        </span>
         {/* Starts from this session's cwd: a second agent on the same project
             is the common case, and it is one tap away. */}
         <button type="button" className="icon ghost" onClick={onNewSession} aria-label="new session">
           <PlusIcon />
         </button>
       </header>
+
+      {/* Over the transcript rather than in the header: it is state of the
+          directory, not a control of the session, and giving it a row of its
+          own costs height on every screen that never looks at it.
+          A draft has no session yet, so git is addressed by directory. */}
+      <div className="git-float">
+        <GitControl running={view?.running ?? false} cwd={session ? null : cwd} />
+      </div>
 
       <div className="transcript scroll-y" ref={transcript.ref} onScroll={transcript.onScroll}>
         {/* The tail is loaded first, because a chat is read from the bottom;

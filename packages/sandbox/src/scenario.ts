@@ -12,8 +12,11 @@ export interface SessionSpec {
   /** Stable id: also the session file name, so seeds land where pi looks. */
   id: string;
   name: string;
-  /** Git fixture for this session's cwd. Omitted means a clean repo. */
-  repo?: RepoSpec;
+  /**
+   * Git fixture for this session's cwd. Omitted means a clean repo; `false`
+   * means a plain directory, which is what the "not a repository" UI needs.
+   */
+  repo?: RepoSpec | false;
   entries?: EntrySeed[];
 }
 

@@ -129,6 +129,23 @@ export function ArchiveIcon(props: SVGProps<SVGSVGElement>) {
   );
 }
 
+/** Stopped on a human: the session is waiting to be answered. */
+export function PauseIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Svg {...props}>
+      <path d="M9 5v14M15 5v14" />
+    </Svg>
+  );
+}
+
+export function WarningIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Svg {...props}>
+      <path d="M12 4 2.5 20h19zM12 10v4M12 17.5v.5" />
+    </Svg>
+  );
+}
+
 export function SendIcon(props: SVGProps<SVGSVGElement>) {
   return (
     <Svg {...props}>

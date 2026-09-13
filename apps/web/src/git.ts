@@ -84,6 +84,7 @@ export type GitAction =
   | { type: "merge"; branch: string }
   | { type: "abort" }
   | { type: "continue" }
+  | { type: "init" }
   | { type: "fetch"; remote?: string; prune?: boolean }
   | { type: "pull"; rebase?: boolean }
   | { type: "push"; remote?: string; force?: boolean; setUpstream?: boolean };
@@ -163,7 +164,9 @@ async function call(
 ): Promise<unknown> {
   if (!access.baseUrl) throw new Error("not connected");
   const url = new URL(path, access.baseUrl);
-  url.searchParams.set("session", access.sessionId);
+  // A draft's id names no session the daemon knows, so a directory addresses
+  // the repository instead. Sending both would resolve to the session.
+  if (init?.search?.cwd === undefined) url.searchParams.set("session", access.sessionId);
   for (const [key, value] of Object.entries(init?.search ?? {})) {
     if (value !== undefined) url.searchParams.set(key, value);
   }
@@ -187,8 +190,12 @@ async function call(
 }
 
 export interface Git {
-  /** Null while loading, or when the session cwd is not a repository. */
+  /** Last status read, kept across a failed refresh so the chip never blanks. */
   status: GitStatus | null;
+  /** The daemon answered, and the directory is not a repository. */
+  missing: boolean;
+  /** Showing an older read because the last one failed. */
+  stale: boolean;
   loading: boolean;
   error: string | null;
   /** Git's own output from the last remote operation, cleared on the next one. */
@@ -211,11 +218,17 @@ export interface Git {
  * Polled on demand rather than pushed: this is ambient state of a directory,
  * not conversation state, so it must not ride the entry stream whose ids are
  * the resync cursor. `settled` re-reads once a turn finishes, which is when
- * the agent has stopped writing files.
+ * the agent has stopped writing files, and returning to the app re-reads
+ * whatever happened in a terminal while it was away.
+ *
+ * `cwd` addresses the directory directly, for a draft whose session the daemon
+ * has not created yet.
  */
-export function useGitStatus(settled: unknown): Git {
+export function useGitStatus(settled: unknown, cwd?: string | null): Git {
   const access = useFileAccess();
   const [status, setStatus] = useState<GitStatus | null>(null);
+  const [missing, setMissing] = useState(false);
+  const [stale, setStale] = useState(false);
   const [loading, setLoading] = useState(true);
   const [pending, setPending] = useState<GitAction["type"] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -231,23 +244,42 @@ export function useGitStatus(settled: unknown): Git {
     if (!access?.baseUrl) return;
     const mine = ++generation.current;
     setLoading(true);
-    call(access, "/git/status", { search: { fresh: tick > 0 ? "1" : undefined } })
+    call(access, "/git/status", { search: { cwd: cwd ?? undefined, fresh: tick > 0 ? "1" : undefined } })
       .then((body) => {
         if (generation.current !== mine) return;
-        setStatus(((body as { status?: GitStatus | null })?.status ?? null) as GitStatus | null);
+        const next = ((body as { status?: GitStatus | null })?.status ?? null) as GitStatus | null;
+        // A null status is the daemon saying "no repository here", which is a
+        // different fact from "the read failed" and leads somewhere else.
+        setStatus(next);
+        setMissing(next === null);
+        setStale(false);
         setError(null);
       })
       .catch((cause) => {
-        if (generation.current === mine) setError(messageOf(cause));
+        if (generation.current !== mine) return;
+        // Keep the last known counts: a dropped request says nothing about
+        // the tree, and a chip that vanishes reads as "no repository".
+        setStale(true);
+        setError(messageOf(cause));
       })
       .finally(() => {
         if (generation.current === mine) setLoading(false);
       });
     // `access` is memoised by the provider; the identity fields are listed so
     // a re-render with the same session does not refetch.
-  }, [baseUrl, sessionId, settled, tick]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [baseUrl, sessionId, cwd, settled, tick]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const refresh = useCallback(() => setTick((n) => n + 1), []);
+
+  // Work happens in a terminal while the app is backgrounded; coming back is
+  // the moment someone looks at the chip, and the cheapest time to be right.
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === "visible") refresh();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, [refresh]);
   const clearMessages = useCallback(() => {
     setError(null);
     setNotice(null);
@@ -263,10 +295,13 @@ export function useGitStatus(settled: unknown): Git {
         const body = (await call(access, "/git/action", {
           method: "POST",
           body: JSON.stringify(action),
+          search: { cwd: cwd ?? undefined },
         })) as { status?: GitStatus | null; output?: string };
         // The action response carries the recomputed status, so the sheet
         // redraws without a second round trip.
         setStatus(body?.status ?? null);
+        setMissing((body?.status ?? null) === null);
+        setStale(false);
         if (isRemote(action) && body?.output) setNotice(body.output);
         return true;
       } catch (cause) {
@@ -276,7 +311,7 @@ export function useGitStatus(settled: unknown): Git {
         setPending(null);
       }
     },
-    [access],
+    [access, cwd],
   );
 
   const diff = useCallback(
@@ -284,6 +319,7 @@ export function useGitStatus(settled: unknown): Git {
       if (!access) return "";
       const body = await call(access, "/git/diff", {
         search: {
+          cwd: cwd ?? undefined,
           path: options.path,
           staged: options.staged ? "1" : undefined,
           commit: options.commit,
@@ -293,7 +329,7 @@ export function useGitStatus(settled: unknown): Git {
         ? (body as { diff: string }).diff
         : "";
     },
-    [access],
+    [access, cwd],
   );
 
   const log = useCallback(
@@ -301,30 +337,33 @@ export function useGitStatus(settled: unknown): Git {
       if (!access) return [];
       const body = await call(access, "/git/log", {
         search: {
+          cwd: cwd ?? undefined,
           skip: options.skip ? String(options.skip) : undefined,
           limit: String(options.limit ?? 40),
         },
       });
       return ((body as { commits?: GitLogEntry[] })?.commits ?? []) as GitLogEntry[];
     },
-    [access],
+    [access, cwd],
   );
 
   const branches = useCallback(async () => {
     if (!access) return null;
-    const body = await call(access, "/git/branches");
+    const body = await call(access, "/git/branches", { search: { cwd: cwd ?? undefined } });
     return ((body as { branches?: GitBranches | null })?.branches ?? null) as GitBranches | null;
-  }, [access]);
+  }, [access, cwd]);
 
   const stashes = useCallback(async () => {
     if (!access) return [];
-    const body = await call(access, "/git/stashes");
+    const body = await call(access, "/git/stashes", { search: { cwd: cwd ?? undefined } });
     return ((body as { stashes?: GitStash[] })?.stashes ?? []) as GitStash[];
-  }, [access]);
+  }, [access, cwd]);
 
   return useMemo(
     () => ({
       status,
+      missing,
+      stale,
       loading,
       error,
       notice,
@@ -338,7 +377,7 @@ export function useGitStatus(settled: unknown): Git {
       branches,
       stashes,
     }),
-    [status, loading, error, notice, pending, refresh, clearMessages, run, diff, log, branches, stashes],
+    [status, missing, stale, loading, error, notice, pending, refresh, clearMessages, run, diff, log, branches, stashes],
   );
 }
 
@@ -346,16 +385,26 @@ function messageOf(cause: unknown): string {
   return cause instanceof Error ? cause.message : String(cause);
 }
 
-/** Short summary for the chat header: branch plus what is uncommitted. */
-export function statusChip(status: GitStatus): string {
-  const parts: string[] = [status.branch ?? status.head ?? "detached"];
-  if (status.upstream?.behind) parts.push(`↓${status.upstream.behind}`);
-  if (status.upstream?.ahead) parts.push(`↑${status.upstream.ahead}`);
-  if (status.conflicted > 0) parts.push(`!${status.conflicted}`);
-  if (status.staged > 0) parts.push(`+${status.staged}`);
-  if (status.unstaged > 0) parts.push(`~${status.unstaged}`);
-  if (status.untracked > 0) parts.push(`?${status.untracked}`);
-  return parts.join(" ");
+/**
+ * The chat header's summary, split in two.
+ *
+ * `head` is context and may be truncated; `counts` are why anyone looks at the
+ * chip and must survive a narrow screen intact. An operation in progress takes
+ * the branch's place: which branch you are on matters less than being mid-merge.
+ */
+export function statusChip(status: GitStatus): { head: string; counts: string } {
+  const head = status.operation
+    ? status.operation.toUpperCase()
+    : (status.branch ?? status.head ?? "detached");
+
+  const counts: string[] = [];
+  if (status.upstream?.behind) counts.push(`↓${status.upstream.behind}`);
+  if (status.upstream?.ahead) counts.push(`↑${status.upstream.ahead}`);
+  if (status.conflicted > 0) counts.push(`!${status.conflicted}`);
+  if (status.staged > 0) counts.push(`+${status.staged}`);
+  if (status.unstaged > 0) counts.push(`~${status.unstaged}`);
+  if (status.untracked > 0) counts.push(`?${status.untracked}`);
+  return { head, counts: counts.join(" ") };
 }
 
 /** Single-letter label for a file row, worst state first. */

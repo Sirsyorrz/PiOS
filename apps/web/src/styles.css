@@ -632,9 +632,50 @@ button.link {
   padding-bottom: 8px;
 }
 
+/* Floats over the top of the transcript, out of flow, so it costs no height
+   and the messages behind it stay readable. */
+.git-float {
+  position: absolute;
+  top: calc(12px + var(--safe-top) + var(--control) + 18px);
+  left: calc(16px + var(--safe-left));
+  z-index: 2;
+  display: flex;
+  pointer-events: none;
+}
+
+.git-float > * {
+  pointer-events: auto;
+}
+
+.chat.composing .git-float {
+  display: none;
+}
+
 .chat-header .title {
   flex: 1;
   font-weight: 500;
+}
+
+.status-mark {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  color: var(--muted);
+}
+
+.status-mark svg {
+  width: 16px;
+  height: 16px;
+}
+
+.status-mark.running {
+  color: var(--ok);
+}
+
+.status-mark.waiting,
+.status-mark.crashed,
+.status-mark.untrusted {
+  color: var(--warn);
 }
 
 /* While typing, the header and the composer's pickers fold away instead of
@@ -1473,7 +1514,13 @@ button.scroll-bottom {
 /* Reuses the extension status chip, tightened for a header that also holds a
    title, a status word and two icon controls. */
 .git-chip {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
   flex: 0 1 auto;
+  max-width: 70vw;
+  /* Raised off the transcript it sits on, so it never reads as a message. */
+  backdrop-filter: blur(8px);
   /* A chip, not a control: the shared button height would box it. */
   min-height: 0;
   height: auto;
@@ -1485,6 +1532,23 @@ button.scroll-bottom {
   border: 1px solid var(--line);
   border-radius: 999px;
   font-variant-numeric: tabular-nums;
+}
+
+/* The branch is context and may be cut; the counts are the reason anyone looks
+   at the chip, so they keep their width whatever the screen is. */
+.git-chip-head {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+.git-chip-counts {
+  flex: none;
+}
+
+/* A read that failed says nothing about the tree, so the last one stays up,
+   dimmed. The reason is in the sheet, which is one tap away. */
+.git-chip.stale {
+  opacity: 0.55;
 }
 
 /* The same block a diff gets in the transcript, so a change reads identically

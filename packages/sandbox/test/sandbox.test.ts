@@ -49,6 +49,40 @@ describe("sandbox", () => {
   });
 });
 
+describe("a session outside a repository", () => {
+  let sandbox: Sandbox;
+
+  before(async () => {
+    sandbox = await startSandbox({ scenario: "git-none" });
+  });
+  after(async () => {
+    await sandbox.close();
+  });
+
+  const call = (path: string, init?: RequestInit) =>
+    fetch(`${sandbox.baseUrl}${path}`, {
+      ...init,
+      headers: { authorization: `Bearer ${sandbox.deviceToken}` },
+    });
+
+  it("answers with a null status rather than an error", async () => {
+    const response = await call("/git/status?session=sbx-plain&fresh=1");
+    assert.equal(response.status, 200);
+    assert.equal(((await response.json()) as { status: unknown }).status, null);
+  });
+
+  it("initializes on request, and then has a status", async () => {
+    const init = await call("/git/action?session=sbx-plain", {
+      method: "POST",
+      body: JSON.stringify({ type: "init" }),
+    });
+    assert.equal(init.status, 200);
+    const { status } = (await init.json()) as { status: { root: string } | null };
+    assert.ok(status, "the action reports the repository it just made");
+    assert.ok(status!.root.startsWith(sandbox.dir), "and only inside the sandbox");
+  });
+});
+
 describe("cold sessions", () => {
   let sandbox: Sandbox;
 

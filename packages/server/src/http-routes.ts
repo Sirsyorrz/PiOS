@@ -323,16 +323,21 @@ async function gitRoute(
   req: IncomingMessage,
   res: ServerResponse,
 ): Promise<void> {
+  // A draft has a directory the user picked but no session yet, and git is
+  // about the directory. Anywhere the picker can reach is fair game; anything
+  // else is refused by the same containment rule the file routes use.
   const sessionId = url.searchParams.get("session");
+  const requestedCwd = url.searchParams.get("cwd");
   const session = sessionId ? ctx.registry.get(sessionId) : null;
-  if (!session) return json(res, 404, { error: "unknown_session" });
-  const cwd = session.info.cwd;
+  if (sessionId && !session) return json(res, 404, { error: "unknown_session" });
+  const cwd = session ? session.info.cwd : requestedCwd && containedPath(homedir(), requestedCwd);
+  if (!cwd) return json(res, 404, { error: "not_found" });
 
   try {
     if (req.method === "GET" && url.pathname === "/git/status") {
       const status = await gitStatus(cwd, { fresh: url.searchParams.get("fresh") === "1" });
       // A cwd that is not a repository is a normal answer, not an error: the
-      // client hides the whole feature on a null status.
+      // client says so rather than hiding, because `init` is the fix.
       return json(res, 200, { status });
     }
     if (req.method === "GET" && url.pathname === "/git/diff") {

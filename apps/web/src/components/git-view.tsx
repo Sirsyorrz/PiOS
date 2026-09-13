@@ -40,23 +40,26 @@ type Detail =
  * honest signal that the feature does not apply here. Re-reads when a turn
  * settles, because that is when the agent has stopped writing files.
  */
-export function GitControl({ running }: { running: boolean }) {
-  const git = useGitStatus(running);
+export function GitControl({ running, cwd }: { running: boolean; cwd?: string | null }) {
+  const git = useGitStatus(running, cwd);
   const [open, setOpen] = useState(false);
+  const chip = git.status ? statusChip(git.status) : null;
 
-  if (!git.status) return null;
   return (
     <>
       <button
         type="button"
-        className="chip git-chip line"
-        aria-label="git status"
+        className={`chip git-chip line${git.stale ? " stale" : ""}`}
+        aria-label="git"
         onClick={() => {
           git.refresh();
           setOpen(true);
         }}
       >
-        {statusChip(git.status)}
+        {/* Always present, whatever the answer was: a chip that comes and goes
+            reads as a bug, and every state it can be in leads somewhere. */}
+        <span className="git-chip-head line">{chip?.head ?? "git"}</span>
+        {chip?.counts ? <span className="git-chip-counts">{chip.counts}</span> : null}
       </button>
       {open ? <GitSheet git={git} onClose={() => setOpen(false)} /> : null}
     </>
@@ -146,9 +149,22 @@ export function GitSheet({ git, onClose }: { git: Git; onClose: () => void }) {
       />
 
       {!status ? (
-        <p className="muted">
-          {git.loading ? "Reading…" : "This directory is not a git repository."}
-        </p>
+        <>
+          {git.error ? <GitFailure git={git} error={git.error} run={run} /> : null}
+          <p className="muted">
+            {git.loading ? "Reading…" : "This directory is not a git repository."}
+          </p>
+          {!git.loading && git.missing ? (
+            <button
+              type="button"
+              className="primary"
+              disabled={git.busy}
+              onClick={() => void run({ type: "init" })}
+            >
+              Initialize repository
+            </button>
+          ) : null}
+        </>
       ) : (
         <>
           <SyncBar status={status} git={git} run={run} />
