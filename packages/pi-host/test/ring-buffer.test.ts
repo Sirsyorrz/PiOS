@@ -4,6 +4,7 @@ import { EventRingBuffer } from "../src/ring-buffer.ts";
 import type { HostEvent } from "../src/types.ts";
 
 const settled: HostEvent = { type: "agent_event", event: { type: "agent_settled" } };
+const delta: HostEvent = { type: "agent_event", event: { type: "agent_start" } };
 
 test("seq starts at 1 and increases", () => {
   const buffer = new EventRingBuffer();
@@ -44,12 +45,41 @@ test("evicted events are reported as a gap, not silently skipped", () => {
   assert.deepEqual(contiguous.events.map((e) => e.seq), [4, 5, 6]);
 });
 
-test("an empty buffer reports a gap only for a stale cursor", () => {
-  const buffer = new EventRingBuffer(1);
-  assert.equal(buffer.replay(0).gap, false);
+test("a fresh cursor replays the in-flight turn, not the whole session", () => {
+  const buffer = new EventRingBuffer();
+  buffer.push(delta);
   buffer.push(settled);
+  buffer.push(delta);
+
+  for (const cursor of [undefined, 0]) {
+    const { events, gap } = buffer.replay(cursor);
+    assert.deepEqual(events.map((e) => e.seq), [3]);
+    assert.equal(gap, false);
+  }
+});
+
+test("a cursor from an earlier process is treated as fresh", () => {
+  const buffer = new EventRingBuffer();
   buffer.push(settled);
-  assert.equal(buffer.replay(0).gap, true);
+  buffer.push(delta);
+  const { events, gap } = buffer.replay(900);
+  assert.deepEqual(events.map((e) => e.seq), [2]);
+  assert.equal(gap, false);
+});
+
+test("a turn that outgrew the buffer is a gap for a fresh cursor", () => {
+  const buffer = new EventRingBuffer(2);
+  buffer.push(settled);
+  for (let i = 0; i < 3; i++) buffer.push(delta);
+  const { gap } = buffer.replay(0);
+  assert.equal(gap, true);
+});
+
+test("an unsettled buffer replays everything it holds", () => {
+  const buffer = new EventRingBuffer();
+  buffer.push(delta);
+  buffer.push(delta);
+  assert.deepEqual(buffer.replay(0).events.map((e) => e.seq), [1, 2]);
 });
 
 test("capacity must be positive", () => {

@@ -253,7 +253,7 @@ test("a rewind branches into a new session and leaves the old one intact", async
   client.close();
 });
 
-test("late subscribers replay buffered events and are told about gaps", async () => {
+test("a late subscriber gets the in-flight turn, not a finished one", async () => {
   const client = await hello(harness);
   const cwd = join(harness.dir, "replay");
   mkdirSync(cwd, { recursive: true });
@@ -269,8 +269,8 @@ test("late subscribers replay buffered events and are told about gaps", async ()
   assert.equal(subscribed.type, "subscribed");
   assert.equal(subscribed.type === "subscribed" && subscribed.gap, false);
   assert.ok(
-    late.received.some((f) => f.type === "agent_event" && f.event.type === "agent_settled"),
-    "the whole run was replayed to a client that was not there",
+    !late.received.some((f) => f.type === "agent_event"),
+    "a settled turn was replayed at a client that reads it from entries",
   );
   late.close();
 });

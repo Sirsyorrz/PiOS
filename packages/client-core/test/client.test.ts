@@ -168,6 +168,18 @@ test("a reported gap rebuilds the live transcript", async () => {
   assert.equal(client.sessions.lastSeq("s1"), 0);
 });
 
+test("the daemon's live cursor replaces one left over from another process", async () => {
+  const { transports, client } = setup();
+  await flush();
+  transports.last.acceptHello([summary({ sessionId: "s1" })]);
+  client.watch("s1");
+  client.sessions.applyEvent("s1", 900, { type: "agent_start" });
+
+  transports.last.emit({ v: WIRE_VERSION, type: "subscribed", sessionId: "s1", seq: 3, gap: false });
+
+  assert.equal(client.sessions.lastSeq("s1"), 3, "tails the restarted counter");
+});
+
 test("prompts queue while disconnected and drain on reconnect", async () => {
   const { scheduler, transports, client } = setup();
   await flush();

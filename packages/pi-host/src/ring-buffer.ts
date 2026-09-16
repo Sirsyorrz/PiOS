@@ -13,6 +13,8 @@ export class EventRingBuffer {
   private readonly capacity: number;
   private readonly items: BufferedEvent[] = [];
   private nextSeq = 1;
+  /** Seq of the newest settle, i.e. where the in-flight turn begins. */
+  private settledSeq = 0;
 
   constructor(capacity = 2000) {
     if (capacity < 1) throw new Error("ring buffer capacity must be positive");
@@ -21,6 +23,7 @@ export class EventRingBuffer {
 
   push(event: HostEvent): BufferedEvent {
     const buffered: BufferedEvent = { seq: this.nextSeq++, at: Date.now(), event };
+    if (isSettled(event)) this.settledSeq = buffered.seq;
     this.items.push(buffered);
     if (this.items.length > this.capacity) this.items.shift();
     return buffered;
@@ -39,10 +42,20 @@ export class EventRingBuffer {
    * Events after `sinceSeq`. `gap` means the requested position has already
    * been evicted, so the tail is incomplete and the caller must refetch
    * entries rather than pretend it is caught up.
+   *
+   * A cursor that never tailed this buffer, or one left over from an earlier
+   * process, gets the in-flight turn only. Everything before the last settle
+   * is on disk and reaches the client as entries; replaying it would push a
+   * whole conversation's stream deltas at a client that already has it.
    */
   replay(sinceSeq?: number): { events: BufferedEvent[]; gap: boolean } {
-    if (sinceSeq === undefined) {
-      return { events: [...this.items], gap: this.evictedCount > 0 };
+    if (sinceSeq === undefined || sinceSeq <= 0 || sinceSeq > this.lastSeq) {
+      const oldestHeld = this.items[0]?.seq;
+      return {
+        events: this.items.filter((i) => i.seq > this.settledSeq),
+        // The turn itself outgrew the buffer, so even its tail is incomplete.
+        gap: oldestHeld !== undefined && this.settledSeq + 1 < oldestHeld,
+      };
     }
     const oldest = this.items[0]?.seq;
     if (oldest === undefined) {
@@ -52,8 +65,8 @@ export class EventRingBuffer {
     const gap = sinceSeq + 1 < oldest && sinceSeq < this.lastSeq;
     return { events: this.items.filter((i) => i.seq > sinceSeq), gap };
   }
+}
 
-  private get evictedCount(): number {
-    return this.lastSeq - this.items.length;
-  }
+function isSettled(event: HostEvent): boolean {
+  return event.type === "agent_event" && event.event.type === "agent_settled";
 }

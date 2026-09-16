@@ -227,7 +227,7 @@ export class SessionStore {
    */
   applyEvent(sessionId: string, seq: number, event: AgentEvent, at?: number): void {
     const cache = this.get(sessionId);
-    cache.lastSeq = Math.max(cache.lastSeq, seq);
+    cache.lastSeq = seq;
     this.assembler(sessionId).apply(localise(event, at));
     if (event.type === "bash_execution_update") this.appendBashOutput(sessionId, event.delta);
     if (event.type === "agent_settled") this.interrupting.delete(sessionId);
@@ -373,6 +373,20 @@ export class SessionStore {
     this.bashRuns.delete(sessionId);
     this.storage?.remove(STORAGE_PREFIX + sessionId);
     this.notify(sessionId);
+  }
+
+  /**
+   * Adopts the daemon's live cursor as reported on subscribe.
+   *
+   * seq only means anything within one session process. A cursor kept from an
+   * earlier one is ahead of a counter that restarted at 1, and comparing the
+   * two would silently drop every event of the turn in flight.
+   */
+  setLastSeq(sessionId: string, seq: number): void {
+    const cache = this.get(sessionId);
+    if (cache.lastSeq === seq) return;
+    cache.lastSeq = seq;
+    this.persist(cache);
   }
 
   /** After a gap the tail is incomplete, so the live transcript is rebuilt. */

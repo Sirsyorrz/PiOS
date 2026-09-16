@@ -571,6 +571,7 @@ export class PiosClient {
         // Buffered events were evicted, so the live transcript is missing a
         // middle. Rebuild it from entries instead of pretending it is whole.
         if (frame.gap) this.sessions.resetLiveTranscript(frame.sessionId);
+        else this.sessions.setLastSeq(frame.sessionId, frame.seq);
         break;
       case "agent_event":
         this.sessions.applyEvent(frame.sessionId, frame.seq, frame.event, frame.at);
