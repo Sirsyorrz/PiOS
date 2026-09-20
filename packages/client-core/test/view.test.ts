@@ -29,6 +29,23 @@ test("a message present in both history and the live stream renders once", () =>
   assert.equal(view.items.filter((i) => i.kind === "message").length, 1);
 });
 
+test("the system prompt entry is not rendered", () => {
+  const store = new SessionStore();
+  store.applyEntries(
+    "s1",
+    [
+      { id: "e0", type: "message", message: { role: "system", content: "you are pi" } },
+      { id: "e1", type: "message", message: userMessage },
+    ],
+    "e1",
+    true,
+  );
+
+  const view = sessionView(store, [], "s1");
+  const messages = view.items.filter((i) => i.kind === "message");
+  assert.equal(messages.length, 1);
+});
+
 test("tool results are folded onto their tool card, not rendered as messages", () => {
   const store = new SessionStore();
   store.applyEntries(

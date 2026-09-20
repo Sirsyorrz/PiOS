@@ -102,7 +102,19 @@ export const BashExecutionMessageSchema = z.looseObject({
   excludeFromContext: z.boolean().optional(),
 });
 
+/**
+ * The prompt pi assembled for the turn. It is part of the transcript on the
+ * wire but never part of the conversation: rejecting it would fail every
+ * `get_entries` and drop every `message_start`.
+ */
+export const SystemMessageSchema = z.looseObject({
+  role: z.literal("system"),
+  content: z.string(),
+  timestamp: z.number().optional(),
+});
+
 export const AgentMessageSchema = z.discriminatedUnion("role", [
+  SystemMessageSchema,
   UserMessageSchema,
   AssistantMessageSchema,
   ToolResultMessageSchema,

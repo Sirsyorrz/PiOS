@@ -84,6 +84,14 @@ for (const name of traces) {
   });
 }
 
+test("system-message.jsonl: pi's assembled prompt is a transcript message", () => {
+  const { events } = readTrace("system-message.jsonl");
+  const system = events.filter(
+    (e) => e.type === "message_end" && e.message.role === "system",
+  );
+  assert.equal(system.length, 1);
+});
+
 test("crash.jsonl leaves an unterminated assistant message streaming", () => {
   // The trace stops mid-delta because the process was SIGKILLed.
   const { events } = readTrace("crash.jsonl");

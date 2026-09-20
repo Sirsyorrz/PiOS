@@ -61,6 +61,8 @@ export function sessionView(
   const addMessage = (message: AgentMessage, renderKey: string, entryId?: string) => {
     // Deduped on content, keyed for rendering on whichever source arrived
     // first, so a persisted entry and its live event collapse into one item.
+    // pi's assembled prompt is transcript data, not conversation.
+    if (message.role === "system") return;
     const key = messageKey(message);
     if (seen.has(key)) return;
     seen.add(key);

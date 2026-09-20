@@ -46,8 +46,9 @@ export function MessageBubble({ message, tools, cwd, blocked, onRewind }: {
       />
     );
   }
-  if (message.role === "toolResult") {
-    // Folded into its tool card by the view model; nothing to draw here.
+  if (message.role === "toolResult" || message.role === "system") {
+    // Tool results are folded into their tool card, the system prompt is not
+    // conversation: the view model drops both before they reach here.
     return null;
   }
 
