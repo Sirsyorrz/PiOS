@@ -396,6 +396,21 @@ test("session stats are asked for and cached per session", async () => {
   assert.equal(client.getStats("s2"), null, "and never borrows another's");
 });
 
+test("stats asked for while offline are asked for again on reconnect", async () => {
+  const { scheduler, transports, client } = setup();
+  await flush();
+  transports.last.acceptHello([summary({ sessionId: "s1" })]);
+  client.watch("s1");
+  transports.last.drop();
+
+  assert.equal(client.requestStats("s1"), false, "no socket to carry it");
+
+  while (transports.created.length < 2) await scheduler.runNext();
+  transports.last.acceptHello([summary({ sessionId: "s1" })]);
+  const [stats] = transports.last.sentOfType("get_stats");
+  assert.equal(stats?.sessionId, "s1");
+});
+
 test("slash commands are asked for and cached per session", async () => {
   const { transports, client } = setup();
   await flush();

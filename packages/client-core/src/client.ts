@@ -122,6 +122,8 @@ export class PiosClient {
   >();
   /** Session accounting by session, from the last `requestStats`. */
   private readonly stats = new Map<string, SessionStats>();
+  /** Sessions whose stats were asked for, re-asked on reconnect. */
+  private readonly statsWanted = new Set<string>();
   private readonly statsHandlers = new Set<(sessionId: string, stats: SessionStats) => void>();
   /** Failures of one-off commands, for the UI to say out loud. */
   private readonly commandErrorHandlers = new Set<(error: CommandError) => void>();
@@ -273,6 +275,9 @@ export class PiosClient {
    * asked before a reconnect describes a session that no longer exists.
    */
   requestStats(sessionId: string): boolean {
+    // A request dropped while offline, or a turn that settled while offline,
+    // would otherwise leave the numbers from before it until the next turn.
+    this.statsWanted.add(sessionId);
     return this.send({ type: "get_stats", sessionId });
   }
 
@@ -454,7 +459,10 @@ export class PiosClient {
     // produces, which is an infinite loop.
     if (state.transport !== "connected" || previous === "connected") return;
 
-    for (const sessionId of this.subscribed) this.resync(sessionId);
+    for (const sessionId of this.subscribed) {
+      this.resync(sessionId);
+      if (this.statsWanted.has(sessionId)) this.send({ type: "get_stats", sessionId });
+    }
     this.outbox.drain();
   }
 
