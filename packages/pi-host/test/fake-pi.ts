@@ -24,6 +24,8 @@ const sessionId = sessionPath
   ? sessionPath.split("/").pop()!.replace(/\.json$/, "")
   : arg("--session-id") ?? "fake";
 const trusted = argv.includes("--approve");
+// Mimics pi whose runtime dispose never settles: SIGTERM and EOF are ignored.
+const hangOnExit = argv.includes("--hang-on-exit");
 mkdirSync(sessionDir, { recursive: true });
 const statePath = sessionPath ?? `${sessionDir}/${sessionId}.json`;
 // So tests can assert how the host launched pi, including on a relaunch.
@@ -334,4 +336,10 @@ process.stdin.on("data", (chunk) => {
     }
   }
 });
-process.stdin.on("end", () => process.exit(0));
+if (hangOnExit) {
+  process.on("SIGTERM", () => {});
+  setInterval(() => {}, 60_000);
+  writeFileSync(`${sessionDir}/${sessionId}.pid`, String(process.pid));
+} else {
+  process.stdin.on("end", () => process.exit(0));
+}

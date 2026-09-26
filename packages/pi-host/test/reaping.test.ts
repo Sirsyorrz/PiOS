@@ -1,11 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { SessionRegistry, subprocessHost } from "../src/registry.ts";
 import { SubprocessSession } from "../src/subprocess.ts";
+import { projectSessionDir } from "../src/session-paths.ts";
 import type { BufferedEvent, SessionStatus } from "../src/types.ts";
 
 async function waitFor(condition: () => boolean): Promise<void> {
@@ -18,13 +19,23 @@ async function waitFor(condition: () => boolean): Promise<void> {
 
 const FAKE_PI = fileURLToPath(new URL("./fake-pi.ts", import.meta.url));
 
-function host(dir: string) {
+function host(dir: string, extra: { extraArgs?: string[]; killGraceMs?: number } = {}) {
   return subprocessHost({
     command: process.execPath,
     argsPrefix: [FAKE_PI],
     sessionDir: dir,
     requestTimeoutMs: 10_000,
+    ...extra,
   });
+}
+
+function isAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function statuses(session: { subscribe(l: (e: BufferedEvent) => void): () => void }): SessionStatus[] {
@@ -97,6 +108,31 @@ test("the sweep reaps an idle session and leaves a working one alone", async () 
     await goIdle();
     await registry.sweep();
     assert.equal(idle.awake, false, "a probe alone does not keep a process alive");
+  } finally {
+    await registry.disposeAll();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("a child that ignores SIGTERM is killed, on sleep and on dispose", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "pios-reap-"));
+  const registry = new SessionRegistry(
+    host(dir, { extraArgs: ["--hang-on-exit"], killGraceMs: 100 }),
+    { idleMs: 0 },
+  );
+  const pidOf = (id: string) =>
+    Number(readFileSync(join(projectSessionDir(dir, dir), `${id}.pid`), "utf8"));
+  try {
+    const sleeper = (await registry.create({ id: "sleeper", cwd: dir })) as SubprocessSession;
+    const disposed = (await registry.create({ id: "disposed", cwd: dir })) as SubprocessSession;
+    const sleeperPid = pidOf("sleeper");
+    const disposedPid = pidOf("disposed");
+
+    await sleeper.sleep();
+    assert.equal(isAlive(sleeperPid), false, "sleep leaves no process behind");
+
+    await registry.dispose(disposed.id);
+    assert.equal(isAlive(disposedPid), false, "dispose leaves no process behind");
   } finally {
     await registry.disposeAll();
     rmSync(dir, { recursive: true, force: true });

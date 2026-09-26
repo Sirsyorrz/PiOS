@@ -52,9 +52,12 @@ export interface SubprocessOptions {
   bashTimeoutMs?: number;
   /** Upper bound on an unanswered extension dialog. See `dialogTimers`. */
   dialogTimeoutMs?: number;
+  /** How long a stopped child gets to exit on SIGTERM before SIGKILL. */
+  killGraceMs?: number;
 }
 
 const DEFAULT_REQUEST_TIMEOUT_MS = 120_000;
+const DEFAULT_KILL_GRACE_MS = 5_000;
 const DEFAULT_BASH_TIMEOUT_MS = 30 * 60_000;
 const DEFAULT_DIALOG_TIMEOUT_MS = 10 * 60_000;
 
@@ -478,12 +481,30 @@ export class SubprocessSession extends BaseSession implements PiSession {
     this.clearDialogs();
     const proc = this.proc;
     this.proc = null;
-    if (proc) {
-      proc.stdin.end();
-      proc.kill("SIGTERM");
-    }
     this.setStatus("disposed");
     this.clearListeners();
+    if (proc) await this.stopChild(proc);
+  }
+
+  /**
+   * Stops a child for good, escalating to SIGKILL.
+   *
+   * pi exits on SIGTERM only once its runtime has disposed, and a dispose that
+   * never settles leaves it running forever with nobody holding its handle.
+   */
+  private async stopChild(proc: ChildProcessWithoutNullStreams): Promise<void> {
+    // Detached from recovery first: this exit is intended, not a crash.
+    proc.removeAllListeners("exit");
+    if (proc.exitCode !== null || proc.signalCode !== null) return;
+    const exited = new Promise<void>((done) => proc.once("exit", () => done()));
+    const killer = setTimeout(
+      () => proc.kill("SIGKILL"),
+      this.options.killGraceMs ?? DEFAULT_KILL_GRACE_MS,
+    );
+    proc.stdin.end();
+    proc.kill("SIGTERM");
+    await exited;
+    clearTimeout(killer);
   }
 
   /** True while a child process is backing this session. */
@@ -502,11 +523,8 @@ export class SubprocessSession extends BaseSession implements PiSession {
     const proc = this.proc;
     if (this.disposed || !proc) return;
     this.proc = null;
-    // Detached from recovery first: this exit is intended, not a crash.
-    proc.removeAllListeners("exit");
-    proc.stdin.end();
-    proc.kill("SIGTERM");
     this.setStatus("cold");
+    await this.stopChild(proc);
   }
 
   /**
@@ -559,12 +577,8 @@ export class SubprocessSession extends BaseSession implements PiSession {
     this.setTrusted(trustProject);
     const proc = this.proc;
     this.proc = null;
-    if (proc) {
-      // Detached from recovery first: this exit is intended, not a crash.
-      proc.removeAllListeners("exit");
-      proc.stdin.end();
-      proc.kill("SIGTERM");
-    }
+    // Two children on one session file would interleave their writes.
+    if (proc) await this.stopChild(proc);
     this.setStatus("starting");
     await this.relaunch(trustProject ? "directory trusted" : "trust revoked");
   }
