@@ -10,7 +10,8 @@
   "scripts": {
     "test": "tsc -p tsconfig.json && node --test 'test/*.test.ts'",
     "dev": "wrangler dev",
-    "deploy": "wrangler deploy"
+    "deploy": "wrangler deploy",
+    "usage": "node scripts/usage.ts"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20250101.0",
