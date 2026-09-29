@@ -1,96 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type {
+  GitAction,
+  GitBranches,
+  GitFile,
+  GitLogEntry,
+  GitStash,
+  GitStatus,
+} from "@pios/protocol";
 import { useFileAccess, type FileAccess } from "./files.ts";
-
-/** Mirrors `@pios/server`'s git module. */
-
-export interface GitFile {
-  path: string;
-  index: string;
-  work: string;
-  from?: string;
-  untracked?: boolean;
-  unmerged?: boolean;
-}
-
-export type GitOperation = "merge" | "rebase" | "cherry-pick" | "revert" | "bisect";
-
-export interface GitStatus {
-  root: string;
-  prefix: string;
-  branch: string | null;
-  head: string | null;
-  upstream: { name: string; ahead: number; behind: number } | null;
-  staged: number;
-  unstaged: number;
-  untracked: number;
-  conflicted: number;
-  files: GitFile[];
-  truncated: boolean;
-  operation: GitOperation | null;
-  stashes: number;
-  remotes: string[];
-  defaultRemote: string | null;
-}
-
-export interface GitLogEntry {
-  sha: string;
-  subject: string;
-  author: string;
-  at: number;
-  refs: string[];
-}
-
-export interface GitBranch {
-  name: string;
-  remote: boolean;
-  current: boolean;
-  sha: string;
-  subject: string;
-  at: number;
-  upstream: string | null;
-  ahead: number;
-  behind: number;
-  gone: boolean;
-}
-
-export interface GitBranches {
-  current: string | null;
-  detached: boolean;
-  local: GitBranch[];
-  remote: GitBranch[];
-  remotes: string[];
-}
-
-export interface GitStash {
-  ref: string;
-  message: string;
-  at: number;
-  branch: string | null;
-}
-
-export type GitAction =
-  | { type: "stage"; paths: string[] }
-  | { type: "stage_all" }
-  | { type: "unstage"; paths: string[] }
-  | { type: "unstage_all" }
-  | { type: "discard"; paths: string[] }
-  | { type: "commit"; message: string; amend?: boolean }
-  | { type: "stash"; message?: string }
-  | { type: "stash_pop"; ref?: string }
-  | { type: "stash_apply"; ref: string }
-  | { type: "stash_drop"; ref: string }
-  | { type: "checkout"; branch: string; create?: boolean; from?: string }
-  | { type: "delete_branch"; branch: string; force?: boolean }
-  | { type: "merge"; branch: string }
-  | { type: "abort" }
-  | { type: "continue" }
-  | { type: "init" }
-  | { type: "fetch"; remote?: string; prune?: boolean }
-  | { type: "pull"; rebase?: boolean }
-  | { type: "push"; remote?: string; force?: boolean; setUpstream?: boolean };
+import { messageOf } from "./format.ts";
 
 /** Actions that can take a while and whose progress text is worth showing. */
-export function isRemote(action: GitAction): boolean {
+function isRemote(action: GitAction): boolean {
   return action.type === "fetch" || action.type === "pull" || action.type === "push";
 }
 
@@ -379,10 +300,6 @@ export function useGitStatus(settled: unknown, cwd?: string | null): Git {
     }),
     [status, missing, stale, loading, error, notice, pending, refresh, clearMessages, run, diff, log, branches, stashes],
   );
-}
-
-function messageOf(cause: unknown): string {
-  return cause instanceof Error ? cause.message : String(cause);
 }
 
 /**

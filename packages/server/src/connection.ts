@@ -20,6 +20,8 @@ import { SERVER_VERSION } from "./config.ts";
 import { listSessions, liveSummary, summaryFor } from "./sessions.ts";
 import type { TrustStore } from "./trust.ts";
 
+type FrameOf<T extends ClientFrame["type"]> = Extract<ClientFrame, { type: T }>;
+
 export interface ConnectionDeps {
   auth: AuthStore;
   registry: SessionRegistry;
@@ -94,7 +96,7 @@ export class Connection {
     }
   }
 
-  private onHello(frame: Extract<ClientFrame, { type: "hello" }>): void {
+  private onHello(frame: FrameOf<"hello">): void {
     const device = this.deps.auth.verify(frame.deviceToken);
     if (!device) return this.close(4401, "unauthorized");
 
@@ -116,237 +118,253 @@ export class Connection {
 
   private async dispatch(frame: Exclude<ClientFrame, { type: "hello" }>): Promise<void> {
     switch (frame.type) {
-      case "list_sessions": {
-        const trust = (cwd: string) => this.deps.trust.isTrusted(cwd);
-        const page = await listSessions(this.deps.index, this.deps.registry, trust, {
-          cwd: frame.cwd,
-          query: frame.query,
-          limit: frame.limit,
-          offset: frame.offset,
-        });
-        return this.send({
-          v: WIRE_VERSION,
-          type: "sessions",
-          commandId: frame.commandId,
-          sessions: page.sessions,
-          offset: page.offset,
-          total: page.total,
-          hasMore: page.hasMore,
-        });
-      }
-
-      case "set_session_trust": {
-        const session = await this.requireLive(frame.sessionId, frame.commandId);
-        if (!session) return;
-        // Trust belongs to the directory: this session is what asked, but every
-        // session in that project inherits the answer, now and on every wake.
-        this.deps.trust.set(session.info.cwd, frame.trustProject);
-        // Idempotent by nature: asking for the trust it already has is a no-op
-        // in the registry, so a redelivered frame needs no ledger claim.
-        await this.deps.registry.setProjectTrust(frame.sessionId, frame.trustProject);
-        this.deps.announceSessions?.();
-        return this.sendSessionState(frame.commandId, session);
-      }
-
-      case "list_models": {
-        // `create` for a draft: the catalogue only exists behind an agent, and
-        // the session is started under the id the draft composed against, so
-        // the first prompt lands on it rather than on a second session.
-        const session = await this.requireLive(frame.sessionId, frame.commandId, frame.create);
-        if (!session) return;
-        const listing = await session.listModels({ all: frame.all });
-        return this.send({
-          v: WIRE_VERSION,
-          type: "models",
-          commandId: frame.commandId,
-          sessionId: frame.sessionId,
-          models: listing.models,
-          all: listing.all,
-        });
-      }
-
-      case "list_commands": {
-        const session = await this.requireLive(frame.sessionId, frame.commandId);
-        if (!session) return;
-        return this.send({
-          v: WIRE_VERSION,
-          type: "commands",
-          commandId: frame.commandId,
-          sessionId: frame.sessionId,
-          commands: await session.listCommands(),
-        });
-      }
-
-      case "get_stats": {
-        const session = await this.requireLive(frame.sessionId, frame.commandId);
-        if (!session) return;
-        return this.send({
-          v: WIRE_VERSION,
-          type: "session_stats",
-          commandId: frame.commandId,
-          sessionId: frame.sessionId,
-          stats: await session.getStats(),
-        });
-      }
-
-      case "set_model": {
-        const session = await this.requireLive(frame.sessionId, frame.commandId);
-        if (!session) return;
-        // Idempotent: setting the model it already has changes nothing, so a
-        // redelivered frame needs no ledger claim.
-        await session.setModel(frame.provider, frame.modelId);
-        return this.sendSessionState(frame.commandId, session);
-      }
-
-      case "set_thinking_level": {
-        const session = await this.requireLive(frame.sessionId, frame.commandId);
-        if (!session) return;
-        // Idempotent for the same reason as set_model: re-applying the level it
-        // already has changes nothing.
-        await session.setThinkingLevel(frame.level);
-        return this.sendSessionState(frame.commandId, session);
-      }
-
+      case "list_sessions":
+        return this.listSessions(frame);
+      case "set_session_trust":
+        return this.setSessionTrust(frame);
+      case "list_models":
+        return this.listModels(frame);
+      case "list_commands":
+        return this.listCommands(frame);
+      case "get_stats":
+        return this.getStats(frame);
+      case "set_model":
+        return this.setModel(frame);
+      case "set_thinking_level":
+        return this.setThinkingLevel(frame);
       case "subscribe":
         return this.subscribe(frame);
-
       case "unsubscribe":
         this.unsubscribe(frame.sessionId);
         return this.ack(frame.commandId);
-
-      case "get_entries": {
-        // Read from the file, so opening a conversation never starts a
-        // process. An id with nothing behind it is a session that has not been
-        // written yet, which is an empty transcript, not an error.
-        const page = await this.readEntries(frame.sessionId, frame);
-        return this.send({
-          v: WIRE_VERSION,
-          type: "entries",
-          commandId: frame.commandId,
-          sessionId: frame.sessionId,
-          entries: page.entries,
-          leafId: page.leafId,
-          reset: page.reset,
-          offset: page.offset,
-          total: page.total,
-        });
-      }
-
-      case "prompt": {
-        const session = await this.requireLive(frame.sessionId, frame.commandId, frame.create);
-        if (!session) return;
-        if (!this.deps.ledger.claim(frame.commandId)) {
-          return this.ack(frame.commandId, true);
-        }
-        const result = await session.prompt(frame.text, {
-          images: frame.images,
-          streamingBehavior: frame.streamingBehavior,
-        });
-        if (!result.accepted) {
-          return this.fail(frame.commandId, "agent_busy", result.error ?? "prompt rejected");
-        }
-        return this.ack(frame.commandId);
-      }
-
-      case "interrupt": {
-        const session = await this.requireLive(frame.sessionId, frame.commandId);
-        if (!session) return;
-        await session.interrupt();
-        return this.ack(frame.commandId);
-      }
-
-      case "run_bash": {
-        const session = await this.requireLive(frame.sessionId, frame.commandId);
-        if (!session) return;
-        // Running arbitrary shell twice is worse than not running it at all,
-        // so a redelivered frame is acked rather than replayed.
-        if (!this.deps.ledger.claim(frame.commandId)) {
-          return this.ack(frame.commandId, true);
-        }
-        try {
-          // The result reaches every subscriber as `bash_state`; this only
-          // tells the caller the command was accepted.
-          await session.runBash(frame.command, {
-            excludeFromContext: frame.excludeFromContext,
-          });
-        } catch (error) {
-          return this.fail(
-            frame.commandId,
-            "agent_busy",
-            error instanceof Error ? error.message : String(error),
-          );
-        }
-        return this.ack(frame.commandId);
-      }
-
-      case "abort_bash": {
-        const session = await this.requireLive(frame.sessionId, frame.commandId);
-        if (!session) return;
-        await session.abortBash();
-        return this.ack(frame.commandId);
-      }
-
-      case "rewind": {
-        const session = await this.requireLive(frame.sessionId, frame.commandId);
-        if (!session) return;
-        // Not idempotent: a redelivered rewind would branch a second time and
-        // throw away the turn the user just re-composed.
-        if (!this.deps.ledger.claim(frame.commandId)) {
-          return this.ack(frame.commandId, true);
-        }
-        let branch: Awaited<ReturnType<typeof session.branch>>;
-        try {
-          branch = await session.branch(frame.entryId);
-        } catch (error) {
-          return this.fail(
-            frame.commandId,
-            "bad_request",
-            error instanceof Error ? error.message : String(error),
-          );
-        }
-        // The branch is a session of its own: the conversation it was cut from
-        // stays live and untouched, and both show up in the picker.
-        const branched = await this.deps.registry.create({
-          cwd: session.info.cwd,
-          name: session.info.name,
-          trustProject: session.info.trusted,
-          resumeFrom: branch.sessionFile,
-        });
-        this.deps.announceSessions?.();
-        return this.send({
-          v: WIRE_VERSION,
-          type: "rewound",
-          commandId: frame.commandId,
-          sessionId: frame.sessionId,
-          branchSessionId: branched.id,
-          text: branch.text,
-        });
-      }
-
-      case "extension_ui_response": {
-        const session = await this.requireLive(frame.sessionId, frame.commandId);
-        if (!session) return;
-        // A second device, or a retry after the deadline expired, arrives with
-        // an id nobody is waiting on. Acked as a duplicate: the dialog is gone
-        // either way, and failing it would only make clients retry.
-        const delivered = session.answerDialog({
-          type: "extension_ui_response",
-          id: frame.requestId,
-          value: frame.value,
-          confirmed: frame.confirmed,
-          cancelled: frame.cancelled,
-        });
-        return this.ack(frame.commandId, !delivered);
-      }
-
+      case "get_entries":
+        return this.getEntries(frame);
+      case "prompt":
+        return this.prompt(frame);
+      case "interrupt":
+        return this.interrupt(frame);
+      case "run_bash":
+        return this.runBash(frame);
+      case "abort_bash":
+        return this.abortBash(frame);
+      case "rewind":
+        return this.rewind(frame);
+      case "extension_ui_response":
+        return this.answerDialog(frame);
       case "activity":
-        this.activity = {
-          sessionIds: new Set(frame.sessionIds),
-          foreground: frame.visible && frame.appState === "active",
-          at: Date.now(),
-        };
-        return this.ack(frame.commandId);
+        return this.recordActivity(frame);
     }
+  }
+
+  private async listSessions(frame: FrameOf<"list_sessions">): Promise<void> {
+    const trust = (cwd: string) => this.deps.trust.isTrusted(cwd);
+    const page = await listSessions(this.deps.index, this.deps.registry, trust, {
+      cwd: frame.cwd,
+      query: frame.query,
+      limit: frame.limit,
+      offset: frame.offset,
+    });
+    this.send({
+      v: WIRE_VERSION,
+      type: "sessions",
+      commandId: frame.commandId,
+      sessions: page.sessions,
+      offset: page.offset,
+      total: page.total,
+      hasMore: page.hasMore,
+    });
+  }
+
+  private async setSessionTrust(frame: FrameOf<"set_session_trust">): Promise<void> {
+    const session = await this.requireLive(frame.sessionId, frame.commandId);
+    if (!session) return;
+    // Trust belongs to the directory: this session is what asked, but every
+    // session in that project inherits the answer, now and on every wake.
+    this.deps.trust.set(session.info.cwd, frame.trustProject);
+    // Idempotent by nature: asking for the trust it already has is a no-op
+    // in the registry, so a redelivered frame needs no ledger claim.
+    await this.deps.registry.setProjectTrust(frame.sessionId, frame.trustProject);
+    this.deps.announceSessions?.();
+    this.sendSessionState(frame.commandId, session);
+  }
+
+  private async listModels(frame: FrameOf<"list_models">): Promise<void> {
+    // `create` for a draft: the catalogue only exists behind an agent, and
+    // the session is started under the id the draft composed against, so
+    // the first prompt lands on it rather than on a second session.
+    const session = await this.requireLive(frame.sessionId, frame.commandId, frame.create);
+    if (!session) return;
+    const listing = await session.listModels({ all: frame.all });
+    this.send({
+      v: WIRE_VERSION,
+      type: "models",
+      commandId: frame.commandId,
+      sessionId: frame.sessionId,
+      models: listing.models,
+      all: listing.all,
+    });
+  }
+
+  private async listCommands(frame: FrameOf<"list_commands">): Promise<void> {
+    const session = await this.requireLive(frame.sessionId, frame.commandId);
+    if (!session) return;
+    this.send({
+      v: WIRE_VERSION,
+      type: "commands",
+      commandId: frame.commandId,
+      sessionId: frame.sessionId,
+      commands: await session.listCommands(),
+    });
+  }
+
+  private async getStats(frame: FrameOf<"get_stats">): Promise<void> {
+    const session = await this.requireLive(frame.sessionId, frame.commandId);
+    if (!session) return;
+    this.send({
+      v: WIRE_VERSION,
+      type: "session_stats",
+      commandId: frame.commandId,
+      sessionId: frame.sessionId,
+      stats: await session.getStats(),
+    });
+  }
+
+  private async setModel(frame: FrameOf<"set_model">): Promise<void> {
+    const session = await this.requireLive(frame.sessionId, frame.commandId);
+    if (!session) return;
+    // Idempotent: setting the model it already has changes nothing, so a
+    // redelivered frame needs no ledger claim.
+    await session.setModel(frame.provider, frame.modelId);
+    this.sendSessionState(frame.commandId, session);
+  }
+
+  private async setThinkingLevel(frame: FrameOf<"set_thinking_level">): Promise<void> {
+    const session = await this.requireLive(frame.sessionId, frame.commandId);
+    if (!session) return;
+    // Idempotent for the same reason as set_model: re-applying the level it
+    // already has changes nothing.
+    await session.setThinkingLevel(frame.level);
+    this.sendSessionState(frame.commandId, session);
+  }
+
+  /**
+   * Read from the file, so opening a conversation never starts a process. An
+   * id with nothing behind it is a session that has not been written yet,
+   * which is an empty transcript, not an error.
+   */
+  private async getEntries(frame: FrameOf<"get_entries">): Promise<void> {
+    const page = await this.readEntries(frame.sessionId, frame);
+    this.send({
+      v: WIRE_VERSION,
+      type: "entries",
+      commandId: frame.commandId,
+      sessionId: frame.sessionId,
+      entries: page.entries,
+      leafId: page.leafId,
+      reset: page.reset,
+      offset: page.offset,
+      total: page.total,
+    });
+  }
+
+  private async prompt(frame: FrameOf<"prompt">): Promise<void> {
+    const session = await this.requireLive(frame.sessionId, frame.commandId, frame.create);
+    if (!session) return;
+    if (!this.deps.ledger.claim(frame.commandId)) return this.ack(frame.commandId, true);
+    const result = await session.prompt(frame.text, {
+      images: frame.images,
+      streamingBehavior: frame.streamingBehavior,
+    });
+    if (!result.accepted) {
+      return this.fail(frame.commandId, "agent_busy", result.error ?? "prompt rejected");
+    }
+    this.ack(frame.commandId);
+  }
+
+  private async interrupt(frame: FrameOf<"interrupt">): Promise<void> {
+    const session = await this.requireLive(frame.sessionId, frame.commandId);
+    if (!session) return;
+    await session.interrupt();
+    this.ack(frame.commandId);
+  }
+
+  private async runBash(frame: FrameOf<"run_bash">): Promise<void> {
+    const session = await this.requireLive(frame.sessionId, frame.commandId);
+    if (!session) return;
+    // Running arbitrary shell twice is worse than not running it at all,
+    // so a redelivered frame is acked rather than replayed.
+    if (!this.deps.ledger.claim(frame.commandId)) return this.ack(frame.commandId, true);
+    try {
+      // The result reaches every subscriber as `bash_state`; this only
+      // tells the caller the command was accepted.
+      await session.runBash(frame.command, { excludeFromContext: frame.excludeFromContext });
+    } catch (error) {
+      return this.fail(frame.commandId, "agent_busy", errorMessage(error));
+    }
+    this.ack(frame.commandId);
+  }
+
+  private async abortBash(frame: FrameOf<"abort_bash">): Promise<void> {
+    const session = await this.requireLive(frame.sessionId, frame.commandId);
+    if (!session) return;
+    await session.abortBash();
+    this.ack(frame.commandId);
+  }
+
+  private async rewind(frame: FrameOf<"rewind">): Promise<void> {
+    const session = await this.requireLive(frame.sessionId, frame.commandId);
+    if (!session) return;
+    // Not idempotent: a redelivered rewind would branch a second time and
+    // throw away the turn the user just re-composed.
+    if (!this.deps.ledger.claim(frame.commandId)) return this.ack(frame.commandId, true);
+    let branch: Awaited<ReturnType<typeof session.branch>>;
+    try {
+      branch = await session.branch(frame.entryId);
+    } catch (error) {
+      return this.fail(frame.commandId, "bad_request", errorMessage(error));
+    }
+    // The branch is a session of its own: the conversation it was cut from
+    // stays live and untouched, and both show up in the picker.
+    const branched = await this.deps.registry.create({
+      cwd: session.info.cwd,
+      name: session.info.name,
+      trustProject: session.info.trusted,
+      resumeFrom: branch.sessionFile,
+    });
+    this.deps.announceSessions?.();
+    this.send({
+      v: WIRE_VERSION,
+      type: "rewound",
+      commandId: frame.commandId,
+      sessionId: frame.sessionId,
+      branchSessionId: branched.id,
+      text: branch.text,
+    });
+  }
+
+  private async answerDialog(frame: FrameOf<"extension_ui_response">): Promise<void> {
+    const session = await this.requireLive(frame.sessionId, frame.commandId);
+    if (!session) return;
+    // A second device, or a retry after the deadline expired, arrives with
+    // an id nobody is waiting on. Acked as a duplicate: the dialog is gone
+    // either way, and failing it would only make clients retry.
+    const delivered = session.answerDialog({
+      type: "extension_ui_response",
+      id: frame.requestId,
+      value: frame.value,
+      confirmed: frame.confirmed,
+      cancelled: frame.cancelled,
+    });
+    this.ack(frame.commandId, !delivered);
+  }
+
+  private recordActivity(frame: FrameOf<"activity">): void {
+    this.activity = {
+      sessionIds: new Set(frame.sessionIds),
+      foreground: frame.visible && frame.appState === "active",
+      at: Date.now(),
+    };
+    this.ack(frame.commandId);
   }
 
   /**
@@ -356,7 +374,7 @@ export class Connection {
    * flight to miss, and seq only ever meant anything within one process, so
    * the client tails from zero once one exists.
    */
-  private subscribe(frame: Extract<ClientFrame, { type: "subscribe" }>): void {
+  private subscribe(frame: FrameOf<"subscribe">): void {
     const session = this.deps.registry.get(frame.sessionId);
     if (!session) {
       this.pendingSubscriptions.add(frame.sessionId);
@@ -462,7 +480,7 @@ export class Connection {
       this.deps.announceSessions?.();
       return session;
     } catch (error) {
-      this.fail(commandId, "internal", error instanceof Error ? error.message : String(error));
+      this.fail(commandId, "internal", errorMessage(error));
       return undefined;
     }
   }
@@ -608,4 +626,8 @@ function forwardFrame(
         summary: liveSummary(session.info),
       };
   }
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }

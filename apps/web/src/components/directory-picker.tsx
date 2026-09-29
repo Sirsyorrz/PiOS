@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSettings } from "../settings.ts";
+import { messageOf } from "../format.ts";
 import { ChevronRightIcon, FolderIcon, FolderUpIcon } from "./icons.tsx";
 import { ListRowButton, ModalCard, PickerHeader } from "./ui.tsx";
 
@@ -51,7 +52,7 @@ export function DirectoryPicker({ baseUrl, token, startPath, onPick, onCancel }:
         // A session cwd outside the daemon's home is not browsable; the root
         // listing is still better than an empty picker.
         if (fallbackToRoot) return await load(null);
-        setError(String(cause instanceof Error ? cause.message : cause));
+        setError(messageOf(cause));
       }
     },
     [baseUrl, token],

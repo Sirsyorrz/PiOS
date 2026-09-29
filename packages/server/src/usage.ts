@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import type { UsageReport, UsageWindow } from "@pios/protocol";
 
 /**
  * Claude plan usage, read from the `cc-usage` CLI.
@@ -7,20 +8,6 @@ import { execFile } from "node:child_process";
  * machine without the CLI simply reports usage as unavailable rather than
  * failing the settings page.
  */
-
-export interface UsageWindow {
-  key: string;
-  label: string;
-  percent: number;
-  resetsAt: string | null;
-}
-
-export interface UsageReport {
-  windows: UsageWindow[];
-  /** Extra-usage credits, in minor units of `currency`, when enabled. */
-  spend: { used: number; limit: number | null; currency: string; exponent: number } | null;
-  fetchedAt: number;
-}
 
 const LABELS: Record<string, string> = {
   session: "Current session (5h)",

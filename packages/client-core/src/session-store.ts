@@ -11,6 +11,7 @@ import {
   type SessionPresentation,
 } from "@pios/protocol";
 import { readVersioned, writeVersioned, type StorageAdapter } from "./storage.ts";
+import { Listeners } from "./listeners.ts";
 
 export const SESSION_CACHE_VERSION = 2;
 const STORAGE_PREFIX = "pios.session.";
@@ -86,7 +87,7 @@ export class SessionStore {
   private readonly bashRuns = new Map<string, BashRun>();
   private noticeCounter = 0;
   private readonly storage: StorageAdapter | null;
-  private readonly listeners = new Set<(sessionId: string) => void>();
+  private readonly listeners = new Listeners<[sessionId: string]>();
 
   constructor(storage?: StorageAdapter) {
     this.storage = storage ?? null;
@@ -145,19 +146,18 @@ export class SessionStore {
     const cache = this.get(sessionId);
     if (!entries.length) {
       cache.offset = offset;
-      this.persist(cache);
+      this.persistAndNotify(cache);
       return;
     }
     const known = new Set(cache.entries.map((entry) => entry.id));
     cache.entries = [...entries.filter((entry) => !known.has(entry.id)), ...cache.entries];
     cache.offset = offset;
     cache.total = Math.max(total, cache.total);
-    this.persist(cache);
+    this.persistAndNotify(cache);
   }
 
   subscribe(listener: (sessionId: string) => void): () => void {
-    this.listeners.add(listener);
-    return () => this.listeners.delete(listener);
+    return this.listeners.add(listener);
   }
 
   /**
@@ -197,7 +197,7 @@ export class SessionStore {
     if (bash && !bash.running && entries.some((entry) => isBashEntry(entry, bash.command))) {
       this.bashRuns.delete(sessionId);
     }
-    this.persist(cache);
+    this.persistAndNotify(cache);
     return { reset, applied: entries.length };
   }
 
@@ -386,7 +386,7 @@ export class SessionStore {
     const cache = this.get(sessionId);
     if (cache.lastSeq === seq) return;
     cache.lastSeq = seq;
-    this.persist(cache);
+    this.persistAndNotify(cache);
   }
 
   /** After a gap the tail is incomplete, so the live transcript is rebuilt. */
@@ -394,7 +394,7 @@ export class SessionStore {
     this.assemblers.delete(sessionId);
     const cache = this.get(sessionId);
     cache.lastSeq = 0;
-    this.persist(cache);
+    this.persistAndNotify(cache);
   }
 
   private unblock(sessionId: string): void {
@@ -413,7 +413,7 @@ export class SessionStore {
     return assembler;
   }
 
-  private persist(cache: SessionCache): void {
+  private persistAndNotify(cache: SessionCache): void {
     if (this.storage) {
       writeVersioned(this.storage, STORAGE_PREFIX + cache.sessionId, SESSION_CACHE_VERSION, cache);
     }
@@ -421,7 +421,7 @@ export class SessionStore {
   }
 
   private notify(sessionId: string): void {
-    for (const listener of [...this.listeners]) listener(sessionId);
+    this.listeners.emit(sessionId);
   }
 }
 

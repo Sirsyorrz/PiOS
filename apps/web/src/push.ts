@@ -17,14 +17,14 @@ export type PushState =
   | "off"
   | "on";
 
-export function isStandalone(): boolean {
+function isStandalone(): boolean {
   return (
     window.matchMedia("(display-mode: standalone)").matches ||
     (navigator as { standalone?: boolean }).standalone === true
   );
 }
 
-export function pushSupported(): boolean {
+function pushSupported(): boolean {
   return "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
 }
 
@@ -64,7 +64,7 @@ export async function disablePush(baseUrl: string, token: string): Promise<PushS
  * (restored backup, new data dir), and the reverse is caught by delivery
  * failures.
  */
-export async function refreshPush(baseUrl: string, token: string): Promise<void> {
+async function refreshPush(baseUrl: string, token: string): Promise<void> {
   if (!pushSupported() || Notification.permission !== "granted") return;
   const registration = await navigator.serviceWorker.getRegistration();
   if (!registration) return;

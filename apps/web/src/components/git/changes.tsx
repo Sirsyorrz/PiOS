@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { summarise, type Git, type GitStash } from "../../git.ts";
+import type { GitStash } from "@pios/protocol";
+import { summarise, type Git } from "../../git.ts";
 import { relativeTime } from "../../format.ts";
 import type { GitRun } from "../git-view.tsx";
 import { ArchiveIcon, MinusIcon, PlusIcon, TrashIcon, UploadIcon } from "../icons.tsx";

@@ -27,7 +27,6 @@
     "@lezer/highlight": "^1.2.3",
     "@pios/client-core": "workspace:*",
     "@pios/protocol": "workspace:*",
-    "codemirror": "^6.0.2",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },

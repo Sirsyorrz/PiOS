@@ -19,7 +19,7 @@ export interface Settings {
   directorySort: DirectorySort;
 }
 
-export const DEFAULT_SETTINGS: Settings = {
+const DEFAULT_SETTINGS: Settings = {
   showThinking: true,
   expandTools: false,
   showSessionStats: false,

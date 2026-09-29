@@ -1,4 +1,5 @@
 import { useState } from "react";
+import type { GitAction, GitLogEntry, GitStatus } from "@pios/protocol";
 import {
   confirmationFor,
   confirmLabel,
@@ -6,9 +7,6 @@ import {
   statusChip,
   useGitStatus,
   type Git,
-  type GitAction,
-  type GitLogEntry,
-  type GitStatus,
 } from "../git.ts";
 import { isolate } from "../format.ts";
 import { BranchesTab } from "./git/branches.tsx";
@@ -73,7 +71,7 @@ export function GitControl({ running, cwd }: { running: boolean; cwd?: string | 
  * One card with tabs rather than a stack of sheets, so switching between "what
  * changed" and "which branch" never loses the commit message being typed.
  */
-export function GitSheet({ git, onClose }: { git: Git; onClose: () => void }) {
+function GitSheet({ git, onClose }: { git: Git; onClose: () => void }) {
   const [tab, setTab] = useState<Tab>("changes");
   const [detail, setDetail] = useState<Detail | null>(null);
   const [confirming, setConfirming] = useState<GitAction | null>(null);

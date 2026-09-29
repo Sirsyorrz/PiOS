@@ -1,4 +1,3 @@
-/** The directory name alone; callers show the full path elsewhere. */
 /**
  * Keeps a string's own reading order inside a right-to-left box.
  *
@@ -10,6 +9,7 @@ export function isolate(text: string): string {
   return `\u2066${text}\u2069`;
 }
 
+/** The directory name alone; callers show the full path elsewhere. */
 export function basename(path: string): string {
   return path.split("/").filter(Boolean).at(-1) ?? path;
 }
@@ -54,4 +54,8 @@ export function relativeTime(at: number): string {
     return new Date(at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   if (days === 1) return "yesterday";
   return `${days}d ago`;
+}
+
+export function messageOf(cause: unknown): string {
+  return cause instanceof Error ? cause.message : String(cause);
 }

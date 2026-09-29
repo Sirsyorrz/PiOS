@@ -1,6 +1,6 @@
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
-import { mkdirSync, readFileSync, statSync, writeFileSync, chmodSync } from "node:fs";
-import { dirname } from "node:path";
+import { readFileSync, statSync } from "node:fs";
+import { writePrivateJson } from "./private-file.ts";
 
 /**
  * Token store for the daemon.
@@ -151,9 +151,7 @@ export class AuthStore {
   }
 
   private persist(): void {
-    mkdirSync(dirname(this.path), { recursive: true, mode: 0o700 });
-    writeFileSync(this.path, JSON.stringify(this.data, null, 2), { mode: 0o600 });
-    chmodSync(this.path, 0o600);
+    writePrivateJson(this.path, this.data);
     this.mtimeMs = mtimeOf(this.path);
   }
 }

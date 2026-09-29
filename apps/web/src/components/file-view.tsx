@@ -1,4 +1,5 @@
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import type { TextFile } from "@pios/protocol";
 import type { FileAccess } from "../files.ts";
 import {
   dropDraft,
@@ -8,7 +9,6 @@ import {
   saveDraft,
   saveTextFile,
   searchFiles,
-  type TextFile,
   type TreeListing,
 } from "../file-edit.ts";
 import { isolate } from "../format.ts";

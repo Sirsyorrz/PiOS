@@ -1,7 +1,7 @@
-import { mkdirSync, readFileSync, writeFileSync, chmodSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { randomBytes } from "node:crypto";
-import { dirname } from "node:path";
 import webpush from "web-push";
+import { writePrivateJson } from "./private-file.ts";
 
 /**
  * Web Push subscriptions for the PWA.
@@ -172,9 +172,7 @@ export class PushStore {
   }
 
   private persist(): void {
-    mkdirSync(dirname(this.path), { recursive: true, mode: 0o700 });
-    writeFileSync(this.path, JSON.stringify(this.data, null, 2), { mode: 0o600 });
-    chmodSync(this.path, 0o600);
+    writePrivateJson(this.path, this.data);
   }
 }
 

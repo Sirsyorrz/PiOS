@@ -2,7 +2,8 @@ import { useEffect, useState, type ReactNode } from "react";
 import { httpBase, type Machine } from "../machine.ts";
 import { disablePush, enablePush, pushState, type PushState } from "../push.ts";
 import type { Settings } from "../settings.ts";
-import { fetchUsage, formatSpend, resetsIn, type UsageReport } from "../usage.ts";
+import type { UsageReport } from "@pios/protocol";
+import { fetchUsage, formatSpend, resetsIn } from "../usage.ts";
 import { ModalCard, PickerHeader } from "./ui.tsx";
 
 /**

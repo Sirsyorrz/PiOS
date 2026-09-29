@@ -7,6 +7,7 @@ import {
 import { Backoff, type BackoffOptions } from "./backoff.ts";
 import { systemScheduler, type Scheduler, type TimerHandle } from "./scheduler.ts";
 import { readVersioned, writeVersioned, type StorageAdapter } from "./storage.ts";
+import { Listeners } from "./listeners.ts";
 
 export const OUTBOX_SCHEMA_VERSION = 1;
 const STORAGE_KEY = "pios.outbox";
@@ -63,7 +64,7 @@ export class ThreadOutbox {
   private readonly scheduler: Scheduler;
   private readonly backoff: Backoff;
   private readonly sendFn: (entry: OutboxEntry) => boolean;
-  private readonly listeners = new Set<(entries: OutboxEntry[]) => void>();
+  private readonly listeners = new Listeners<[entries: OutboxEntry[]]>();
   private retryTimer: TimerHandle | null = null;
   private draining = false;
 
@@ -91,9 +92,9 @@ export class ThreadOutbox {
   }
 
   subscribe(listener: (entries: OutboxEntry[]) => void): () => void {
-    this.listeners.add(listener);
+    const unsubscribe = this.listeners.add(listener);
     listener(this.list());
-    return () => this.listeners.delete(listener);
+    return unsubscribe;
   }
 
   enqueue(entry: Omit<OutboxEntry, "attempts" | "status" | "createdAt"> & { createdAt?: number }): OutboxEntry {
@@ -107,7 +108,7 @@ export class ThreadOutbox {
       status: "queued",
     };
     this.entries.push(queued);
-    this.persist();
+    this.persistAndNotify();
     this.drain();
     return queued;
   }
@@ -118,7 +119,7 @@ export class ThreadOutbox {
     this.entries = this.entries.filter((e) => e.commandId !== commandId);
     if (this.entries.length === before) return;
     this.backoff.reset();
-    this.persist();
+    this.persistAndNotify();
     this.drain();
   }
 
@@ -134,13 +135,13 @@ export class ThreadOutbox {
     if (!entry) return false;
     entry.status = "failed";
     entry.lastError = error;
-    this.persist();
+    this.persistAndNotify();
     return true;
   }
 
   discard(commandId: string): void {
     this.entries = this.entries.filter((e) => e.commandId !== commandId);
-    this.persist();
+    this.persistAndNotify();
   }
 
   /** Retries a failed entry after the user fixed whatever caused it. */
@@ -148,7 +149,7 @@ export class ThreadOutbox {
     const entry = this.entries.find((e) => e.commandId === commandId);
     if (!entry) return;
     Object.assign(entry, patch, { status: "queued" as const, lastError: undefined });
-    this.persist();
+    this.persistAndNotify();
     this.drain();
   }
 
@@ -173,7 +174,7 @@ export class ThreadOutbox {
       }
     } finally {
       this.draining = false;
-      this.persist();
+      this.persistAndNotify();
     }
   }
 
@@ -190,9 +191,9 @@ export class ThreadOutbox {
     }, delay);
   }
 
-  private persist(): void {
+  private persistAndNotify(): void {
     writeVersioned(this.storage, STORAGE_KEY, OUTBOX_SCHEMA_VERSION, this.entries);
-    for (const listener of [...this.listeners]) listener(this.list());
+    this.listeners.emit(this.list());
   }
 }
 

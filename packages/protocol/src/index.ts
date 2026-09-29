@@ -8,3 +8,4 @@ export * from "./assembler.ts";
 export * from "./partial-json.ts";
 export * from "./wire.ts";
 export * from "./parse.ts";
+export * from "./http.ts";

@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { fileMark, patchLines, type GitFile } from "../../git.ts";
+import type { GitFile } from "@pios/protocol";
+import { fileMark, patchLines } from "../../git.ts";
 
 /** Pieces shared by the git sheet's tabs. Nothing here fetches on its own. */
 

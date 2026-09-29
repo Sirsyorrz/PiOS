@@ -11,6 +11,7 @@ import {
   type ModelOption,
   type SessionPresentation,
 } from "@pios/protocol";
+import { messageOf } from "./errors.ts";
 import { EventRingBuffer } from "./ring-buffer.ts";
 import { ToolTimer } from "./tool-timing.ts";
 import type {
@@ -116,7 +117,7 @@ export abstract class BaseSession {
         excludeFromContext,
         running: false,
         result: {
-          output: error instanceof Error ? error.message : String(error),
+          output: messageOf(error),
           cancelled: true,
           truncated: false,
         },

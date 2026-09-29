@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { relativeTime } from "../../format.ts";
-import type { Git, GitAction, GitBranch, GitBranches } from "../../git.ts";
+import type { GitAction, GitBranch, GitBranches } from "@pios/protocol";
+import type { Git } from "../../git.ts";
 import type { GitRun } from "../git-view.tsx";
 import { PlusIcon } from "../icons.tsx";
 import { Empty, GitSection, lastSeen } from "./parts.tsx";

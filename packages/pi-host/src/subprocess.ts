@@ -23,6 +23,7 @@ import {
 } from "@pios/protocol";
 import { JsonlFramer, encodeJsonl } from "@pios/protocol/jsonl";
 import { BaseSession } from "./base-session.ts";
+import { messageOf } from "./errors.ts";
 import { projectSessionDir } from "./session-paths.ts";
 import type {
   CreateSessionOptions,
@@ -551,7 +552,7 @@ export class SubprocessSession extends BaseSession implements PiSession {
         type: "response",
         command: String(command.type),
         success: false,
-        error: error instanceof Error ? error.message : String(error),
+        error: messageOf(error),
       };
     }
     return this.request(command, timeoutMs);

@@ -1,17 +1,4 @@
-/** Claude plan usage, as reported by the daemon's `/usage` route. */
-
-export interface UsageWindow {
-  key: string;
-  label: string;
-  percent: number;
-  resetsAt: string | null;
-}
-
-export interface UsageReport {
-  windows: UsageWindow[];
-  spend: { used: number; limit: number | null; currency: string; exponent: number } | null;
-  fetchedAt: number;
-}
+import type { UsageReport } from "@pios/protocol";
 
 export async function fetchUsage(baseUrl: string, token: string): Promise<UsageReport | null> {
   const response = await fetch(new URL("/usage", baseUrl), {

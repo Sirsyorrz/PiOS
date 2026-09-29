@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { relativeTime } from "../../format.ts";
-import type { Git, GitLogEntry } from "../../git.ts";
+import type { GitLogEntry } from "@pios/protocol";
+import type { Git } from "../../git.ts";
 import { Empty, lastSeen } from "./parts.tsx";
 
 const PAGE = 40;

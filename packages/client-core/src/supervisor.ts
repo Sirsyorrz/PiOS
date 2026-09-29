@@ -7,6 +7,7 @@ import {
 import { Backoff, type BackoffOptions } from "./backoff.ts";
 import { systemScheduler, type Scheduler, type TimerHandle } from "./scheduler.ts";
 import { isAuthFailure, type Transport, type TransportFactory } from "./transport.ts";
+import { Listeners } from "./listeners.ts";
 
 /**
  * How the socket itself is doing. Never inferred from cached data: a client
@@ -71,8 +72,8 @@ export class ConnectionSupervisor {
   };
   private readonly scheduler: Scheduler;
   private readonly backoff: Backoff;
-  private readonly listeners = new Set<(state: SupervisorState) => void>();
-  private readonly frameListeners = new Set<(frame: ServerFrame) => void>();
+  private readonly listeners = new Listeners<[state: SupervisorState]>();
+  private readonly frameListeners = new Listeners<[frame: ServerFrame]>();
 
   private credentials: Credentials | null = null;
   private transport: Transport | null = null;
@@ -111,14 +112,13 @@ export class ConnectionSupervisor {
   }
 
   subscribe(listener: (state: SupervisorState) => void): () => void {
-    this.listeners.add(listener);
+    const unsubscribe = this.listeners.add(listener);
     listener(this.getState());
-    return () => this.listeners.delete(listener);
+    return unsubscribe;
   }
 
   onFrame(listener: (frame: ServerFrame) => void): () => void {
-    this.frameListeners.add(listener);
-    return () => this.frameListeners.delete(listener);
+    return this.frameListeners.add(listener);
   }
 
   setCredentials(credentials: Credentials | null): void {
@@ -267,7 +267,7 @@ export class ConnectionSupervisor {
       return this.block("unauthorized");
     }
 
-    for (const listener of [...this.frameListeners]) listener(frame);
+    this.frameListeners.emit(frame);
   }
 
   /**
@@ -364,7 +364,7 @@ export class ConnectionSupervisor {
 
   private patch(update: Partial<SupervisorState>): void {
     this.state = { ...this.state, ...update };
-    for (const listener of [...this.listeners]) listener(this.getState());
+    this.listeners.emit(this.getState());
   }
 }
 

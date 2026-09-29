@@ -42,6 +42,11 @@ const CONTENT_TYPES: Record<string, string> = {
   ".woff2": "font/woff2",
 };
 
+/** Pairing and push bodies: a token or a subscription, never more. */
+const SMALL_BODY_BYTES = 8 * 1024;
+/** Path lists and commit messages: generous, but bounded. */
+const GIT_ACTION_BYTES = 64 * 1024;
+
 /** Everything the daemon answers itself; the rest may be the PWA. */
 const API_PATHS = new Set([
   // A GET that never upgraded must not be answered with the app shell: a
@@ -117,7 +122,7 @@ export async function handleRequest(
       return await pushSubscribe(ctx, device.id, req, res);
     }
     if (req.method === "POST" && url.pathname === "/push/unsubscribe") {
-      const body = await readJson(req, 8 * 1024);
+      const body = await readJson(req, SMALL_BODY_BYTES);
       const endpoint = typeof body?.endpoint === "string" ? body.endpoint : undefined;
       if (!endpoint) return json(res, 400, { error: "bad_request" });
       return json(res, 200, { removed: ctx.push.unsubscribe(endpoint) });
@@ -177,7 +182,7 @@ function serveApp(webDir: string, url: URL, res: ServerResponse): void {
 }
 
 async function pair(ctx: RouteContext, req: IncomingMessage, res: ServerResponse): Promise<void> {
-  const body = await readJson(req, 8 * 1024);
+  const body = await readJson(req, SMALL_BODY_BYTES);
   const token = typeof body?.pairingToken === "string" ? body.pairingToken : undefined;
   const label = typeof body?.label === "string" ? body.label.slice(0, 64) : "unnamed device";
   if (!token) return json(res, 400, { error: "bad_request" });
@@ -208,7 +213,7 @@ async function pushSubscribe(
   req: IncomingMessage,
   res: ServerResponse,
 ): Promise<void> {
-  const body = await readJson(req, 8 * 1024);
+  const body = await readJson(req, SMALL_BODY_BYTES);
   const endpoint = typeof body?.endpoint === "string" ? body.endpoint : undefined;
   const keys = body?.keys as { p256dh?: unknown; auth?: unknown } | undefined;
   const p256dh = typeof keys?.p256dh === "string" ? keys.p256dh : undefined;
@@ -262,13 +267,7 @@ async function listDirs(ctx: RouteContext, url: URL, res: ServerResponse): Promi
     })
     .sort((a, b) => (b.lastSessionAt ?? 0) - (a.lastSessionAt ?? 0) || a.name.localeCompare(b.name));
 
-  json(res, 200, {
-    root,
-    path,
-    name: basename(path) || path,
-    parent: path === root ? null : dirname(path),
-    entries,
-  });
+  json(res, 200, directoryListing(root, path, entries));
 }
 
 /** Session directory name -> last write, for every project pi knows about. */
@@ -365,7 +364,7 @@ async function gitRoute(
       return json(res, 200, { stashes: await gitStashes(cwd) });
     }
     if (req.method === "POST" && url.pathname === "/git/action") {
-      const action = parseGitAction(await readJson(req, 64 * 1024));
+      const action = parseGitAction(await readJson(req, GIT_ACTION_BYTES));
       if (!action) return json(res, 400, { error: "bad_request" });
       // The recomputed status rides back on the response so the client never
       // needs a follow-up round trip to redraw.
@@ -497,6 +496,10 @@ function treeListing(root: string, path: string, dirents: Dirent[]) {
     .map((d) => ({ name: d.name, path: join(path, d.name), dir: d.isDirectory() }))
     .sort((a, b) => Number(b.dir) - Number(a.dir) || a.name.localeCompare(b.name));
 
+  return directoryListing(root, path, entries);
+}
+
+function directoryListing<T>(root: string, path: string, entries: T[]) {
   return {
     root,
     path,

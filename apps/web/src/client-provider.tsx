@@ -74,7 +74,7 @@ export function useSupervisorState(): SupervisorState {
   return state;
 }
 
-export function useOutbox(): OutboxEntry[] {
+function useOutbox(): OutboxEntry[] {
   const client = useClient();
   const [entries, setEntries] = useState<OutboxEntry[]>(() => client.outbox.list());
   useEffect(() => client.outbox.subscribe(setEntries), [client]);

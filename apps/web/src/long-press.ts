@@ -64,7 +64,7 @@ export function useLongPress(onFire: (() => void) | undefined) {
  * gets the switch-control tick instead: toggling a `switch` checkbox is the
  * only haptic the browser exposes, and it needs a real element in the page.
  */
-export function haptic(): void {
+function haptic(): void {
   if (typeof navigator !== "undefined" && typeof navigator.vibrate === "function") {
     navigator.vibrate(10);
     return;

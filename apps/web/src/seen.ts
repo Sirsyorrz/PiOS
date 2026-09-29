@@ -16,7 +16,7 @@ function storageKey(machineId: string) {
   return `${STORAGE_PREFIX}.${machineId}`;
 }
 
-export function loadSeen(machineId: string): SeenMap {
+function loadSeen(machineId: string): SeenMap {
   const raw = browserStorage.get(storageKey(machineId));
   if (!raw) return {};
   try {
@@ -33,12 +33,10 @@ export function loadSeen(machineId: string): SeenMap {
 }
 
 /** Returns the updated map so callers can drive state off one value. */
-export function markSeen(machineId: string, sessionId: string, updatedAt: number): SeenMap {
+function markSeen(machineId: string, sessionId: string, updatedAt: number): SeenMap {
   const seen = loadSeen(machineId);
   if (seen[sessionId] === updatedAt) return seen;
-  const next = { ...seen, [sessionId]: updatedAt };
-  browserStorage.set(storageKey(machineId), JSON.stringify(next));
-  return next;
+  return saveSeen(machineId, { ...seen, [sessionId]: updatedAt });
 }
 
 /**
@@ -49,7 +47,7 @@ export function markSeen(machineId: string, sessionId: string, updatedAt: number
  * "Complete" means finished since you last looked, and before the first look
  * there is nothing to have missed.
  */
-export function seedSeen(
+function seedSeen(
   machineId: string,
   sessions: readonly { sessionId: string; updatedAt: number }[],
 ): SeenMap {
@@ -62,9 +60,12 @@ export function seedSeen(
       changed = true;
     }
   }
-  if (!changed) return seen;
-  browserStorage.set(storageKey(machineId), JSON.stringify(next));
-  return next;
+  return changed ? saveSeen(machineId, next) : seen;
+}
+
+function saveSeen(machineId: string, seen: SeenMap): SeenMap {
+  browserStorage.set(storageKey(machineId), JSON.stringify(seen));
+  return seen;
 }
 
 export function isUnseen(seen: SeenMap, sessionId: string, updatedAt: number): boolean {

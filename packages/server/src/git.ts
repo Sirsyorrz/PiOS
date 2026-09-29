@@ -1,5 +1,15 @@
 import { execFile } from "node:child_process";
 import { relative, resolve } from "node:path";
+import type {
+  GitAction,
+  GitBranch,
+  GitBranches,
+  GitFile,
+  GitLogEntry,
+  GitOperation,
+  GitStash,
+  GitStatus,
+} from "@pios/protocol";
 import { containedPath } from "./paths.ts";
 
 /**
@@ -10,44 +20,6 @@ import { containedPath } from "./paths.ts";
  * kept apart from local work because only it can block on credentials, so it
  * runs non-interactively and with a much longer deadline.
  */
-
-export interface GitFile {
-  path: string;
-  /** Porcelain v2 staged-side code, "." when unchanged. */
-  index: string;
-  /** Porcelain v2 worktree-side code, "." when unchanged. */
-  work: string;
-  /** Pre-rename path, for a staged rename or copy. */
-  from?: string;
-  untracked?: boolean;
-  unmerged?: boolean;
-}
-
-export interface GitStatus {
-  /** Repository top level, which is not necessarily the session cwd. */
-  root: string;
-  /** Session cwd relative to the root, "" at the top level. */
-  prefix: string;
-  branch: string | null;
-  head: string | null;
-  /** Ahead/behind against the tracked branch, read from local refs only. */
-  upstream: { name: string; ahead: number; behind: number } | null;
-  staged: number;
-  unstaged: number;
-  untracked: number;
-  conflicted: number;
-  files: GitFile[];
-  /** True when `files` was cut short; the counts above are still exact. */
-  truncated: boolean;
-  /** Rebase, merge, cherry-pick and friends, so the UI can say why git refuses. */
-  operation: GitOperation | null;
-  stashes: number;
-  remotes: string[];
-  /** Name of the branch a push would create upstream, when there is none yet. */
-  defaultRemote: string | null;
-}
-
-export type GitOperation = "merge" | "rebase" | "cherry-pick" | "revert" | "bisect";
 
 /** Above this the list is neither renderable on a phone nor worth sending. */
 const MAX_FILES = 500;
@@ -451,15 +423,6 @@ async function isUntracked(root: string, path: string): Promise<boolean> {
   return out === null;
 }
 
-export interface GitLogEntry {
-  sha: string;
-  subject: string;
-  author: string;
-  at: number;
-  /** Branch and tag names pointing here, for the history rail. */
-  refs: string[];
-}
-
 export async function gitLog(
   cwd: string,
   options: { limit?: number; skip?: number; ref?: string } = {},
@@ -492,28 +455,6 @@ export async function gitLog(
         refs: refs.split(", ").map((r) => r.replace(/^HEAD -> /, "")).filter(Boolean),
       };
     });
-}
-
-export interface GitBranch {
-  name: string;
-  /** "origin/main" style name for a remote-tracking ref. */
-  remote: boolean;
-  current: boolean;
-  sha: string;
-  subject: string;
-  at: number;
-  upstream: string | null;
-  ahead: number;
-  behind: number;
-  gone: boolean;
-}
-
-export interface GitBranches {
-  current: string | null;
-  detached: boolean;
-  local: GitBranch[];
-  remote: GitBranch[];
-  remotes: string[];
 }
 
 const REF_FORMAT =
@@ -568,13 +509,6 @@ function parseRefs(out: string, remote: boolean): GitBranch[] {
     });
 }
 
-export interface GitStash {
-  ref: string;
-  message: string;
-  at: number;
-  branch: string | null;
-}
-
 export async function gitStashes(cwd: string): Promise<GitStash[] | null> {
   const root = await repoRoot(cwd);
   if (!root) return null;
@@ -591,27 +525,6 @@ export async function gitStashes(cwd: string): Promise<GitStash[] | null> {
       return { ref, message, at: Number(at) * 1000, branch };
     });
 }
-
-export type GitAction =
-  | { type: "stage"; paths: string[] }
-  | { type: "stage_all" }
-  | { type: "unstage"; paths: string[] }
-  | { type: "unstage_all" }
-  | { type: "discard"; paths: string[] }
-  | { type: "commit"; message: string; amend?: boolean }
-  | { type: "stash"; message?: string }
-  | { type: "stash_pop"; ref?: string }
-  | { type: "stash_apply"; ref: string }
-  | { type: "stash_drop"; ref: string }
-  | { type: "checkout"; branch: string; create?: boolean; from?: string }
-  | { type: "delete_branch"; branch: string; force?: boolean }
-  | { type: "merge"; branch: string }
-  | { type: "abort" }
-  | { type: "continue" }
-  | { type: "init" }
-  | { type: "fetch"; remote?: string; prune?: boolean }
-  | { type: "pull"; rebase?: boolean }
-  | { type: "push"; remote?: string; force?: boolean; setUpstream?: boolean };
 
 const NETWORK_ACTIONS = new Set(["fetch", "pull", "push"]);
 

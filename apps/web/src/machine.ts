@@ -1,7 +1,7 @@
 import { readVersioned, writeVersioned } from "@pios/client-core";
 import { browserStorage } from "./storage.ts";
 
-export const MACHINE_STORE_VERSION = 2;
+const MACHINE_STORE_VERSION = 2;
 const STORAGE_KEY = "pios.machines";
 
 export interface Machine {
@@ -43,7 +43,7 @@ interface MachineV1 {
  * the one last known to work, else the first. A machine with no route left is
  * dropped rather than kept as a row that can never connect.
  */
-export function migrateMachines(data: unknown, fromVersion: number): MachineStore {
+function migrateMachines(data: unknown, fromVersion: number): MachineStore {
   if (fromVersion !== 1 || !data || typeof data !== "object") return EMPTY;
   const old = data as { machines?: MachineV1[]; activeId?: string | null };
   const machines: Machine[] = [];

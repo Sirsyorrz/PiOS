@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { readFile, stat, writeFile } from "node:fs/promises";
+import type { TextFile } from "@pios/protocol";
 
 /**
  * Reading and writing text files inside a session's cwd, for the app's editor.
@@ -12,24 +13,11 @@ import { readFile, stat, writeFile } from "node:fs/promises";
 /** Above this, editing is refused: a phone cannot usefully edit it anyway. */
 export const MAX_EDIT_BYTES = 1024 * 1024;
 /** Enough of a head preview to see what the file is, without shipping it all. */
-export const PREVIEW_BYTES = 64 * 1024;
+const PREVIEW_BYTES = 64 * 1024;
 /** A NUL in this prefix means binary. */
-export const SNIFF_BYTES = 8 * 1024;
+const SNIFF_BYTES = 8 * 1024;
 /** CodeMirror degrades badly on very long lines; minified bundles hit this. */
-export const MAX_LINE_CHARS = 50_000;
-
-export type TextFile = {
-  etag: string;
-  bytes: number;
-  /** LF-normalised content, or the head of it when `editable` is false. */
-  text: string;
-  /** Line ending to restore on save. */
-  eol: "lf" | "crlf";
-  trailingNewline: boolean;
-  editable: boolean;
-  /** Why editing is refused, for the client to show verbatim. */
-  reason?: "too_large" | "binary" | "long_lines";
-};
+const MAX_LINE_CHARS = 50_000;
 
 export function etagOf(bytes: Buffer): string {
   return `"${createHash("sha256").update(bytes).digest("hex")}"`;

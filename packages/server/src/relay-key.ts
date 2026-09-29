@@ -1,8 +1,8 @@
-import { chmodSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { createPrivateKey, generateKeyPairSync, sign, type KeyObject } from "node:crypto";
-import { dirname } from "node:path";
 import { challengeMessage } from "@pios/relay/gate";
 import { base64url } from "@pios/relay/codec";
+import { writePrivateJson } from "./private-file.ts";
 
 /**
  * The daemon's identity at the relay.
@@ -76,9 +76,7 @@ export class RelayKey {
   }
 
   private persist(): void {
-    mkdirSync(dirname(this.path), { recursive: true, mode: 0o700 });
-    writeFileSync(this.path, JSON.stringify(this.data, null, 2), { mode: 0o600 });
-    chmodSync(this.path, 0o600);
+    writePrivateJson(this.path, this.data);
   }
 }
 

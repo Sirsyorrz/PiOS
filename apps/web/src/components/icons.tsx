@@ -84,18 +84,6 @@ export function MinusIcon(props: SVGProps<SVGSVGElement>) {
   );
 }
 
-/** Two commits on a branch line: the one glyph that reads as "git". */
-export function BranchIcon(props: SVGProps<SVGSVGElement>) {
-  return (
-    <Svg {...props}>
-      <circle cx="6" cy="6" r="2.5" />
-      <circle cx="6" cy="18" r="2.5" />
-      <circle cx="18" cy="7" r="2.5" />
-      <path d="M6 8.5v7M18 9.5c0 4-4 3.5-6 6.5" />
-    </Svg>
-  );
-}
-
 export function DownloadIcon(props: SVGProps<SVGSVGElement>) {
   return (
     <Svg {...props}>
@@ -222,23 +210,6 @@ export function CloseIcon(props: SVGProps<SVGSVGElement>) {
   return (
     <Svg {...props}>
       <path d="M6 6l12 12M18 6 6 18" />
-    </Svg>
-  );
-}
-
-export function ClockIcon(props: SVGProps<SVGSVGElement>) {
-  return (
-    <Svg {...props}>
-      <circle cx="12" cy="12" r="8.5" />
-      <path d="M12 7.5V12l3 1.8" />
-    </Svg>
-  );
-}
-
-export function MessageIcon(props: SVGProps<SVGSVGElement>) {
-  return (
-    <Svg {...props}>
-      <path d="M4.5 6.5A1.5 1.5 0 0 1 6 5h12a1.5 1.5 0 0 1 1.5 1.5v8A1.5 1.5 0 0 1 18 16H9l-4.5 3.5Z" />
     </Svg>
   );
 }

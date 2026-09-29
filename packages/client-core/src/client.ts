@@ -6,11 +6,13 @@ import {
   type CommandOption,
   type ModelOption,
   type SessionStats,
+  type ServerFrame,
   type SessionSummary,
   type StreamingBehavior,
 } from "@pios/protocol";
 import { AppStatePolicy } from "./app-state.ts";
 import type { BackoffOptions } from "./backoff.ts";
+import { Listeners } from "./listeners.ts";
 import { ThreadOutbox, outboxFrame, type OutboxEntry } from "./outbox.ts";
 import { SessionStore } from "./session-store.ts";
 import { systemScheduler, type Scheduler } from "./scheduler.ts";
@@ -26,6 +28,8 @@ import {
   type SupervisorOptions,
   type SupervisorState,
 } from "./supervisor.ts";
+
+type FrameOf<T extends ServerFrame["type"]> = Extract<ServerFrame, { type: T }>;
 
 /** A command frame minus the envelope the client fills in for every send. */
 type Command = ClientFrame extends infer Frame
@@ -100,7 +104,7 @@ export class PiosClient {
   private readonly subscribed = new Set<string>();
   /** The query behind the list on screen, replayed on a store change. */
   private lastListing: ListQuery = {};
-  private readonly sessionsChangedHandlers = new Set<() => void>();
+  private readonly sessionsChangedHandlers = new Listeners<[]>();
   /**
    * Commands whose failure means the transcript is stale.
    *
@@ -114,20 +118,18 @@ export class PiosClient {
   private readonly olderRequests = new Set<string>();
   /** Model lists by session, from the last `listModels`. */
   private readonly models = new Map<string, ModelListing>();
-  private readonly modelHandlers = new Set<(sessionId: string, listing: ModelListing) => void>();
+  private readonly modelHandlers = new Listeners<[sessionId: string, listing: ModelListing]>();
   /** Slash commands by session, from the last `listCommands`. Never persisted. */
   private readonly commands = new Map<string, CommandOption[]>();
-  private readonly commandHandlers = new Set<
-    (sessionId: string, commands: CommandOption[]) => void
-  >();
+  private readonly commandHandlers = new Listeners<[sessionId: string, commands: CommandOption[]]>();
   /** Session accounting by session, from the last `requestStats`. */
   private readonly stats = new Map<string, SessionStats>();
   /** Sessions whose stats were asked for, re-asked on reconnect. */
   private readonly statsWanted = new Set<string>();
-  private readonly statsHandlers = new Set<(sessionId: string, stats: SessionStats) => void>();
+  private readonly statsHandlers = new Listeners<[sessionId: string, stats: SessionStats]>();
   /** Failures of one-off commands, for the UI to say out loud. */
-  private readonly commandErrorHandlers = new Set<(error: CommandError) => void>();
-  private readonly rewindHandlers = new Set<(branchSessionId: string, text: string) => void>();
+  private readonly commandErrorHandlers = new Listeners<[error: CommandError]>();
+  private readonly rewindHandlers = new Listeners<[branchSessionId: string, text: string]>();
   /** Text waiting for the branched session's composer to mount and claim it. */
   private readonly rewoundText = new Map<string, string>();
   private lastTransport: SupervisorState["transport"] = "idle";
@@ -219,8 +221,7 @@ export class PiosClient {
 
   /** Fires when the store changed on disk and the list should be re-asked. */
   onSessionsChanged(handler: () => void): () => void {
-    this.sessionsChangedHandlers.add(handler);
-    return () => this.sessionsChangedHandlers.delete(handler);
+    return this.sessionsChangedHandlers.add(handler);
   }
 
   /**
@@ -264,8 +265,7 @@ export class PiosClient {
   }
 
   onCommands(handler: (sessionId: string, commands: CommandOption[]) => void): () => void {
-    this.commandHandlers.add(handler);
-    return () => this.commandHandlers.delete(handler);
+    return this.commandHandlers.add(handler);
   }
 
   /**
@@ -286,13 +286,11 @@ export class PiosClient {
   }
 
   onStats(handler: (sessionId: string, stats: SessionStats) => void): () => void {
-    this.statsHandlers.add(handler);
-    return () => this.statsHandlers.delete(handler);
+    return this.statsHandlers.add(handler);
   }
 
   onModels(handler: (sessionId: string, listing: ModelListing) => void): () => void {
-    this.modelHandlers.add(handler);
-    return () => this.modelHandlers.delete(handler);
+    return this.modelHandlers.add(handler);
   }
 
   /**
@@ -362,8 +360,7 @@ export class PiosClient {
 
   /** Fires with the branched session to open and the text it starts from. */
   onRewound(handler: (branchSessionId: string, text: string) => void): () => void {
-    this.rewindHandlers.add(handler);
-    return () => this.rewindHandlers.delete(handler);
+    return this.rewindHandlers.add(handler);
   }
 
   /**
@@ -380,8 +377,7 @@ export class PiosClient {
   }
 
   onCommandError(handler: (error: CommandError) => void): () => void {
-    this.commandErrorHandlers.add(handler);
-    return () => this.commandErrorHandlers.delete(handler);
+    return this.commandErrorHandlers.add(handler);
   }
 
   /** Re-asks for the list on screen, with the query it was built from. */
@@ -536,44 +532,17 @@ export class PiosClient {
     );
   }
 
-  private onFrame(frame: Parameters<Parameters<ConnectionSupervisor["onFrame"]>[0]>[0]): void {
+  private onFrame(frame: ServerFrame): void {
     switch (frame.type) {
       case "ack":
         this.outbox.acknowledge(frame.commandId);
         break;
-      case "error": {
-        const queued = frame.commandId ? this.outbox.reject(frame.commandId, frame.message) : false;
-        const isSync = !!frame.commandId && this.syncCommands.delete(frame.commandId);
-        if (frame.code === "unauthorized") break;
-        // A failed resync on a healthy socket is a sync problem, not a
-        // transport one, and must not trigger a reconnect.
-        if (isSync) this.supervisor.setSyncStatus("error");
-        // A queued prompt already carries its own error in the outbox.
-        else if (!queued) {
-          for (const handler of [...this.commandErrorHandlers]) {
-            handler({ commandId: frame.commandId, message: frame.message });
-          }
-        }
+      case "error":
+        this.onError(frame);
         break;
-      }
-      case "entries": {
-        if (frame.commandId && this.olderRequests.delete(frame.commandId)) {
-          this.sessions.applyOlderEntries(
-            frame.sessionId,
-            frame.entries,
-            frame.offset,
-            frame.total,
-          );
-          break;
-        }
-        if (frame.commandId) this.syncCommands.delete(frame.commandId);
-        this.sessions.applyEntries(frame.sessionId, frame.entries, frame.leafId, frame.reset, {
-          offset: frame.offset,
-          total: frame.total,
-        });
-        this.supervisor.setSyncStatus("synced");
+      case "entries":
+        this.onEntries(frame);
         break;
-      }
       case "subscribed":
         if (frame.commandId) this.syncCommands.delete(frame.commandId);
         // Buffered events were evicted, so the live transcript is missing a
@@ -586,9 +555,7 @@ export class PiosClient {
         // A settled turn is on disk, so its entry ids exist. Without this the
         // transcript stays event-only until the next reconnect, and anything
         // that addresses a turn by id has nothing to address.
-        if (frame.event.type === "agent_settled" && this.subscribed.has(frame.sessionId)) {
-          this.fetchEntries(frame.sessionId, this.sessions.cursor(frame.sessionId));
-        }
+        if (frame.event.type === "agent_settled") this.fetchNewEntries(frame.sessionId);
         break;
       case "session_state":
         this.trackStatus([frame.summary]);
@@ -604,26 +571,22 @@ export class PiosClient {
         this.persistSessions();
         break;
       case "sessions_changed":
-        for (const handler of [...this.sessionsChangedHandlers]) handler();
+        this.sessionsChangedHandlers.emit();
         break;
-      case "commands": {
+      case "commands":
         this.commands.set(frame.sessionId, frame.commands);
-        for (const handler of [...this.commandHandlers])
-          handler(frame.sessionId, frame.commands);
+        this.commandHandlers.emit(frame.sessionId, frame.commands);
         break;
-      }
-      case "session_stats": {
+      case "session_stats":
         this.stats.set(frame.sessionId, frame.stats);
-        for (const handler of [...this.statsHandlers]) handler(frame.sessionId, frame.stats);
+        this.statsHandlers.emit(frame.sessionId, frame.stats);
         break;
-      }
       case "models": {
         const listing = { models: frame.models, all: frame.all };
         this.models.set(frame.sessionId, listing);
-        for (const handler of [...this.modelHandlers]) handler(frame.sessionId, listing);
+        this.modelHandlers.emit(frame.sessionId, listing);
         break;
       }
-
       case "extension_ui_request":
         // Most methods are presentation the agent does not wait on; only a
         // dialog blocks it, and only a dialog gets a sheet.
@@ -636,23 +599,13 @@ export class PiosClient {
       case "extension_ui_closed":
         this.sessions.closeDialog(frame.sessionId, frame.requestId);
         break;
-      case "bash_state": {
-        if (frame.running) {
-          this.sessions.startBash(frame.sessionId, frame.command, frame.excludeFromContext);
-          break;
-        }
-        this.sessions.finishBash(frame.sessionId, frame.result ?? { output: "", cancelled: false, truncated: false });
-        // pi persists the run as an entry of its own, and no `agent_settled`
-        // follows a bare command, so nothing else would go and fetch it.
-        if (this.subscribed.has(frame.sessionId)) {
-          this.fetchEntries(frame.sessionId, this.sessions.cursor(frame.sessionId));
-        }
+      case "bash_state":
+        this.onBashState(frame);
         break;
-      }
       case "rewound": {
         const text = frame.text ?? "";
         this.rewoundText.set(frame.branchSessionId, text);
-        for (const handler of [...this.rewindHandlers]) handler(frame.branchSessionId, text);
+        this.rewindHandlers.emit(frame.branchSessionId, text);
         break;
       }
       case "session_recovered":
@@ -666,6 +619,53 @@ export class PiosClient {
         break;
       default:
         break;
+    }
+  }
+
+  private onError(frame: FrameOf<"error">): void {
+    const queued = frame.commandId ? this.outbox.reject(frame.commandId, frame.message) : false;
+    const isSync = !!frame.commandId && this.syncCommands.delete(frame.commandId);
+    if (frame.code === "unauthorized") return;
+    // A failed resync on a healthy socket is a sync problem, not a
+    // transport one, and must not trigger a reconnect.
+    if (isSync) this.supervisor.setSyncStatus("error");
+    // A queued prompt already carries its own error in the outbox.
+    else if (!queued) {
+      this.commandErrorHandlers.emit({ commandId: frame.commandId, message: frame.message });
+    }
+  }
+
+  private onEntries(frame: FrameOf<"entries">): void {
+    if (frame.commandId && this.olderRequests.delete(frame.commandId)) {
+      this.sessions.applyOlderEntries(frame.sessionId, frame.entries, frame.offset, frame.total);
+      return;
+    }
+    if (frame.commandId) this.syncCommands.delete(frame.commandId);
+    this.sessions.applyEntries(frame.sessionId, frame.entries, frame.leafId, frame.reset, {
+      offset: frame.offset,
+      total: frame.total,
+    });
+    this.supervisor.setSyncStatus("synced");
+  }
+
+  private onBashState(frame: FrameOf<"bash_state">): void {
+    if (frame.running) {
+      this.sessions.startBash(frame.sessionId, frame.command, frame.excludeFromContext);
+      return;
+    }
+    this.sessions.finishBash(
+      frame.sessionId,
+      frame.result ?? { output: "", cancelled: false, truncated: false },
+    );
+    // pi persists the run as an entry of its own, and no `agent_settled`
+    // follows a bare command, so nothing else would go and fetch it.
+    this.fetchNewEntries(frame.sessionId);
+  }
+
+  /** Entries past the cursor, for a session the UI is watching. */
+  private fetchNewEntries(sessionId: string): void {
+    if (this.subscribed.has(sessionId)) {
+      this.fetchEntries(sessionId, this.sessions.cursor(sessionId));
     }
   }
 

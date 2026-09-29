@@ -1,16 +1,7 @@
+import type { TextFile } from "@pios/protocol";
 import type { FileAccess } from "./files.ts";
 
 /** What the daemon says about a file the editor is about to show. */
-export interface TextFile {
-  etag: string;
-  bytes: number;
-  text: string;
-  eol: "lf" | "crlf";
-  trailingNewline: boolean;
-  editable: boolean;
-  reason?: "too_large" | "binary" | "long_lines";
-}
-
 export interface TreeEntry {
   name: string;
   path: string;

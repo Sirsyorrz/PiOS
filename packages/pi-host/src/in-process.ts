@@ -9,6 +9,7 @@ import type {
 } from "@pios/protocol";
 import { AgentEventSchema, BashResultSchema, SessionStatsSchema } from "@pios/protocol";
 import { BaseSession } from "./base-session.ts";
+import { messageOf } from "./errors.ts";
 import { sliceEntries } from "./transcript-file.ts";
 import type {
   CreateSessionOptions,
@@ -413,8 +414,4 @@ function toCommandOption(
 
 function modelKey(provider: string, modelId: string): string {
   return `${provider}/${modelId}`;
-}
-
-function messageOf(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }

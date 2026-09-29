@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { pairWithMachine, probeEndpoint, type Machine } from "../machine.ts";
+import { messageOf } from "../format.ts";
 import { ModalCard } from "./ui.tsx";
 
 const DEFAULT_PORT = 4111;
@@ -79,7 +80,7 @@ export function PairingScreen({ onPaired }: { onPaired: (machine: Machine) => vo
         url: parsed.origin,
       });
     } catch (cause) {
-      setError(String(cause instanceof Error ? cause.message : cause));
+      setError(messageOf(cause));
     } finally {
       setBusy(false);
     }
