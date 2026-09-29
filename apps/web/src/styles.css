@@ -516,8 +516,10 @@ button.link {
   color: var(--muted);
 }
 
-/* Beats `.card label`, which stacks a label over its control. */
+/* Beats `.card label`, which stacks a label over its control. Not every row
+   is a label, so it cannot borrow `display` from that rule either. */
 .card .settings-row {
+  display: flex;
   flex-direction: row;
   align-items: center;
   justify-content: space-between;
@@ -525,6 +527,18 @@ button.link {
   min-height: var(--control);
   font-size: 14px;
   color: var(--text);
+}
+
+/* A machine address is one long word: beside a button it breaks mid-host.
+   Its actions go underneath, still in the controls' column on the right. */
+.card .settings-row.stacked {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+}
+
+.settings-row.stacked > .row {
+  justify-content: flex-end;
 }
 
 .settings-row > input[type="checkbox"] {

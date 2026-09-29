@@ -98,25 +98,27 @@ export function SettingsView({ settings, machine, onChange, onForget, onClose }:
 function MachineRow({ machine, onForget }: { machine: Machine; onForget: () => void }) {
   const [confirming, setConfirming] = useState(false);
   return (
-    <div className="settings-row">
+    <div className="settings-row stacked">
       <span className="settings-label">
         <span>{machine.label}</span>
         <span className="muted">{machine.url}</span>
       </span>
-      {confirming ? (
-        <span className="row">
-          <button type="button" className="ghost" onClick={() => setConfirming(false)}>
-            Cancel
-          </button>
-          <button type="button" className="danger" onClick={onForget}>
+      <span className="row">
+        {confirming ? (
+          <>
+            <button type="button" className="ghost" onClick={() => setConfirming(false)}>
+              Cancel
+            </button>
+            <button type="button" className="danger" onClick={onForget}>
+              Forget
+            </button>
+          </>
+        ) : (
+          <button type="button" className="ghost danger" onClick={() => setConfirming(true)}>
             Forget
           </button>
-        </span>
-      ) : (
-        <button type="button" className="ghost" onClick={() => setConfirming(true)}>
-          Forget
-        </button>
-      )}
+        )}
+      </span>
     </div>
   );
 }
