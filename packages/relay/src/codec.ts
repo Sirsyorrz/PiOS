@@ -34,6 +34,13 @@ export const PONG = "pong";
  */
 export const MAX_CHUNK = 256 * 1024;
 
+/**
+ * Largest request body the relay carries. Above the daemon's default upload
+ * limit, and far enough below the Durable Object's memory that a few
+ * concurrent bodies cannot take it down.
+ */
+export const MAX_REQUEST_BYTES = 32 * 1024 * 1024;
+
 export type RejectReason =
   | "version_mismatch"
   | "malformed"
@@ -41,7 +48,8 @@ export type RejectReason =
   | "not_enrolled"
   | "key_mismatch"
   | "enroll_closed"
-  | "enroll_secret_invalid";
+  | "enroll_secret_invalid"
+  | "host_record_unreadable";
 
 export type Frame =
   | { t: "challenge"; v: number; nonce: string }
@@ -105,7 +113,71 @@ export function decodeFrame(message: ArrayBuffer | Uint8Array): Decoded {
   if ("s" in frame && (!Number.isInteger(frame.s) || frame.s < 0)) {
     throw new Error("bad stream id");
   }
+  checkFields(frame);
   return { frame, payload: bytes.subarray(4 + headerLength) };
+}
+
+const TOKEN = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/;
+/** Header values Node's http client accepts; anything else throws there. */
+const HEADER_VALUE = /^[\t\x20-\x7e\x80-\xff]*$/;
+/**
+ * Origin-relative and printable ASCII, which is all a parsed URL yields. A
+ * path not starting with "/" would change the authority once the connector
+ * prefixes it with its own host.
+ */
+const REQUEST_PATH = /^\/[\x21-\x7e]*$/;
+
+/**
+ * The fields each side dereferences. Whoever feeds the other end, a throw
+ * here drops one frame instead of crashing the process that reads it.
+ */
+function checkFields(frame: Frame): void {
+  switch (frame.t) {
+    case "req":
+      if (typeof frame.method !== "string" || !TOKEN.test(frame.method)) throw new Error("bad method");
+      checkPath(frame.path);
+      checkHeaderList(frame.headers);
+      return;
+    case "res":
+      if (!Number.isInteger(frame.status) || frame.status < 100 || frame.status > 599) {
+        throw new Error("bad status");
+      }
+      checkHeaderList(frame.headers);
+      return;
+    case "ws-open":
+      checkPath(frame.path);
+      return;
+    case "ws-msg":
+      if (typeof frame.text !== "boolean") throw new Error("bad ws-msg");
+      return;
+    case "ws-close":
+      if (typeof frame.code !== "number" || typeof frame.reason !== "string") {
+        throw new Error("bad ws-close");
+      }
+      return;
+    case "challenge":
+      if (typeof frame.nonce !== "string") throw new Error("bad challenge");
+      return;
+    default:
+      return;
+  }
+}
+
+function checkPath(path: unknown): void {
+  if (typeof path !== "string" || !REQUEST_PATH.test(path)) throw new Error("bad path");
+}
+
+function checkHeaderList(headers: unknown): void {
+  const ok =
+    Array.isArray(headers) &&
+    headers.every(
+      (pair) =>
+        Array.isArray(pair) &&
+        pair.length === 2 &&
+        typeof pair[0] === "string" &&
+        typeof pair[1] === "string",
+    );
+  if (!ok) throw new Error("bad headers");
 }
 
 /** Splits a body into payload-sized pieces without copying. */
@@ -151,10 +223,15 @@ const HOP_HEADERS = new Set([
   "x-real-ip",
 ]);
 
+/**
+ * Also drops any header Node would refuse to send: the edge accepts bytes
+ * Node's http client throws on, and one such header must not cost the stream.
+ */
 export function forwardableHeaders(headers: Iterable<[string, string]>): [string, string][] {
   const out: [string, string][] = [];
   for (const [rawName, value] of headers) {
     const name = rawName.toLowerCase();
+    if (!TOKEN.test(name) || !HEADER_VALUE.test(value)) continue;
     if (HOP_HEADERS.has(name)) continue;
     if (name.startsWith("cf-") || name.startsWith("x-forwarded-")) continue;
     if (name.startsWith("sec-websocket-")) continue;

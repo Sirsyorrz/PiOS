@@ -4,6 +4,7 @@ import {
   chunks,
   decodeFrame,
   encodeFrame,
+  forwardableHeaders,
   HOST_PATH,
   PING,
   RELAY_PROTOCOL_VERSION,
@@ -46,6 +47,8 @@ export interface RelayConnectorOptions {
 /** Response bytes allowed to queue on the relay socket before a body pauses. */
 const HIGH_WATER_BYTES = 4 * 1024 * 1024;
 const MAX_MESSAGE_BYTES = 16 * 1024 * 1024;
+/** Phone messages held while the local socket opens; a burst beyond is abuse. */
+const MAX_QUEUED_MESSAGES = 256;
 
 interface HttpStream {
   req: ClientRequest;
@@ -145,7 +148,17 @@ export class RelayConnector {
         return;
       }
       const { frame, payload } = decoded;
-      if (authed) return this.onFrame(frame, payload);
+      if (authed) {
+        // Frames carry what strangers sent the relay. Whatever one of them
+        // trips over costs that stream, never the daemon process.
+        try {
+          this.onFrame(frame, payload);
+        } catch (error) {
+          this.options.log(`dropped a ${frame.t} frame: ${(error as Error).message}`);
+          if ("s" in frame) this.abandon(frame.s);
+        }
+        return;
+      }
 
       if (frame.t === "challenge") {
         if (frame.v !== RELAY_PROTOCOL_VERSION) {
@@ -268,7 +281,8 @@ export class RelayConnector {
         if (!local) return;
         const data = frame.text ? payload.toString("utf8") : Buffer.from(payload);
         if (local.ws.readyState === WebSocket.OPEN) local.ws.send(data);
-        else local.queue.push({ data });
+        else if (local.queue.length < MAX_QUEUED_MESSAGES) local.queue.push({ data });
+        else this.abandon(frame.s);
         return;
       }
       case "ws-close": {
@@ -287,17 +301,50 @@ export class RelayConnector {
     }
   }
 
+  /** Ends a stream in whatever state it is, telling the relay once. */
+  private abandon(s: number): void {
+    const stream = this.http.get(s);
+    if (stream) {
+      stream.res?.destroy();
+      stream.req.destroy();
+      this.reset(s, "stream failed");
+    }
+    const local = this.sockets.get(s);
+    if (local) {
+      this.sockets.delete(s);
+      local.ws.terminate();
+      this.send({ t: "ws-close", s, code: 1011, reason: "stream failed" });
+    }
+    if (stream || local) return;
+    // Failed before it was tracked; the relay knows which kind it opened.
+    this.send({ t: "reset", s, reason: "stream failed" });
+    this.send({ t: "ws-close", s, code: 1011, reason: "stream failed" });
+  }
+
   private startRequest(frame: Extract<Frame, { t: "req" }>): void {
     const { s } = frame;
-    const req = httpRequest({
-      host: this.options.local.host,
-      port: this.options.local.port,
-      method: frame.method,
-      path: frame.path,
-      // Node only adds Host itself for object headers, and HTTP/1.1 without
-      // one is a 400.
-      headers: ["host", `${this.options.local.host}:${this.options.local.port}`, ...frame.headers.flat()],
-    });
+    let req: ClientRequest;
+    try {
+      req = httpRequest({
+        host: this.options.local.host,
+        port: this.options.local.port,
+        method: frame.method,
+        path: frame.path,
+        // Node only adds Host itself for object headers, and HTTP/1.1 without
+        // one is a 400.
+        headers: [
+          "host",
+          `${this.options.local.host}:${this.options.local.port}`,
+          ...forwardableHeaders(frame.headers).flat(),
+        ],
+      });
+    } catch {
+      // Node validates synchronously; the phone gets a plain refusal.
+      this.send({ t: "res", s, status: 400, headers: [["content-type", "text/plain"]] });
+      this.send({ t: "data", s }, Buffer.from("bad request"));
+      this.send({ t: "end", s });
+      return;
+    }
     const stream: HttpStream = { req };
     this.http.set(s, stream);
 

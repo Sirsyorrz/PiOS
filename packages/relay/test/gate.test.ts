@@ -171,7 +171,32 @@ test("malformed keys and signatures are refused, not thrown", async () => {
 });
 
 test("stored records of an unknown version are not trusted", () => {
+  assert.equal(parseHostRecord(undefined), null);
   assert.equal(parseHostRecord(null), null);
-  assert.equal(parseHostRecord({ version: 99, publicKey: "x", enrolledSecretHash: "y" }), null);
+  assert.equal(
+    parseHostRecord({ version: 99, publicKey: "x", enrolledSecretHash: "y" }),
+    "unreadable",
+  );
+  assert.equal(parseHostRecord("garbage"), "unreadable");
   assert.ok(parseHostRecord({ version: 1, publicKey: "x", enrolledSecretHash: "y", enrolledAt: 1 }));
+});
+
+test("an unreadable record locks the slot instead of reopening enrollment", async () => {
+  const key = makeKey();
+  const nonce = newNonce();
+  const enrolling = await decideHost({
+    record: "unreadable",
+    enrollSecret: SECRET,
+    hello: key.hello(nonce, SECRET),
+    nonce,
+  });
+  assert.deepEqual(enrolling, { kind: "reject", reason: "host_record_unreadable" });
+  const again = newNonce();
+  const connecting = await decideHost({
+    record: "unreadable",
+    enrollSecret: SECRET,
+    hello: key.hello(again),
+    nonce: again,
+  });
+  assert.deepEqual(connecting, { kind: "reject", reason: "host_record_unreadable" });
 });

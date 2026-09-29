@@ -6,6 +6,7 @@ import {
   HOST_OFFLINE_CLOSE_CODE,
   HOST_OFFLINE_HEADER,
   HOST_PATH,
+  MAX_REQUEST_BYTES,
   PING,
   PONG,
   RELAY_PROTOCOL_VERSION,
@@ -13,7 +14,7 @@ import {
   sendableCloseReason,
   type Frame,
 } from "./codec.ts";
-import { decideHost, newNonce, parseHostRecord, type HostRecord } from "./gate.ts";
+import { decideHost, newNonce, parseHostRecord } from "./gate.ts";
 
 /**
  * The relay: a dumb pipe between the phone and one daemon.
@@ -33,8 +34,21 @@ export interface Env {
 const HOST_ID = "default";
 const HOST_RECORD_KEY = "host";
 const RESPONSE_TIMEOUT_MS = 120_000;
-/** Unauthenticated host sockets allowed to wait at once. */
-const MAX_PENDING_HOSTS = 4;
+
+/*
+ * Everything below is reachable without credentials, so each resource an
+ * unknown caller can hold is capped per address. A global cap alone would let
+ * one address crowd out the real daemon or the real phone.
+ */
+
+/** A real daemon answers the challenge within one round trip. */
+const HANDSHAKE_MS = 10_000;
+const MAX_PENDING_HOSTS = 32;
+const MAX_PENDING_HOSTS_PER_IP = 2;
+/** Several tabs and a reconnect overlap fit comfortably. */
+const MAX_PHONE_SOCKETS_PER_IP = 16;
+/** A transcript full of images loads in parallel. */
+const MAX_REQUESTS_PER_IP = 64;
 
 /** Close codes on the host socket, read by the connector. */
 const CLOSE_REPLACED = 4000;
@@ -47,7 +61,7 @@ export default {
 } satisfies ExportedHandler<Env>;
 
 type Attachment =
-  | { role: "pending"; nonce: string }
+  | { role: "pending"; nonce: string; ip?: string; since?: number }
   | { role: "host" }
   | { role: "phone"; s: number };
 
@@ -57,6 +71,7 @@ interface PendingResponse {
   readable: ReadableStream<Uint8Array>;
   timer: ReturnType<typeof setTimeout>;
   answered: boolean;
+  ip: string;
 }
 
 export class RelayHost implements DurableObject {
@@ -79,13 +94,14 @@ export class RelayHost implements DurableObject {
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
     const upgrade = request.headers.get("upgrade")?.toLowerCase() === "websocket";
+    const ip = clientIp(request);
     if (url.pathname === HOST_PATH) {
-      return upgrade ? this.acceptHost() : new Response("expected a websocket", { status: 426 });
+      return upgrade ? this.acceptHost(ip) : new Response("expected a websocket", { status: 426 });
     }
     const host = this.host();
-    if (upgrade) return this.acceptPhone(url, host);
+    if (upgrade) return this.acceptPhone(url, host, ip);
     if (!host) return hostOffline();
-    return this.forward(request, url, host);
+    return this.forward(request, url, host, ip);
   }
 
   async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer): Promise<void> {
@@ -101,7 +117,10 @@ export class RelayHost implements DurableObject {
     } catch {
       return ws.close(1002, "malformed frame");
     }
-    if (attachment.role === "pending") return this.authenticate(ws, attachment.nonce, frame);
+    if (attachment.role === "pending") {
+      if (expired(attachment)) return ws.close(CLOSE_REJECTED, "handshake timed out");
+      return this.authenticate(ws, attachment, frame);
+    }
     return this.fromHost(frame, payload);
   }
 
@@ -124,26 +143,45 @@ export class RelayHost implements DurableObject {
     await this.webSocketClose(ws, 1011, "socket error");
   }
 
-  private acceptHost(): Response {
-    const pending = this.state.getWebSockets("host").filter(
-      (ws) => (ws.deserializeAttachment() as Attachment | null)?.role === "pending",
-    );
+  /**
+   * Pending sockets expire, are capped per address, and only then globally,
+   * oldest first: flooding the queue to push out the real daemon's handshake
+   * takes many addresses, not one.
+   */
+  private acceptHost(ip: string): Response {
+    let pending: WebSocket[] = [];
+    for (const ws of this.state.getWebSockets("host")) {
+      const attachment = ws.deserializeAttachment() as Attachment | null;
+      if (attachment?.role !== "pending") continue;
+      if (expired(attachment)) closeQuietly(ws, CLOSE_REJECTED, "handshake timed out");
+      else pending.push(ws);
+    }
+    const fromIp = pending.filter((ws) => pendingIp(ws) === ip);
+    for (const stale of fromIp.slice(0, Math.max(0, fromIp.length - MAX_PENDING_HOSTS_PER_IP + 1))) {
+      closeQuietly(stale, CLOSE_REJECTED, "too many pending hosts");
+      pending = pending.filter((ws) => ws !== stale);
+    }
     for (const stale of pending.slice(0, Math.max(0, pending.length - MAX_PENDING_HOSTS + 1))) {
-      stale.close(CLOSE_REJECTED, "too many pending hosts");
+      closeQuietly(stale, CLOSE_REJECTED, "too many pending hosts");
     }
 
     const { 0: client, 1: server } = new WebSocketPair();
     this.state.acceptWebSocket(server, ["host"]);
     const nonce = newNonce();
-    server.serializeAttachment({ role: "pending", nonce } satisfies Attachment);
+    server.serializeAttachment({ role: "pending", nonce, ip, since: Date.now() } satisfies Attachment);
     server.send(encodeFrame({ t: "challenge", v: RELAY_PROTOCOL_VERSION, nonce }));
     return new Response(null, { status: 101, webSocket: client });
   }
 
-  private async authenticate(ws: WebSocket, nonce: string, frame: Frame): Promise<void> {
+  private async authenticate(
+    ws: WebSocket,
+    attachment: Extract<Attachment, { role: "pending" }>,
+    frame: Frame,
+  ): Promise<void> {
+    const { nonce } = attachment;
     if (frame.t !== "hello") return ws.close(CLOSE_REJECTED, "expected hello");
     // Spent on first use, so a captured hello can never be replayed.
-    ws.serializeAttachment({ role: "pending", nonce: "" } satisfies Attachment);
+    ws.serializeAttachment({ ...attachment, nonce: "" } satisfies Attachment);
     if (!nonce) return ws.close(CLOSE_REJECTED, "nonce spent");
 
     const record = parseHostRecord(await this.state.storage.get(HOST_RECORD_KEY));
@@ -162,7 +200,9 @@ export class RelayHost implements DurableObject {
       await this.state.storage.put(HOST_RECORD_KEY, decision.record);
       // A host still holding the old key must learn it was replaced: that is
       // how an enrollment nobody asked for becomes visible.
-      if (record && record.publicKey !== decision.record.publicKey) this.evictHosts("key replaced");
+      if (record && record !== "unreadable" && record.publicKey !== decision.record.publicKey) {
+        this.evictHosts("key replaced");
+      }
       ws.send(encodeFrame({ t: "enrolled" }));
       return ws.close(1000, "enrolled");
     }
@@ -206,10 +246,16 @@ export class RelayHost implements DurableObject {
     for (const [s, pending] of this.responses) this.fail(s, pending);
   }
 
-  private acceptPhone(url: URL, host: WebSocket | null): Response {
+  private acceptPhone(url: URL, host: WebSocket | null, ip: string): Response {
+    // Oldest first: a phone's own reconnect must never be the one refused.
+    const fromIp = this.state.getWebSockets(`ip:${ip}`);
+    for (const stale of fromIp.slice(0, Math.max(0, fromIp.length - MAX_PHONE_SOCKETS_PER_IP + 1))) {
+      closeQuietly(stale, 1008, "too many sockets");
+    }
+
     const { 0: client, 1: server } = new WebSocketPair();
     const s = this.newStreamId();
-    this.state.acceptWebSocket(server, ["phone", `s:${s}`]);
+    this.state.acceptWebSocket(server, ["phone", `s:${s}`, `ip:${ip}`]);
     server.serializeAttachment({ role: "phone", s } satisfies Attachment);
     // Accepted, then closed with a reason: a refused upgrade reaches the
     // browser as a bare 1006 the client cannot tell from a network drop.
@@ -274,7 +320,16 @@ export class RelayHost implements DurableObject {
     }
   }
 
-  private async forward(request: Request, url: URL, host: WebSocket): Promise<Response> {
+  private async forward(request: Request, url: URL, host: WebSocket, ip: string): Promise<Response> {
+    if (Number(request.headers.get("content-length") ?? 0) > MAX_REQUEST_BYTES) {
+      return new Response("request body too large", { status: 413 });
+    }
+    let inFlight = 0;
+    for (const pending of this.responses.values()) if (pending.ip === ip) inFlight += 1;
+    if (inFlight >= MAX_REQUESTS_PER_IP) {
+      return new Response("too many requests", { status: 429, headers: { "retry-after": "1" } });
+    }
+
     const s = this.newStreamId();
     const { readable, writable } = new TransformStream<Uint8Array, Uint8Array>();
     const response = new Promise<Response>((resolve) => {
@@ -288,6 +343,7 @@ export class RelayHost implements DurableObject {
         readable,
         timer,
         answered: false,
+        ip,
       });
     });
 
@@ -301,11 +357,25 @@ export class RelayHost implements DurableObject {
       }),
     );
     try {
+      let sent = 0;
       if (request.body) {
         const reader = request.body.getReader();
         for (;;) {
           const { done, value } = await reader.read();
           if (done) break;
+          // The daemon already answered (a 401, say): the rest has nowhere to go.
+          if (!this.responses.has(s)) {
+            await reader.cancel().catch(() => {});
+            return response;
+          }
+          sent += value.byteLength;
+          if (sent > MAX_REQUEST_BYTES) {
+            await reader.cancel().catch(() => {});
+            const pending = this.responses.get(s);
+            if (pending) this.fail(s, pending, 413);
+            host.send(encodeFrame({ t: "reset", s, reason: "request body too large" }));
+            return response;
+          }
           for (const piece of chunks(value)) host.send(encodeFrame({ t: "data", s }, piece));
         }
       }
@@ -340,7 +410,7 @@ export class RelayHost implements DurableObject {
     clearTimeout(pending.timer);
     if (!pending.answered) {
       pending.answered = true;
-      pending.resolve(status === 502 ? hostOffline() : new Response("host timed out", { status }));
+      pending.resolve(status === 502 ? hostOffline() : new Response(FAILURE_TEXT[status] ?? null, { status }));
     }
     void pending.writer?.abort().catch(() => {});
   }
@@ -350,6 +420,34 @@ export class RelayHost implements DurableObject {
       const s = crypto.getRandomValues(new Uint32Array(1))[0]! >>> 1;
       if (!this.responses.has(s) && !this.phone(s)) return s;
     }
+  }
+}
+
+const FAILURE_TEXT: Record<number, string> = {
+  413: "request body too large",
+  504: "host timed out",
+};
+
+/** Set by Cloudflare's edge, which a caller cannot override. */
+function clientIp(request: Request): string {
+  return request.headers.get("cf-connecting-ip") ?? "unknown";
+}
+
+function expired(attachment: Extract<Attachment, { role: "pending" }>): boolean {
+  // Sockets from before `since` existed have no age; treat them as stale.
+  return Date.now() - (attachment.since ?? 0) > HANDSHAKE_MS;
+}
+
+function pendingIp(ws: WebSocket): string | undefined {
+  const attachment = ws.deserializeAttachment() as Attachment | null;
+  return attachment?.role === "pending" ? attachment.ip : undefined;
+}
+
+function closeQuietly(ws: WebSocket, code: number, reason: string): void {
+  try {
+    ws.close(code, reason);
+  } catch {
+    // Already closing.
   }
 }
 

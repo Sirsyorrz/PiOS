@@ -1,7 +1,7 @@
 import { after, before, test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { createServer } from "node:net";
+import { connect, createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawn, type ChildProcess } from "node:child_process";
@@ -245,6 +245,54 @@ test("the daemon's auth close code reaches the phone unchanged", async () => {
   );
   const { code } = await done;
   assert.ok(code === 4401 || code === 4403, `closed ${code}`);
+});
+
+/** Bytes a fetch client would refuse to send, straight onto the socket. */
+function rawRequest(head: Buffer): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const socket = connect(relayPort, "127.0.0.1", () => socket.write(head));
+    let out = "";
+    socket.on("data", (chunk) => {
+      out += chunk;
+      if (out.includes("\r\n\r\n")) {
+        socket.destroy();
+        resolve(out.split("\r\n")[0]!);
+      }
+    });
+    socket.on("error", reject);
+  });
+}
+
+test("a header only the edge accepts cannot take the daemon down", async () => {
+  for (const value of [Buffer.from([0xe9]), Buffer.from("\u20ac")]) {
+    const status = await rawRequest(
+      Buffer.concat([
+        Buffer.from("GET /health HTTP/1.1\r\nHost: 127.0.0.1\r\nX-Probe: "),
+        value,
+        Buffer.from("\r\nConnection: close\r\n\r\n"),
+      ]),
+    );
+    assert.match(status, / 200 /);
+  }
+  assert.equal(harness.server.relay?.state, "online");
+  assert.equal((await fetch(`${relayUrl}/health`)).status, 200);
+});
+
+test("an oversized body is refused before it reaches the daemon", async () => {
+  const status = await rawRequest(
+    Buffer.from(
+      "POST /upload HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: 999999999\r\n\r\n",
+    ),
+  );
+  assert.match(status, / 413 /);
+});
+
+test("one address cannot hold more than two pending host handshakes", async () => {
+  const sockets = Array.from({ length: 5 }, () => relayWs("/_pios/host"));
+  await Promise.all(sockets.map(opened));
+  await until(() => sockets.filter((ws) => ws.readyState === WebSocket.OPEN).length <= 2);
+  for (const ws of sockets) ws.terminate();
+  assert.equal(harness.server.relay?.state, "online");
 });
 
 test("an unenrolled key cannot take the host slot", async () => {

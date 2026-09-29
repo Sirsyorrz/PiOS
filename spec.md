@@ -131,8 +131,14 @@ phone ──HTTPS/WSS──► Worker ─► Durable Object ◄──WSS (outbou
   several machines later is a routing change, not a rewrite.
 - **No relay-side gating of phone traffic.** `/pair` and every route are
   reachable from the internet, protected by the daemon's auth (256-bit
-  single-use pairing tokens, hashed device tokens). Rate limiting only if
-  abuse shows up.
+  single-use pairing tokens, hashed device tokens). The relay only bounds
+  what an unauthenticated caller can hold, per `cf-connecting-ip`: pending
+  host handshakes (2, expiring after 10 s), phone sockets (16), in-flight
+  requests (64), and request bodies (32 MiB). Per address, so one flooder
+  cannot crowd out the real daemon or phone.
+- **Frames are validated on decode**, on both ends. Paths must be
+  origin-relative ASCII, and headers Node would refuse are dropped, so no
+  frame a stranger can cause makes the connector throw.
 - **The daemon binds `127.0.0.1` by default.** The relay is the only remote
   path, so LAN exposure buys nothing. `PIOS_BIND` opts back in (`PIOS_HOST`
   already names the session host mode).
@@ -149,7 +155,9 @@ therefore too weak.
   connect the daemon presents it plus an Ed25519 public key; the private key
   stays in `~/.pios/relay-key.json` (0600). The Durable Object stores the
   public key and the hash of the secret that enrolled it, in a versioned
-  record.
+  record. A record the running version cannot read locks the slot rather
+  than counting as absent, which would reopen the spent secret; a new record
+  version ships with a migration.
 - After that the secret is dead. Every host connection is challenge-response:
   the Durable Object sends a nonce, the daemon signs it.
 - **A new host requires a new secret.** Rotating `ENROLL_SECRET` reopens

@@ -83,3 +83,48 @@ test("base64url round-trips every byte value", () => {
   assert.doesNotMatch(text, /[+/=]/);
   assert.deepEqual([...fromBase64url(text)], [...bytes]);
 });
+
+test("headers Node's http client would throw on are dropped, not forwarded", () => {
+  const out = forwardableHeaders([
+    ["X-Euro", "\u20ac"],
+    ["X-Replacement", "\ufffd"],
+    ["X-Latin1", "caf\u00e9"],
+    ["X-Newline", "a\r\nb"],
+    ["Bad Name", "x"],
+    ["X-Ok", "fine\tvalue"],
+  ]);
+  assert.deepEqual(out, [
+    ["x-latin1", "caf\u00e9"],
+    ["x-ok", "fine\tvalue"],
+  ]);
+});
+
+test("request frames with a path that could change the authority are refused", () => {
+  const req = (path: string): Frame => ({ t: "req", s: 1, method: "GET", path, headers: [] });
+  assert.doesNotThrow(() => decodeFrame(encodeFrame(req("/health?x=1"))));
+  for (const path of ["@evil.example/", "evil", "", "/a b", "/\u00e9"]) {
+    assert.throws(() => decodeFrame(encodeFrame(req(path))), /bad path/, path);
+    assert.throws(
+      () => decodeFrame(encodeFrame({ t: "ws-open", s: 1, path })),
+      /bad path/,
+      path,
+    );
+  }
+});
+
+test("frames missing the fields a reader dereferences are refused", () => {
+  const bad = [
+    { t: "req", s: 1, method: "GE T", path: "/", headers: [] },
+    { t: "req", s: 1, method: "GET", path: "/", headers: "x" },
+    { t: "req", s: 1, method: "GET", path: "/", headers: [["a"]] },
+    { t: "req", s: 1, method: "GET", path: "/", headers: [["a", 1]] },
+    { t: "res", s: 1, status: 99, headers: [] },
+    { t: "res", s: 1, status: 200 },
+    { t: "ws-msg", s: 1 },
+    { t: "ws-close", s: 1, code: "x", reason: "" },
+    { t: "challenge", v: 1 },
+  ];
+  for (const frame of bad) {
+    assert.throws(() => decodeFrame(encodeFrame(frame as unknown as Frame)), JSON.stringify(frame));
+  }
+});

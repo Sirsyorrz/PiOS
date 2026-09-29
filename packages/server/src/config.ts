@@ -71,8 +71,10 @@ export function defaultConfig(overrides: Partial<ServerConfig> = {}): ServerConf
   // Env override so a second daemon can run against a scratch dir without
   // faking HOME, which would also hide pi's own credentials from it.
   const dataDir = overrides.dataDir ?? process.env.PIOS_DATA_DIR ?? join(homedir(), ".pios");
-  const relayUrl = normalizeUrl(
-    overrides.relayUrl !== undefined ? overrides.relayUrl : (process.env.PIOS_RELAY_URL ?? null),
+  const relayUrl = checkRelayUrl(
+    normalizeUrl(
+      overrides.relayUrl !== undefined ? overrides.relayUrl : (process.env.PIOS_RELAY_URL ?? null),
+    ),
   );
   return {
     host: overrides.host ?? process.env.PIOS_BIND ?? "127.0.0.1",
@@ -120,6 +122,24 @@ export function pushStorePath(config: ServerConfig): string {
 
 export function relayKeyPath(config: ServerConfig): string {
   return join(config.dataDir, "relay-key.json");
+}
+
+/**
+ * The enrollment secret and every device token cross this link, so plain
+ * http is refused anywhere but loopback, where a local `wrangler dev` lives.
+ */
+function checkRelayUrl(url: string | null): string | null {
+  if (!url) return null;
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    throw new Error(`PIOS_RELAY_URL is not a URL: ${url}`);
+  }
+  if (parsed.protocol === "https:") return url;
+  const loopback = ["localhost", "127.0.0.1", "[::1]"].includes(parsed.hostname);
+  if (parsed.protocol === "http:" && loopback) return url;
+  throw new Error(`PIOS_RELAY_URL must be https:// (got ${url})`);
 }
 
 function normalizeUrl(url: string | null): string | null {

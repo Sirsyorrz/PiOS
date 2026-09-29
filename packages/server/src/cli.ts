@@ -153,6 +153,8 @@ function enrollHint(reason: string): string {
       return "That secret does not match the relay's ENROLL_SECRET.";
     case "version_mismatch":
       return "The relay and this daemon speak different protocol versions; redeploy the relay.";
+    case "host_record_unreadable":
+      return "The relay holds a host record it cannot read, so it admits no host. Redeploy a relay version that can migrate it.";
     default:
       return "";
   }

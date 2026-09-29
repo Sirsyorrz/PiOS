@@ -34,6 +34,14 @@ test("an explicit null relay wins over the environment", () => {
   }
 });
 
+test("a relay URL must be https, except on loopback", () => {
+  assert.equal(defaultConfig({ relayUrl: "http://127.0.0.1:8787" }).relayUrl, "http://127.0.0.1:8787");
+  assert.equal(defaultConfig({ relayUrl: "http://localhost:8787/" }).relayUrl, "http://localhost:8787");
+  assert.throws(() => defaultConfig({ relayUrl: "http://relay.example" }), /https/);
+  assert.throws(() => defaultConfig({ relayUrl: "ws://relay.example" }), /https/);
+  assert.throws(() => defaultConfig({ relayUrl: "not a url" }), /not a URL/);
+});
+
 function withEnv(name: string, value: string) {
   const previous = process.env[name];
   process.env[name] = value;

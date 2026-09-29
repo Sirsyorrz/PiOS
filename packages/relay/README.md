@@ -7,7 +7,12 @@ daemon.
 
 The relay sees plaintext and authorizes nothing on the phone side. Device
 tokens are checked by the daemon. The relay only decides who may be the
-daemon: whoever holds the Ed25519 key it enrolled.
+daemon: whoever holds the Ed25519 key it enrolled. It also caps what any one
+address can hold open (handshakes, sockets, requests, 32 MiB bodies), since
+all of it is reachable without credentials.
+
+`PIOS_RELAY_URL` must be `https://`; plain `http://` is accepted only for a
+loopback `wrangler dev`.
 
 ## One-time Cloudflare setup
 

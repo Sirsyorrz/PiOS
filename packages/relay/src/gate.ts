@@ -28,6 +28,13 @@ export interface HostRecord {
   enrolledAt: number;
 }
 
+/**
+ * What storage holds. "unreadable" is kept apart from "nothing": treating a
+ * record this version cannot parse as absent would let the configured secret,
+ * already spent on it, enroll a key all over again.
+ */
+export type StoredHost = HostRecord | null | "unreadable";
+
 export type HostDecision =
   | { kind: "accept" }
   | { kind: "enroll"; record: HostRecord }
@@ -45,7 +52,7 @@ export function challengeMessage(nonce: string): Uint8Array {
 }
 
 export async function decideHost(input: {
-  record: HostRecord | null;
+  record: StoredHost;
   /** The Worker's configured `ENROLL_SECRET`, if any. */
   enrollSecret: string | undefined;
   hello: Hello;
@@ -60,6 +67,7 @@ export async function decideHost(input: {
   if (!(await verify(hello.publicKey, hello.signature, challengeMessage(input.nonce)))) {
     return reject("bad_signature");
   }
+  if (record === "unreadable") return reject("host_record_unreadable");
 
   if (hello.enrollSecret === undefined) {
     if (!record) return reject("not_enrolled");
@@ -88,13 +96,17 @@ export async function decideHost(input: {
   };
 }
 
-/** Reads a stored record, dropping anything this version cannot vouch for. */
-export function parseHostRecord(value: unknown): HostRecord | null {
-  if (!value || typeof value !== "object") return null;
+/**
+ * Reads a stored record. Anything present that this version cannot vouch for
+ * locks the slot: a new version must ship a migration here, not start over.
+ */
+export function parseHostRecord(value: unknown): StoredHost {
+  if (value === undefined || value === null) return null;
+  if (typeof value !== "object") return "unreadable";
   const record = value as Partial<HostRecord>;
-  if (record.version !== HOST_RECORD_VERSION) return null;
+  if (record.version !== HOST_RECORD_VERSION) return "unreadable";
   if (typeof record.publicKey !== "string" || typeof record.enrolledSecretHash !== "string") {
-    return null;
+    return "unreadable";
   }
   return record as HostRecord;
 }
