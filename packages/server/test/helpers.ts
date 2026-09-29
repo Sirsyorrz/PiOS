@@ -6,7 +6,7 @@ import { WebSocket } from "ws";
 import { subprocessHost, type SessionIndex } from "@pios/pi-host";
 import { branchFakeSession } from "../../pi-host/test/fake-branch.ts";
 import { WIRE_VERSION, type ClientFrame, type ServerFrame } from "@pios/protocol";
-import { PiosServer } from "../src/server.ts";
+import { PiosServer, type PiosServerOptions } from "../src/server.ts";
 
 const FAKE_PI = fileURLToPath(
   new URL("../../pi-host/test/fake-pi.ts", import.meta.url),
@@ -22,8 +22,13 @@ export interface Harness {
 }
 
 /** A real server over the loopback, driven by the stub pi from Phase 2. */
-export async function startHarness(index?: SessionIndex): Promise<Harness> {
+export async function startHarness(
+  index?: SessionIndex,
+  extra: Partial<PiosServerOptions> & { beforeListen?: (dataDir: string) => Promise<void> } = {},
+): Promise<Harness> {
   const dir = mkdtempSync(join(tmpdir(), "pios-server-"));
+  const { beforeListen, ...options } = extra;
+  await beforeListen?.(join(dir, "data"));
   const server = new PiosServer({
     index,
     host: "127.0.0.1",
@@ -46,6 +51,8 @@ export async function startHarness(index?: SessionIndex): Promise<Harness> {
     // The API is the subject here; serving the repo's built PWA would turn
     // every unknown path into an app shell.
     webDir: null,
+    relayUrl: null,
+    ...options,
   });
   await server.listen();
 

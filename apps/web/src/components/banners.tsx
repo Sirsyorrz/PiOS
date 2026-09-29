@@ -102,6 +102,11 @@ function transportText(state: SupervisorState): string {
     case "connecting":
       return "Connecting...";
     case "waiting":
+      // The relay is up but the machine behind it is not: asleep, rebooting,
+      // or its daemon stopped. Nothing on the phone can fix that.
+      if (state.blockedReason === "host offline") {
+        return `Machine offline. Retrying (attempt ${state.attempts}); prompts are queued.`;
+      }
       return `Reconnecting (attempt ${state.attempts})${state.blockedReason ? `: ${state.blockedReason}` : ""}`;
     case "blocked":
       return `Cannot connect: ${state.blockedReason ?? "check pairing"}`;

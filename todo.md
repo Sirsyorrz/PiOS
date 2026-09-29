@@ -8,13 +8,8 @@
 - @ fuzzy picker must be daemon-side: RPC mode no-ops addAutocompleteProvider
   and setEditorComponent, so pi-fzfp cannot serve the client. Upstream idea:
   an RPC command that runs registered providers and returns AutocompleteItems
-- reference pi-remote
-  - relay shape to copy (pi-remote): one durable object per paired host, agent
-    dials out, phone dials in, object forwards by socket role and never reads
-    payloads. Pair code short-lived and single-use, tokens hashed, check route
-    before connect so a revoked client forgets instead of retrying.
-  - e2e envelope (HKDF + AES-GCM + chunked parts) only earns its place once a
-    relay exists. Not needed while the daemon is reached directly.
+- relay: plan phase 7.8. From pi-remote still worth copying: check the route
+  before connect so a revoked client forgets instead of retrying.
 - session list: docked column / overlay drawer, one component (plan phase 7.2)
 - fix floating input with no keyboard on app reopen bug
 - session model follow-ups

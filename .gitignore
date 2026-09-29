@@ -7,3 +7,5 @@ spikes/.sessions/
 spikes/.sessions-inproc/
 spikes/.sandbox/
 spikes/.trust-sandbox/
+.wrangler/
+.dev.vars

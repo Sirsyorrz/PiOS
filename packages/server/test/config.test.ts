@@ -18,6 +18,22 @@ test("an explicit host mode wins over the environment", () => {
   }
 });
 
+test("the daemon binds loopback unless told otherwise", () => {
+  assert.equal(defaultConfig().host, "127.0.0.1");
+  assert.equal(withEnv("PIOS_BIND", "0.0.0.0").host, "0.0.0.0");
+});
+
+test("an explicit null relay wins over the environment", () => {
+  assert.equal(withEnv("PIOS_RELAY_URL", "https://r.example/").relayUrl, "https://r.example");
+  const previous = process.env.PIOS_RELAY_URL;
+  process.env.PIOS_RELAY_URL = "https://r.example";
+  try {
+    assert.equal(defaultConfig({ relayUrl: null }).relayUrl, null);
+  } finally {
+    restore("PIOS_RELAY_URL", previous);
+  }
+});
+
 function withEnv(name: string, value: string) {
   const previous = process.env[name];
   process.env[name] = value;

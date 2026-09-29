@@ -3,20 +3,18 @@ import { httpBase, type Machine } from "../machine.ts";
 import { disablePush, enablePush, pushState, type PushState } from "../push.ts";
 import type { Settings } from "../settings.ts";
 import { fetchUsage, formatSpend, resetsIn, type UsageReport } from "../usage.ts";
-import { EndpointPicker } from "./endpoint-picker.tsx";
 import { ModalCard, PickerHeader } from "./ui.tsx";
 
 /**
- * Every preference in one place, plus the machine's routes.
+ * Every preference in one place, plus the machine itself.
  *
  * Preferences are defaults only: they decide how a session opens, and are
  * never pushed onto a transcript the reader has already adjusted by hand.
  */
-export function SettingsView({ settings, machine, onChange, onMachineChange, onForget, onClose }: {
+export function SettingsView({ settings, machine, onChange, onForget, onClose }: {
   settings: Settings;
   machine: Machine;
   onChange: (settings: Settings) => void;
-  onMachineChange: (machine: Machine) => void;
   onForget: () => void;
   onClose: () => void;
 }) {
@@ -84,8 +82,41 @@ export function SettingsView({ settings, machine, onChange, onMachineChange, onF
         <Notifications machine={machine} />
       </div>
 
-      <EndpointPicker machine={machine} onChange={onMachineChange} onForget={onForget} />
+      <div className="settings-group">
+        <h3>Machine</h3>
+        <MachineRow machine={machine} onForget={onForget} />
+      </div>
     </ModalCard>
+  );
+}
+
+/**
+ * Forgetting drops the device token, and getting it back means pairing again
+ * at the machine, so it asks twice.
+ */
+function MachineRow({ machine, onForget }: { machine: Machine; onForget: () => void }) {
+  const [confirming, setConfirming] = useState(false);
+  return (
+    <div className="settings-row">
+      <span className="settings-label">
+        <span>{machine.label}</span>
+        <span className="muted">{machine.url}</span>
+      </span>
+      {confirming ? (
+        <span className="row">
+          <button type="button" className="ghost" onClick={() => setConfirming(false)}>
+            Cancel
+          </button>
+          <button type="button" className="danger" onClick={onForget}>
+            Forget
+          </button>
+        </span>
+      ) : (
+        <button type="button" className="ghost" onClick={() => setConfirming(true)}>
+          Forget
+        </button>
+      )}
+    </div>
   );
 }
 
@@ -120,7 +151,7 @@ function Notifications({ machine }: { machine: Machine }) {
   }
 
   const toggle = (wanted: boolean) => {
-    if (!base) return setError("No endpoint selected.");
+    if (!base) return setError("This machine has no valid address.");
     setBusy(true);
     setError(null);
     void (wanted

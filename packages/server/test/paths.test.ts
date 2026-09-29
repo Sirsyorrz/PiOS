@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { containedPath } from "../src/paths.ts";
 import { CommandLedger } from "../src/dedupe.ts";
-import { advertisedEndpoints, pairingEndpoint } from "../src/endpoints.ts";
+import { advertisedEndpoint } from "../src/endpoints.ts";
 
 test("paths inside the root are allowed, outside are refused", () => {
   const dir = mkdtempSync(join(tmpdir(), "pios-path-"));
@@ -63,29 +63,15 @@ test("the ledger forgets old commands and stays bounded", () => {
   assert.ok(ledger.size <= 3);
 });
 
-test("endpoints are keyed by identity, not by URL", () => {
-  const endpoints = advertisedEndpoints(4111, "box.tail1234.ts.net");
-  assert.ok(endpoints.some((e) => e.key === "loopback:"));
-  assert.ok(endpoints.every((e) => e.key.length > 0));
-
-  const magic = endpoints.find((e) => e.kind === "tailscale-magicdns");
-  assert.equal(magic?.key, "tailscale-magicdns:box.tail1234.ts.net");
-
-  // Loopback is never what a phone should be told to use.
-  const chosen = pairingEndpoint(endpoints);
-  assert.equal(chosen?.kind, "tailscale-magicdns");
+test("the relay is the endpoint when configured, keyed by identity", () => {
+  const endpoint = advertisedEndpoint(4111, "https://pios-relay.me.workers.dev");
+  assert.equal(endpoint.kind, "relay");
+  assert.equal(endpoint.key, "relay:pios-relay.me.workers.dev");
+  assert.equal(endpoint.url, "https://pios-relay.me.workers.dev");
 });
 
-test("loopback is only chosen when nothing else exists", () => {
-  const only = [{ key: "loopback:", url: "http://127.0.0.1:1", kind: "loopback" as const }];
-  assert.equal(pairingEndpoint(only)?.kind, "loopback");
-  assert.equal(pairingEndpoint([]), undefined);
-});
-
-test("a proxied public origin outranks every discovered address", () => {
-  const endpoints = advertisedEndpoints(4111, "box.tail1234.ts.net", "https://box.ts.net/");
-  const chosen = pairingEndpoint(endpoints);
-  assert.equal(chosen?.kind, "public");
-  // Trailing slash dropped: the URL is joined against, not concatenated.
-  assert.equal(chosen?.url, "https://box.ts.net");
+test("without a relay the daemon only advertises itself locally", () => {
+  const endpoint = advertisedEndpoint(4111, null);
+  assert.equal(endpoint.kind, "local");
+  assert.equal(endpoint.url, "http://localhost:4111");
 });

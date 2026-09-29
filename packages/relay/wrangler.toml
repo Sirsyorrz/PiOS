@@ -1,0 +1,13 @@
+name = "pios-relay"
+main = "src/worker.ts"
+compatibility_date = "2025-09-01"
+workers_dev = true
+
+[[durable_objects.bindings]]
+name = "RELAY"
+class_name = "RelayHost"
+
+# SQLite-backed, which is what the free plan offers.
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["RelayHost"]

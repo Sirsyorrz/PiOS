@@ -62,6 +62,8 @@ UI is a *rendering* problem, not an *execution* problem.
                                       pi agent loop
 ```
 
+Both the WS and HTTP legs ride the relay (see Relay below).
+
 ### Why a daemon and not raw SSH from the phone
 
 - RPC is stdio, one process per session. Multi-session needs something
@@ -85,21 +87,93 @@ HTTP/WebSocket via direct pairing, relay, or Tailscale
 ([`docs/internals/remote.md`][t3-remote]).
 
 Flow: user runs an install command on their machine, server prints a pairing
-URL/code, phone pairs, WebSocket from then on. T3 puts the token in the URL
+URL/code, phone pairs, WebSocket from then on, all through the relay below. T3 puts the token in the URL
 **hash**, exchanges it with the backend, and strips it from history
 (`packages/shared/src/remote.ts`).
 
 No native modules needed, so Expo stays clean. SSH becomes a later
 convenience, not a dependency.
 
+### Relay
+
+**Decision: the phone reaches the daemon only through a relay.** Tailscale
+worked, but it needs a VPN app running on the phone. The relay is personal and
+self-hosted: one Cloudflare Worker with a Durable Object per host, on
+`*.workers.dev`. Reference shape: pi-remote.
+
+```
+phone ──HTTPS/WSS──► Worker ─► Durable Object ◄──WSS (outbound)── daemon connector
+                                                                   │
+                                                          127.0.0.1:4111 (unchanged server)
+```
+
+- **The daemon dials out.** A relay connector inside the daemon holds one
+  outbound WebSocket to the Durable Object. Phone HTTP requests and phone
+  WebSockets become framed streams (stream id, chunked, since Workers cap
+  WebSocket message size) on that socket. The connector replays each one
+  against the daemon's own `127.0.0.1` listener. The server, its routes, and
+  its auth stay the single code path; the relay is a transport, not a second
+  server.
+- **The relay is trusted and sees plaintext.** TLS ends at Cloudflare. No
+  end-to-end envelope: the PWA's JavaScript is served through the same relay,
+  so a malicious relay could ship JS that leaks keys anyway, and an envelope
+  would force every HTTP route through a custom encrypted tunnel. The relay
+  forwards but never authorizes: device tokens are still checked by the
+  daemon, which trusts nothing about loopback.
+- **The PWA is proxied from the daemon**, like any other route. App and daemon
+  versions never skew, and there is no second deploy. When the host is
+  offline, the service worker's cached shell still opens.
+- **Host offline is transient, not an error.** The relay answers `503` with
+  `x-pios-relay: host-offline` and closes phone sockets with a dedicated close
+  code. The supervisor backs off as for a network drop, distinct from a `401`,
+  which blocks.
+- **One host per Worker for now.** The Durable Object is keyed by host id, so
+  several machines later is a routing change, not a rewrite.
+- **No relay-side gating of phone traffic.** `/pair` and every route are
+  reachable from the internet, protected by the daemon's auth (256-bit
+  single-use pairing tokens, hashed device tokens). Rate limiting only if
+  abuse shows up.
+- **The daemon binds `127.0.0.1` by default.** The relay is the only remote
+  path, so LAN exposure buys nothing. `PIOS_BIND` opts back in (`PIOS_HOST`
+  already names the session host mode).
+- Frames carry a protocol version in the host handshake; a mismatch is a
+  clear rejection, not garbled streams.
+
+### Relay host identity
+
+Whoever holds the host slot receives every phone request, device tokens
+included, and could replay them to the real daemon. A static shared secret is
+therefore too weak.
+
+- The Worker has an `ENROLL_SECRET` (`wrangler secret`), used once. On first
+  connect the daemon presents it plus an Ed25519 public key; the private key
+  stays in `~/.pios/relay-key.json` (0600). The Durable Object stores the
+  public key and the hash of the secret that enrolled it, in a versioned
+  record.
+- After that the secret is dead. Every host connection is challenge-response:
+  the Durable Object sends a nonce, the daemon signs it.
+- **A new host requires a new secret.** Rotating `ENROLL_SECRET` reopens
+  enrollment because its hash no longer matches, and enrolling replaces the
+  stored key. There is no other way in.
+- The same key reconnecting (daemon restart) replaces a stale socket. A
+  different key is rejected, even while the slot is empty.
+- If the relay rejects the daemon's key, someone re-enrolled. The daemon logs
+  it loudly and pushes a "relay host key replaced" notification, so a takeover
+  is visible even when it was not you.
+
 ### Endpoints
 
-A server may be reachable several ways (loopback, LAN, private, tunnel). Treat
-advertised endpoints as hints, not proof; the connection attempt decides.
+A machine has one endpoint: the relay URL, or the page's own origin for local
+dev and the sandbox. LAN and Tailscale discovery are gone. An HTTPS PWA cannot
+call `http://` addresses anyway (mixed content), and a second live path would
+double the reconnect logic for little gain.
 
 - No unconditional loopback fallback.
-- Persist endpoints by **stable key**, not raw URL. LAN addresses change with
-  networks; T3 uses `tailscale-ip:` / `tailscale-magicdns:` keys.
+- The endpoint is still persisted by **stable key**, not raw URL, and only a
+  successful connection proves it reachable.
+- Moving origin means fresh storage on the phone: devices re-pair and
+  re-subscribe to push. Web Push itself is unaffected; the daemon sends
+  straight to the push service, never through the relay.
 
 ---
 
@@ -425,6 +499,8 @@ the distinction is load-bearing because the two differ in kind.
 - Daemon needs its own auth (a token minted during bootstrap). SSH's auth
   model does not come along for free over WebSocket, and the daemon can
   execute arbitrary code as the user.
+- The daemon's relay identity is a separate Ed25519 key, enrolled once per
+  enrollment secret (section 3, Relay host identity).
 
 ---
 

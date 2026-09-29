@@ -12,6 +12,7 @@ packages/
   protocol/      shared types, JSONL framing, event schemas (zod)
   pi-host/       owns pi sessions (AgentSession or subprocess RPC)
   server/        pios-server: WS multiplex, HTTP files, pairing, push
+  relay/         Cloudflare Worker + Durable Object, the phone's only route in
   client-core/   connection supervisor, outbox, session store (platform-free)
 apps/
   web/           PWA (React + Vite)
@@ -115,7 +116,8 @@ Both now ride on `SessionSummary`.
    from history. Tokens stored hashed on disk.
 3. Auth middleware on both HTTP and WS. Reject unauthenticated immediately.
 4. Endpoint advertisement by **stable key** (`loopback:`, `lan:`, `tailscale-ip:`,
-   `tailscale-magicdns:`), no unconditional loopback fallback.
+   `tailscale-magicdns:`), no unconditional loopback fallback. Superseded by
+   Phase 7.8: one endpoint, the relay or the page's own origin.
 5. Resume RPC: `get_entries(sessionId, since)` -> delta + `leafId`, served from
    pi (which owns the session JSONL); `subscribe(sinceSeq)` tails the ring
    buffer and reports a `gap` when the cursor was evicted.
@@ -322,6 +324,41 @@ depending on an implementation detail the user could not see.
 
 ---
 
+## Phase 7.8 - Relay instead of Tailscale - DONE
+
+The phone reaches the daemon only through a self-hosted Cloudflare relay; the
+PWA stays a PWA. Design and threat model live in spec.md, section 3, Relay.
+Setup steps: `packages/relay/README.md`.
+
+Shipped:
+
+- `packages/relay`: `codec.ts` (length-prefixed JSON header + binary
+  payload, stream ids, 256 KiB chunks, text `ping`/`pong` only),
+  `gate.ts` (enrollment and challenge as pure WebCrypto functions),
+  `worker.ts` (Worker + one SQLite-backed Durable Object, hibernatable
+  sockets, `503` + `x-pios-relay: host-offline`, close code 4503).
+- `packages/server`: `RelayConnector` replays frames against the daemon's own
+  loopback listener with `http.request` and `ws`; `RelayKey` in
+  `~/.pios/relay-key.json`; `pios-server relay enroll|key`; `PIOS_RELAY_URL`
+  replaces `PIOS_PUBLIC_URL`; default bind `127.0.0.1`, `PIOS_BIND` to
+  override; the key-replaced alarm is a log line plus one push.
+- `apps/web`: machine store v2 (one `url` per machine, v1 migrated), the
+  endpoint picker replaced by a Machine row in Settings, a "Machine offline"
+  banner for close reason `host offline`.
+
+Two corrections to the original steps:
+
+- The connector is tested against the real Worker under `wrangler dev`
+  (`packages/server/test/relay.test.ts`), not a Node fake relay. A fake would
+  have re-implemented the Durable Object and tested the copy.
+- `PIOS_HOST` already selects the session host mode, so the bind address is
+  `PIOS_BIND`.
+
+Still open: the exit check on a real phone on cellular, which needs the
+Cloudflare account.
+
+---
+
 ## Phase 8 - Cleanup and hardening
 
 1. Prune dead code and duplicated view logic surfaced by Phases 6-7.
@@ -412,7 +449,8 @@ notification model.
   device tokens) carries a version and a migration path.
 - **Security:** daemon executes arbitrary code as the user. Auth required on
   every route, path containment on file serving, tokens hashed at rest,
-  Ed25519 / Secure Enclave key generation only if SSH is ever added.
+  daemon bound to loopback, relay host slot held by an enrolled Ed25519 key.
+  Secure Enclave keys only if SSH is ever added.
 - **Non-goals guardrail:** no permission system, no pi reimplementation, no
   network management.
 

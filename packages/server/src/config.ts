@@ -4,6 +4,10 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 export interface ServerConfig {
+  /**
+   * Loopback by default: the relay is the only remote path, and it reaches
+   * the daemon through a connector on this same machine.
+   */
   host: string;
   port: number;
   dataDir: string;
@@ -44,10 +48,10 @@ export interface ServerConfig {
    */
   webDir: string | null;
   /**
-   * Origin a phone actually uses, when something is proxying the daemon.
-   * Advertised ahead of the addresses discovered on the interfaces.
+   * The relay the daemon dials out to, and the origin a phone uses. Null
+   * means local only: a browser on this machine, the sandbox, development.
    */
-  publicUrl: string | null;
+  relayUrl: string | null;
 }
 
 export type SessionHostMode = "subprocess" | "in-process";
@@ -67,9 +71,11 @@ export function defaultConfig(overrides: Partial<ServerConfig> = {}): ServerConf
   // Env override so a second daemon can run against a scratch dir without
   // faking HOME, which would also hide pi's own credentials from it.
   const dataDir = overrides.dataDir ?? process.env.PIOS_DATA_DIR ?? join(homedir(), ".pios");
-  const publicUrl = overrides.publicUrl ?? process.env.PIOS_PUBLIC_URL ?? null;
+  const relayUrl = normalizeUrl(
+    overrides.relayUrl !== undefined ? overrides.relayUrl : (process.env.PIOS_RELAY_URL ?? null),
+  );
   return {
-    host: overrides.host ?? "0.0.0.0",
+    host: overrides.host ?? process.env.PIOS_BIND ?? "127.0.0.1",
     port: overrides.port ?? 4111,
     dataDir,
     sessionDir:
@@ -83,13 +89,13 @@ export function defaultConfig(overrides: Partial<ServerConfig> = {}): ServerConf
     helloTimeoutMs: overrides.helloTimeoutMs ?? 5_000,
     activityTtlMs: overrides.activityTtlMs ?? 45_000,
     webDir: overrides.webDir !== undefined ? overrides.webDir : defaultWebDir(),
-    publicUrl,
-    // The daemon's own https origin identifies it better than a generic URL,
-    // and is the one address the operator already knows is real.
+    relayUrl,
+    // The relay's https origin identifies this daemon better than a generic
+    // URL, and is the one address the operator already knows is real.
     pushSubject:
       overrides.pushSubject ??
       process.env.PIOS_PUSH_SUBJECT ??
-      (publicUrl?.startsWith("https://") ? publicUrl : DEFAULT_PUSH_SUBJECT),
+      (relayUrl?.startsWith("https://") ? relayUrl : DEFAULT_PUSH_SUBJECT),
   };
 }
 
@@ -110,6 +116,15 @@ function defaultWebDir(): string | null {
 
 export function pushStorePath(config: ServerConfig): string {
   return join(config.dataDir, "push.json");
+}
+
+export function relayKeyPath(config: ServerConfig): string {
+  return join(config.dataDir, "relay-key.json");
+}
+
+function normalizeUrl(url: string | null): string | null {
+  const trimmed = url?.trim().replace(/\/+$/, "");
+  return trimmed ? trimmed : null;
 }
 
 export function authStorePath(config: ServerConfig): string {

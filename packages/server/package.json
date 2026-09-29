@@ -16,6 +16,7 @@
   "dependencies": {
     "@pios/pi-host": "workspace:*",
     "@pios/protocol": "workspace:*",
+    "@pios/relay": "workspace:*",
     "ws": "^8.18.0",
     "web-push": "^3.6.7"
   },

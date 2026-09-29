@@ -57,12 +57,6 @@ export function App() {
           machine={machine}
           settings={settings}
           onSettingsChange={setSettings}
-          onMachineChange={(next) =>
-            update({
-              machines: store.machines.map((m) => (m.id === next.id ? next : m)),
-              activeId: store.activeId,
-            })
-          }
           onForget={() =>
             update({
               machines: store.machines.filter((m) => m.id !== machine.id),
@@ -75,11 +69,10 @@ export function App() {
   );
 }
 
-function Workspace({ machine, settings, onSettingsChange, onMachineChange, onForget }: {
+function Workspace({ machine, settings, onSettingsChange, onForget }: {
   machine: Machine;
   settings: Settings;
   onSettingsChange: (settings: Settings) => void;
-  onMachineChange: (machine: Machine) => void;
   onForget: () => void;
 }) {
   const client = useClient();
@@ -191,7 +184,6 @@ function Workspace({ machine, settings, onSettingsChange, onMachineChange, onFor
         settings={settings}
         machine={machine}
         onChange={onSettingsChange}
-        onMachineChange={onMachineChange}
         onForget={onForget}
         onClose={() => setShowSettings(false)}
       />

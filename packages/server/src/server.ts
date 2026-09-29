@@ -7,13 +7,21 @@ import { AuthStore } from "./auth.ts";
 import { CommandLedger } from "./dedupe.ts";
 import { Connection } from "./connection.ts";
 import { handleRequest } from "./http-routes.ts";
-import { advertisedEndpoints, type Endpoint } from "./endpoints.ts";
+import { advertisedEndpoint, type Endpoint } from "./endpoints.ts";
+import { RelayConnector } from "./relay-connector.ts";
+import { RelayKey } from "./relay-key.ts";
 import { createSessionHost } from "./session-host.ts";
 import { SettleNotifier } from "./notifier.ts";
 import { PushStore } from "./push.ts";
 import { SessionStoreWatcher } from "./store-watcher.ts";
 import { TrustStore } from "./trust.ts";
-import { authStorePath, defaultConfig, pushStorePath, type ServerConfig } from "./config.ts";
+import {
+  authStorePath,
+  defaultConfig,
+  pushStorePath,
+  relayKeyPath,
+  type ServerConfig,
+} from "./config.ts";
 
 export interface PiosServerOptions extends Partial<ServerConfig> {
   /** Overridable so tests can run without spawning real pi. */
@@ -38,6 +46,7 @@ export class PiosServer {
   private readonly trust: TrustStore;
   private readonly watcher: SessionStoreWatcher;
   private readonly notifier: SettleNotifier;
+  private relayConnector: RelayConnector | null = null;
 
   constructor(options: PiosServerOptions = {}) {
     this.config = defaultConfig(options);
@@ -111,7 +120,33 @@ export class PiosServer {
     // than a scan of every project the user has ever worked in.
     void this.index.warm();
     await this.watcher.start();
+    this.startRelay();
     return this.port;
+  }
+
+  get relay(): RelayConnector | null {
+    return this.relayConnector;
+  }
+
+  private startRelay(): void {
+    const relayUrl = this.config.relayUrl;
+    if (!relayUrl) return;
+    const wildcard = this.config.host === "0.0.0.0" || this.config.host === "::";
+    this.relayConnector = new RelayConnector({
+      relayUrl,
+      key: RelayKey.loadOrCreate(relayKeyPath(this.config)),
+      local: { host: wildcard ? "127.0.0.1" : this.config.host, port: this.port },
+      onKeyReplaced: () =>
+        void this.push
+          .send({
+            title: "PiOS relay key replaced",
+            body: "Another host enrolled at your relay. If that was not you, rotate ENROLL_SECRET.",
+            url: "/",
+            tag: "pios-relay-key",
+          })
+          .catch((error: unknown) => console.error("[pios] push failed", error)),
+    });
+    this.relayConnector.start();
   }
 
   get port(): number {
@@ -133,11 +168,12 @@ export class PiosServer {
     for (const connection of this.connections) connection.sendSessions();
   }
 
-  endpoints(hostname?: string): Endpoint[] {
-    return advertisedEndpoints(this.port, hostname, this.config.publicUrl);
+  endpoint(): Endpoint {
+    return advertisedEndpoint(this.port, this.config.relayUrl);
   }
 
   async close(): Promise<void> {
+    await this.relayConnector?.stop();
     this.watcher.stop();
     this.notifier.releaseAll();
     await this.registry.disposeAll();

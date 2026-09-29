@@ -492,7 +492,7 @@ button.link {
   max-height: 100%;
 }
 
-/* Scrolls as a whole rather than per section: the endpoints list at the foot
+/* Scrolls as a whole rather than per section: the machine row at the foot
    is part of the same page of choices. */
 .picker.settings {
   /* Content-sized, unlike the directory picker: nothing here is walked into,
@@ -554,6 +554,8 @@ button.link {
 
 .settings-label .muted {
   font-size: 12px;
+  /* A relay URL is one unbroken word wider than a phone. */
+  overflow-wrap: anywhere;
 }
 
 .usage-row {
@@ -611,16 +613,9 @@ button.link {
   margin-left: auto;
 }
 
-.section-head h2,
-.endpoints h2 {
+.section-head h2 {
   margin: 0;
   font-size: 15px;
-}
-
-.endpoints {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
 }
 
 .chat-header {
@@ -776,8 +771,7 @@ button.link {
 
 .sessions ul,
 .dirlist,
-.models-list,
-.endpoints ul {
+.models-list {
   list-style: none;
   margin: 0;
   padding: 0;
@@ -847,90 +841,6 @@ button.link {
 .sessions .name {
   font-weight: 500;
 }
-
-/* Key, URL and its test control are one unit, stacked: a 280px sidebar has no
-   room to put them side by side. */
-.endpoints li {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 8px;
-  border-radius: 10px;
-}
-
-.endpoints li.active {
-  background: var(--hover);
-}
-
-.endpoints li.active .key {
-  font-weight: 500;
-}
-
-.endpoints .endpoint {
-  border: none;
-  background: none;
-  padding: 0;
-  /* Room for the trash in the corner. */
-  padding-right: 32px;
-}
-
-.endpoints .forget {
-  position: absolute;
-  top: 6px;
-  right: 6px;
-  width: 28px;
-  height: 28px;
-  min-height: 0;
-  opacity: 0;
-}
-
-.endpoints li:hover .forget,
-.endpoints .forget:focus-visible {
-  opacity: 1;
-}
-
-.endpoints .forget:hover {
-  color: var(--error);
-}
-
-@media (hover: none) {
-  .endpoints .forget {
-    opacity: 1;
-  }
-}
-
-/* Row controls, not page controls: the full 40px would make each endpoint
-   taller than the two lines of text it exists to describe. */
-.endpoints li button {
-  min-height: 30px;
-  padding: 0 10px;
-  font-size: 13px;
-}
-
-.endpoints li .icon {
-  width: 30px;
-  padding: 0;
-}
-
-.endpoints .key,
-.endpoints .muted {
-  max-width: 100%;
-  overflow-wrap: anywhere;
-  text-align: left;
-}
-
-.endpoints form input {
-  flex: 1;
-  min-width: 0;
-}
-
-.probe {
-  font-size: 12px;
-  color: var(--muted);
-}
-
-
 
 .sessions li.active .session {
   background: var(--raised);
@@ -2057,14 +1967,6 @@ button.scroll-bottom {
 .attach:hover {
   background: var(--hover);
   color: var(--text);
-}
-
-.probe.up {
-  color: var(--ok);
-}
-
-.probe.down {
-  color: var(--error);
 }
 
 /* A filter sits above rows that scroll, and must not sit on the first one. */

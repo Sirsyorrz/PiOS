@@ -9,3 +9,5 @@ export * from "./http-routes.ts";
 export * from "./notifier.ts";
 export * from "./push.ts";
 export * from "./server.ts";
+export * from "./relay-connector.ts";
+export * from "./relay-key.ts";

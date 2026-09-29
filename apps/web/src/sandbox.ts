@@ -6,8 +6,8 @@ declare const __PIOS_SANDBOX__: boolean;
 /**
  * Sandbox-only bootstrap: `?sandbox=1&token=...` pairs the app in one step.
  *
- * The normal pairing flow is a token in the fragment plus an endpoint picker,
- * which is right for a phone meeting a machine it has never seen and wrong
+ * The normal pairing flow is a token in the fragment plus a confirmed
+ * address, which is right for a phone meeting a machine it has never seen and wrong
  * for a throwaway backend that was created two seconds ago on this origin.
  *
  * Stripped from every other build: a URL that grants a device token without a
@@ -29,8 +29,7 @@ export function adoptSandboxMachine(): MachineStore | null {
         id: "sandbox",
         label: params.get("label") ?? "sandbox",
         deviceToken: token,
-        endpoints: [{ key: "sandbox", url }],
-        preferredKey: "sandbox",
+        url,
       },
     ],
     activeId: "sandbox",

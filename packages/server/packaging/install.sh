@@ -31,9 +31,18 @@ else
   echo "warning: pnpm not found; run 'pnpm -F @pios/web build' to serve the app" >&2
 fi
 
+# Baked into the shim so the daemon and the CLI (`pair`, `relay enroll`) agree
+# on the relay without a second place to configure it. The environment still
+# wins, so a one-off override needs no reinstall.
+relay_line=""
+if [[ -n "${PIOS_RELAY_URL:-}" ]]; then
+  relay_line="export PIOS_RELAY_URL=\"\${PIOS_RELAY_URL:-${PIOS_RELAY_URL}}\""
+fi
+
 cat > "${bin_dir}/pios-server" <<EOF
 #!/usr/bin/env bash
 export PATH="${tool_path}:\${PATH}"
+${relay_line}
 exec node "${repo_root}/packages/server/src/cli.ts" "\$@"
 EOF
 chmod +x "${bin_dir}/pios-server"
@@ -53,8 +62,15 @@ if ! loginctl show-user "${USER}" --property=Linger | grep -q "yes"; then
 fi
 
 echo
-echo "Installed. Pair a device with:"
-echo "  pios-server pair"
-echo
-echo "For push on iOS the app must be installed from an HTTPS origin:"
-echo "  tailscale serve --bg 4111"
+if [[ -z "${PIOS_RELAY_URL:-}" ]]; then
+  echo "Installed for local use only. To reach it from a phone, deploy the relay"
+  echo "(packages/relay/README.md) and rerun with its URL:"
+  echo "  PIOS_RELAY_URL=https://pios-relay.<you>.workers.dev ${BASH_SOURCE[0]}"
+else
+  echo "Installed with relay ${PIOS_RELAY_URL}. If this daemon is not enrolled yet:"
+  echo "  pios-server relay enroll"
+  echo "  systemctl --user restart pios-server"
+  echo
+  echo "Then pair a device with:"
+  echo "  pios-server pair"
+fi

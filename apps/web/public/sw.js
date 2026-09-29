@@ -2,7 +2,7 @@
  * App-shell cache.
  *
  * iOS drops a backgrounded PWA and relaunches it cold, so every app switch
- * pays for a full document + bundle fetch over the LAN or Tailscale. Serving
+ * pays for a full document + bundle fetch through the relay. Serving
  * the shell from the cache turns that into a local read; the network still
  * decides what is current, it just no longer blocks the first paint.
  *

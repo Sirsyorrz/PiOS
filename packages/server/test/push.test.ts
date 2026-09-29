@@ -77,10 +77,10 @@ test("a dead endpoint is dropped rather than retried forever", async () => {
 test("the VAPID subject is an address a push service will accept", () => {
   // Apple rejects a mailto at an unresolvable domain with BadJwtToken, and it
   // fails every send identically, so the default is checked here.
-  const fallback = defaultConfig({ publicUrl: null }).pushSubject;
+  const fallback = defaultConfig({ relayUrl: null }).pushSubject;
   assert.match(fallback, /^https:\/\//);
   assert.equal(
-    defaultConfig({ publicUrl: "https://box.ts.net" }).pushSubject,
-    "https://box.ts.net",
+    defaultConfig({ relayUrl: "https://pios-relay.me.workers.dev/" }).pushSubject,
+    "https://pios-relay.me.workers.dev",
   );
 });

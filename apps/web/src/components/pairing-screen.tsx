@@ -16,10 +16,10 @@ function takePairingTokenFromHash(): string | null {
 /**
  * Where the daemon probably is.
  *
- * The page origin comes first: in the packaged setup the daemon serves this
- * app itself, possibly behind a TLS proxy on 443, and pinning the default
- * port would produce an address that cannot exist. A dev server on another
- * port falls back to the daemon's own port on the same host.
+ * The page origin comes first: in the packaged setup the relay serves this
+ * app and carries every route, so the page's own origin is the machine. A
+ * dev server on another port falls back to the daemon's own port on the same
+ * host.
  */
 function candidateDaemonUrls(): string[] {
   const { origin, protocol, hostname } = window.location;
@@ -69,15 +69,14 @@ export function PairingScreen({ onPaired }: { onPaired: (machine: Machine) => vo
       try {
         parsed = new URL(url.trim());
       } catch {
-        throw new Error("daemon URL is not valid, e.g. http://192.168.1.20:4000");
+        throw new Error("machine URL is not valid, e.g. https://pios-relay.you.workers.dev");
       }
       const result = await pairWithMachine(parsed.origin, token.trim(), label.trim() || "phone");
       onPaired({
         id: result.deviceId,
         label: parsed.hostname,
         deviceToken: result.deviceToken,
-        endpoints: [{ key: `paired:${parsed.host}`, url: parsed.origin }],
-        preferredKey: null,
+        url: parsed.origin,
       });
     } catch (cause) {
       setError(String(cause instanceof Error ? cause.message : cause));
@@ -95,7 +94,7 @@ export function PairingScreen({ onPaired }: { onPaired: (machine: Machine) => vo
         </p>
 
         <label>
-          Daemon URL
+          Machine URL
           <input
             value={url}
             onChange={(e) => {

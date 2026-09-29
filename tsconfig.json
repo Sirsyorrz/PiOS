@@ -18,5 +18,7 @@
     "noEmit": true
   },
   // apps/web needs DOM lib and JSX, so it typechecks under its own config.
-  "include": ["spikes/**/*.ts", "packages/**/*.ts"]
+  "include": ["spikes/**/*.ts", "packages/**/*.ts"],
+  // The Worker targets workerd and typechecks under packages/relay's config.
+  "exclude": ["packages/relay/src/worker.ts"]
 }
