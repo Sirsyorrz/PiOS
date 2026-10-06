@@ -161,6 +161,34 @@ test("a stopped agent stops looking busy even without agent_settled", () => {
   assert.equal(view.interrupting, false);
 });
 
+for (const status of ["cold", "crashed"]) {
+  test(`a tool in flight when the daemon went down stays dead once it reports ${status}`, () => {
+    const store = new SessionStore();
+    store.setDaemonStatus("s1", "running");
+    store.applyEvent("s1", 1, { type: "agent_start" } as AgentEvent);
+    store.applyEvent("s1", 2, {
+      type: "tool_execution_start",
+      toolCallId: "t1",
+      toolName: "bash",
+      args: { command: "python big.py" },
+    } as AgentEvent);
+    assert.equal(sessionView(store, [], "s1").tools.get("t1")?.status, "running");
+
+    // The process was killed: the reconnect reports the session without one.
+    store.setDaemonStatus("s1", status);
+    let view = sessionView(store, [], "s1");
+    assert.equal(view.running, false);
+    assert.equal(view.tools.get("t1")?.status, "abandoned");
+
+    // Waking it for a new turn must not revive the dead call's spinner.
+    store.setDaemonStatus("s1", "running");
+    store.applyEvent("s1", 3, { type: "agent_start" } as AgentEvent);
+    view = sessionView(store, [], "s1");
+    assert.equal(view.running, true);
+    assert.equal(view.tools.get("t1")?.status, "abandoned");
+  });
+}
+
 test("a tool card rebuilt from history keeps the call, not just its output", () => {
   const store = new SessionStore();
   store.applyEntries(

@@ -175,3 +175,21 @@ test("extension errors accumulate instead of being swallowed", () => {
     ["one", "two"],
   );
 });
+
+test("abandoning a turn ends it and leaves finished calls alone", () => {
+  const t = new TranscriptAssembler();
+  t.apply({ type: "agent_start" } as AgentEvent);
+  t.apply({ type: "tool_execution_start", toolCallId: "a", toolName: "bash", args: {} } as AgentEvent);
+  t.apply({ type: "tool_execution_end", toolCallId: "a", toolName: "bash", result: {} } as AgentEvent);
+  t.apply({ type: "tool_execution_start", toolCallId: "b", toolName: "bash", args: {} } as AgentEvent);
+  t.apply(delta({ type: "text_delta", contentIndex: 0, delta: "half" } as AssistantMessageEvent));
+
+  t.abandon();
+  const snap = t.snapshot();
+  assert.equal(snap.running, false);
+  assert.equal(snap.streaming, null);
+  assert.deepEqual(
+    snap.toolExecutions.map((tool) => [tool.toolCallId, tool.status]),
+    [["a", "done"], ["b", "abandoned"]],
+  );
+});

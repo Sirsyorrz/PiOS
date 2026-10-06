@@ -337,6 +337,22 @@ export class TranscriptAssembler {
     }
   }
 
+  /**
+   * Ends the current turn without its `agent_settled`, for an agent whose
+   * process is gone. Its calls will never get results, and leaving them
+   * `running` would revive their spinners when the session's next turn starts.
+   */
+  abandon(): void {
+    this.running = false;
+    this.streamingActive = false;
+    this.assembler = new MessageAssembler();
+    this.status.retry = null;
+    this.status.compaction = null;
+    for (const tool of this.tools.values()) {
+      if (tool.status === "running") tool.status = "abandoned";
+    }
+  }
+
   private tool(toolCallId: string, toolName: string): ToolExecution {
     let tool = this.tools.get(toolCallId);
     if (!tool) {

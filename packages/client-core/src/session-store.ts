@@ -248,6 +248,9 @@ export class SessionStore {
     if (this.daemonStatus.get(sessionId) === status) return;
     this.daemonStatus.set(sessionId, status);
     if (status !== "running") this.interrupting.delete(sessionId);
+    // No process means no turn: whatever was in flight died with it, e.g. a
+    // daemon restart or an OOM kill.
+    if (status === "cold" || status === "crashed") this.assemblers.get(sessionId)?.abandon();
     this.notify(sessionId);
   }
 
