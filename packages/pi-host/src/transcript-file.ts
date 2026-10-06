@@ -75,6 +75,13 @@ export interface EntriesQuery {
   limit?: number;
   /** Index to page backwards from, as returned in `offset`. */
   before?: number;
+  /**
+   * Serialized size a window may reach. Screenshots ride inside tool results
+   * as base64, so a few hundred entries can be tens of megabytes: more than a
+   * socket hop will carry or a phone wants to hold. The newest entry is
+   * always included, whatever its size.
+   */
+  maxBytes?: number;
 }
 
 export interface EntriesWindow extends EntriesPage {
@@ -96,17 +103,36 @@ export function sliceEntries(
   query: EntriesQuery = {},
 ): EntriesWindow {
   const total = entries.length;
+  const budget = query.maxBytes ?? Infinity;
 
   if (query.since !== undefined) {
     const index = entries.findIndex((entry) => entry.id === query.since);
     // An unknown cursor makes the client's cache worthless, so it gets the
-    // whole session and is told to start over rather than an error.
-    if (index === -1) return { entries, leafId, reset: true, offset: 0, total };
-    return { entries: entries.slice(index + 1), leafId, reset: false, offset: index + 1, total };
+    // tail and is told to start over rather than an error. A delta too big
+    // for the budget is answered the same way: the gap stays reachable by
+    // paging back, instead of arriving as one oversized frame.
+    const from = index === -1 ? 0 : index + 1;
+    const start = budgetedStart(entries, from, total, budget);
+    const reset = index === -1 || start > from;
+    return { entries: entries.slice(start), leafId, reset, offset: start, total };
   }
 
   const end = query.before === undefined ? total : Math.max(0, Math.min(query.before, total));
   const limit = query.limit ?? 0;
-  const start = limit > 0 ? Math.max(0, end - limit) : 0;
+  const floor = limit > 0 ? Math.max(0, end - limit) : 0;
+  const start = budgetedStart(entries, floor, end, budget);
   return { entries: entries.slice(start, end), leafId, reset: false, offset: start, total };
+}
+
+/** Walks back from `end` while the window fits, never past `floor`. */
+function budgetedStart(entries: SessionEntry[], floor: number, end: number, budget: number): number {
+  if (budget === Infinity) return floor;
+  let used = 0;
+  let start = end;
+  while (start > floor) {
+    used += JSON.stringify(entries[start - 1]).length;
+    if (used > budget && start < end) break;
+    start -= 1;
+  }
+  return start;
 }

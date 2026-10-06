@@ -22,6 +22,9 @@ import type { TrustStore } from "./trust.ts";
 
 type FrameOf<T extends ClientFrame["type"]> = Extract<ClientFrame, { type: T }>;
 
+/** Well under what the relay hop accepts in one message. */
+const ENTRIES_FRAME_BYTES = 4 * 1024 * 1024;
+
 export interface ConnectionDeps {
   auth: AuthStore;
   registry: SessionRegistry;
@@ -499,7 +502,12 @@ export class Connection {
     const live = this.deps.registry.get(sessionId);
     const file = live?.info.sessionFile ?? (await this.deps.index.find(sessionId))?.path;
     const transcript = file ? readTranscript(file) : null;
-    if (transcript) return sliceEntries(transcript.entries, transcript.leafId, query);
+    if (transcript) {
+      return sliceEntries(transcript.entries, transcript.leafId, {
+        ...query,
+        maxBytes: ENTRIES_FRAME_BYTES,
+      });
+    }
 
     // No file yet: either the agent has written nothing, or it is not pi's
     // format at all, which is what a stubbed host in the sandbox looks like.

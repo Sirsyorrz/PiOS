@@ -90,3 +90,32 @@ test("the tail is paged backwards, and a delta is taken by entry id", () => {
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("a window stops at its byte budget but always carries the newest entry", () => {
+  const dir = mkdtempSync(join(tmpdir(), "pios-transcript-"));
+  try {
+    const { file } = seed(dir, 5);
+    forgetTranscript();
+    const { entries, leafId } = readTranscript(file)!;
+    const size = (index: number) => JSON.stringify(entries[index]).length;
+    const twoNewest = size(9) + size(8);
+
+    const tail = sliceEntries(entries, leafId, { limit: 6, maxBytes: twoNewest });
+    assert.equal(tail.offset, 8);
+    assert.equal(tail.entries.length, 2);
+
+    const tiny = sliceEntries(entries, leafId, { limit: 6, maxBytes: 1 });
+    assert.equal(tiny.entries.length, 1);
+    assert.equal(tiny.entries[0]?.id, entries[9]?.id);
+
+    const delta = sliceEntries(entries, leafId, { since: entries[2]!.id, maxBytes: twoNewest });
+    assert.equal(delta.reset, true, "an oversized delta starts the cache over");
+    assert.equal(delta.offset, 8);
+
+    const fits = sliceEntries(entries, leafId, { since: entries[7]!.id, maxBytes: twoNewest });
+    assert.equal(fits.reset, false);
+    assert.equal(fits.entries.length, 2);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
