@@ -74,6 +74,12 @@ export function subprocessHost(options: SubprocessOptions = {}): SessionHost {
  */
 export class SessionRegistry {
   private readonly sessions = new Map<string, RestartableSession>();
+  /**
+   * Starts still waiting on their process. A cold session can take seconds to
+   * load its transcript, and every command that arrives meanwhile would
+   * otherwise start its own pi on the same file, each forking the transcript.
+   */
+  private readonly starting = new Map<string, Promise<RestartableSession>>();
   private readonly restarts = new Map<string, number>();
   private readonly startedAt = new Map<string, number>();
   private readonly options: Required<Omit<RegistryOptions, "onCreate" | "onDispose">> &
@@ -118,7 +124,27 @@ export class SessionRegistry {
     await Promise.all(asleep);
   }
 
+  /**
+   * Starts a session, or joins the one already live or starting under the
+   * same id. A joining caller's options are ignored: the first start wins.
+   */
   async create(options: CreateSessionOptions): Promise<RestartableSession> {
+    const id = options.id;
+    if (id === undefined) return this.start(options);
+
+    const existing = this.sessions.get(id) ?? this.starting.get(id);
+    if (existing) return existing;
+
+    const start = this.start(options);
+    this.starting.set(id, start);
+    try {
+      return await start;
+    } finally {
+      this.starting.delete(id);
+    }
+  }
+
+  private async start(options: CreateSessionOptions): Promise<RestartableSession> {
     const session = await this.host.create(options);
     this.sessions.set(session.id, session);
     this.startedAt.set(session.id, this.options.now());
@@ -167,6 +193,7 @@ export class SessionRegistry {
   async disposeAll(): Promise<void> {
     if (this.sweepTimer) clearInterval(this.sweepTimer);
     this.sweepTimer = null;
+    await Promise.allSettled(this.starting.values());
     await Promise.all([...this.sessions.keys()].map((id) => this.dispose(id)));
   }
 

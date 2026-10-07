@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { SessionRegistry, inProcessHost } from "../src/registry.ts";
+import { SessionRegistry, inProcessHost, type SessionHost } from "../src/registry.ts";
 import type { PiSession } from "../src/types.ts";
 import { fakeAgentFactory } from "./fake-agent.ts";
 
@@ -66,6 +66,53 @@ test("dispose removes the session from the registry", async () => {
   assert.equal(session.info.status, "disposed");
   // Disposing twice is not an error; a client may retry the request.
   await reg.dispose(session.id);
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test("concurrent creates of one id start a single process", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "pios-registry-"));
+  const inner = inProcessHost(fakeAgentFactory(dir).factory);
+  let starts = 0;
+  const slowHost: SessionHost = {
+    create: async (options) => {
+      starts += 1;
+      await new Promise((r) => setTimeout(r, 20));
+      return inner.create(options);
+    },
+  };
+  const reg = new SessionRegistry(slowHost, { restartDelayMs: 0 });
+
+  const sessions = await Promise.all(
+    [1, 2, 3].map(() => reg.create({ id: "cold", cwd: "/tmp/cold" })),
+  );
+  assert.equal(starts, 1);
+  assert.ok(sessions.every((s) => s === sessions[0]));
+
+  assert.equal(await reg.create({ id: "cold", cwd: "/tmp/cold" }), sessions[0]);
+  assert.equal(starts, 1);
+
+  await reg.disposeAll();
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test("a failed start does not block the next one", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "pios-registry-"));
+  const inner = inProcessHost(fakeAgentFactory(dir).factory);
+  let fail = true;
+  const flakyHost: SessionHost = {
+    create: async (options) => {
+      if (fail) throw new Error("spawn failed");
+      return inner.create(options);
+    },
+  };
+  const reg = new SessionRegistry(flakyHost, { restartDelayMs: 0 });
+
+  await assert.rejects(reg.create({ id: "x", cwd: "/tmp/x" }), /spawn failed/);
+  fail = false;
+  const session = await reg.create({ id: "x", cwd: "/tmp/x" });
+  assert.equal(reg.get("x"), session);
+
+  await reg.disposeAll();
   rmSync(dir, { recursive: true, force: true });
 });
 
