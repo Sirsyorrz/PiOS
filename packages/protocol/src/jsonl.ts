@@ -1,18 +1,14 @@
 import { StringDecoder } from "node:string_decoder";
 
-export class JsonlLineTooLongError extends Error {
-  readonly limit: number;
-
-  constructor(limit: number) {
-    super(`JSONL record exceeded ${limit} bytes without a newline`);
-    this.name = "JsonlLineTooLongError";
-    this.limit = limit;
-  }
-}
-
 export interface JsonlFramerOptions {
   /** Guard against an unterminated record consuming all memory. */
   maxLineBytes?: number;
+  /**
+   * Called when a record passes the guard. The record is dropped and framing
+   * resumes after its LF: one oversized record must not take down whoever is
+   * reading, nor misalign every record after it.
+   */
+  onOverflow?: (limit: number) => void;
 }
 
 const DEFAULT_MAX_LINE_BYTES = 64 * 1024 * 1024;
@@ -26,46 +22,68 @@ const DEFAULT_MAX_LINE_BYTES = 64 * 1024 * 1024;
  * until complete.
  */
 export class JsonlFramer {
-  private buffer = "";
+  /** Pieces of the current unterminated record, joined only once it ends. */
+  private parts: string[] = [];
+  private partBytes = 0;
+  private discarding = false;
   private readonly decoder = new StringDecoder("utf8");
   private readonly maxLineBytes: number;
+  private readonly onOverflow?: (limit: number) => void;
 
   constructor(options: JsonlFramerOptions = {}) {
     this.maxLineBytes = options.maxLineBytes ?? DEFAULT_MAX_LINE_BYTES;
+    this.onOverflow = options.onOverflow;
   }
 
   push(chunk: Uint8Array | string): string[] {
-    this.buffer +=
-      typeof chunk === "string" ? chunk : this.decoder.write(Buffer.from(chunk));
-    return this.drain();
+    const text = typeof chunk === "string" ? chunk : this.decoder.write(Buffer.from(chunk));
+    return this.drain(text);
   }
 
   /** Flush the tail. A final record without a trailing LF is still returned. */
   end(): string[] {
-    this.buffer += this.decoder.end();
-    const records = this.drain();
-    if (this.buffer.length > 0) {
-      records.push(stripCr(this.buffer));
-      this.buffer = "";
+    const records = this.drain(this.decoder.end());
+    if (!this.discarding && this.parts.length > 0) {
+      const record = stripCr(this.parts.join(""));
+      if (record.length > 0) records.push(record);
+    }
+    this.reset();
+    return records;
+  }
+
+  /** Scans only the new text, so a long record costs linear time to frame. */
+  private drain(text: string): string[] {
+    const records: string[] = [];
+    let from = 0;
+    for (;;) {
+      const lf = text.indexOf("\n", from);
+      if (lf === -1) break;
+      if (!this.discarding) {
+        this.parts.push(text.slice(from, lf));
+        const record = stripCr(this.parts.join(""));
+        // Skip keepalive blank lines rather than emitting unparseable records.
+        if (record.length > 0) records.push(record);
+      }
+      this.reset();
+      from = lf + 1;
+    }
+    if (from < text.length && !this.discarding) {
+      const rest = text.slice(from);
+      this.parts.push(rest);
+      this.partBytes += Buffer.byteLength(rest, "utf8");
+      if (this.partBytes > this.maxLineBytes) {
+        this.reset();
+        this.discarding = true;
+        this.onOverflow?.(this.maxLineBytes);
+      }
     }
     return records;
   }
 
-  private drain(): string[] {
-    const records: string[] = [];
-    for (;;) {
-      const lf = this.buffer.indexOf("\n");
-      if (lf === -1) break;
-      const record = stripCr(this.buffer.slice(0, lf));
-      this.buffer = this.buffer.slice(lf + 1);
-      // Skip keepalive blank lines rather than emitting unparseable records.
-      if (record.length > 0) records.push(record);
-    }
-    if (Buffer.byteLength(this.buffer, "utf8") > this.maxLineBytes) {
-      this.buffer = "";
-      throw new JsonlLineTooLongError(this.maxLineBytes);
-    }
-    return records;
+  private reset(): void {
+    this.parts = [];
+    this.partBytes = 0;
+    this.discarding = false;
   }
 }
 

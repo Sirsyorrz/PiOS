@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { JsonlFramer, JsonlLineTooLongError, encodeJsonl } from "../src/jsonl.ts";
+import { JsonlFramer, encodeJsonl } from "../src/jsonl.ts";
 
 test("splits on LF only", () => {
   const framer = new JsonlFramer();
@@ -51,11 +51,20 @@ test("end() flushes a record with no trailing LF", () => {
   assert.deepEqual(framer.end(), ['{"a":1}']);
 });
 
-test("throws once an unterminated record passes the guard", () => {
-  const framer = new JsonlFramer({ maxLineBytes: 16 });
-  assert.throws(() => framer.push("x".repeat(17)), JsonlLineTooLongError);
-  // Buffer is dropped, so the framer recovers on the next complete record.
-  assert.deepEqual(framer.push('{"a":1}\n'), ['{"a":1}']);
+test("drops a record that passes the guard and resyncs after its LF", () => {
+  const overflows: number[] = [];
+  const framer = new JsonlFramer({ maxLineBytes: 16, onOverflow: (limit) => overflows.push(limit) });
+  assert.deepEqual(framer.push('{"a":1}\n' + "x".repeat(17)), ['{"a":1}']);
+  assert.deepEqual(overflows, [16]);
+  assert.deepEqual(framer.push("x".repeat(40)), []);
+  assert.deepEqual(framer.push('xx"}\n{"b":2}\n'), ['{"b":2}']);
+  assert.deepEqual(overflows, [16]);
+});
+
+test("end() discards an oversized unterminated tail", () => {
+  const framer = new JsonlFramer({ maxLineBytes: 4 });
+  framer.push("xxxxxxx");
+  assert.deepEqual(framer.end(), []);
 });
 
 test("encodeJsonl terminates with LF", () => {

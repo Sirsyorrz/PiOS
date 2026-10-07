@@ -25,6 +25,7 @@ import { JsonlFramer, encodeJsonl } from "@pios/protocol/jsonl";
 import { BaseSession } from "./base-session.ts";
 import { messageOf } from "./errors.ts";
 import { projectSessionDir } from "./session-paths.ts";
+import { readTranscript, sliceEntries } from "./transcript-file.ts";
 import type {
   CreateSessionOptions,
   EntriesPage,
@@ -151,7 +152,10 @@ export class SubprocessSession extends BaseSession implements PiSession {
   }
 
   private async spawnChild(): Promise<void> {
-    this.framer = new JsonlFramer();
+    this.framer = new JsonlFramer({
+      onOverflow: (limit) =>
+        console.warn(`[pi-host] session ${this.id} dropped a record over ${limit} bytes`),
+    });
     this.spawnError = null;
     const command = this.options.command ?? "pi";
     const proc = spawn(command, this.buildArgs(), {
@@ -438,6 +442,24 @@ export class SubprocessSession extends BaseSession implements PiSession {
   }
 
   async getEntries(since?: string): Promise<EntriesPage> {
+    return this.entriesFromFile(since) ?? this.entriesFromPi(since);
+  }
+
+  /**
+   * pi persists an entry before announcing it, so its file answers the same
+   * question without the whole session crossing stdout as one record, which
+   * image-heavy sessions push past what the framer will hold.
+   */
+  private entriesFromFile(since?: string): EntriesPage | null {
+    const transcript = this.sessionFile ? readTranscript(this.sessionFile) : null;
+    if (!transcript) return null;
+    const window = sliceEntries(transcript.entries, transcript.leafId, { since });
+    this.setLeafId(window.leafId);
+    if (!since) this.observeEntries(window.entries);
+    return { entries: window.entries, leafId: window.leafId, reset: window.reset };
+  }
+
+  private async entriesFromPi(since?: string): Promise<EntriesPage> {
     const response = await this.request({ type: "get_entries", since });
     if (response.success) {
       const data = GetEntriesDataSchema.parse(response.data);
@@ -448,7 +470,7 @@ export class SubprocessSession extends BaseSession implements PiSession {
     if (isUnknownCursorError(response)) {
       // The cursor is gone, so the client's cache is worthless. Take the whole
       // session and tell it to start over.
-      const full = await this.getEntries();
+      const full = await this.entriesFromPi();
       return { ...full, reset: true };
     }
     throw new Error(response.error ?? "get_entries failed");
