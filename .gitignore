@@ -9,3 +9,4 @@ spikes/.sandbox/
 spikes/.trust-sandbox/
 .wrangler/
 .dev.vars
+spikes/.retry-agent/

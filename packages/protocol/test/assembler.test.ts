@@ -166,6 +166,26 @@ test("a settled run clears a retry banner even without auto_retry_end", () => {
   assert.equal(transcript.snapshot().running, false);
 });
 
+test("a summarization retry is raised, and cleared when it finishes or the run settles", () => {
+  const transcript = new TranscriptAssembler();
+  transcript.apply({
+    type: "summarization_retry_scheduled",
+    attempt: 1,
+    maxAttempts: 3,
+    delayMs: 2000,
+    errorMessage: "terminated",
+  });
+  assert.equal(transcript.snapshot().status.summarizationRetry?.error, "terminated");
+  transcript.apply({ type: "summarization_retry_attempt_start", source: "compaction", reason: "threshold" });
+  assert.equal(transcript.snapshot().status.summarizationRetry?.attempt, 1);
+  transcript.apply({ type: "summarization_retry_finished" });
+  assert.equal(transcript.snapshot().status.summarizationRetry, null);
+
+  transcript.apply({ type: "summarization_retry_scheduled", attempt: 2 });
+  transcript.apply({ type: "agent_settled" });
+  assert.equal(transcript.snapshot().status.summarizationRetry, null);
+});
+
 test("extension errors accumulate instead of being swallowed", () => {
   const transcript = new TranscriptAssembler();
   transcript.apply({ type: "extension_error", extensionPath: "/a.ts", error: "one" });

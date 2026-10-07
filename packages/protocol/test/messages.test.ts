@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { messagePreview, previewText } from "../src/messages.ts";
+import { messagePreview, previewText, readableError, turnFailure } from "../src/messages.ts";
 
 test("previewText collapses injected skill blocks to a tag", () => {
   const text = `<skill name="grill-me" location="/home/x/SKILL.md">
@@ -50,4 +50,30 @@ test("a pasted temp-file screenshot collapses to an image tag", () => {
 
 test("an ordinary /tmp path is left alone", () => {
   assert.equal(previewText("read /tmp/build.log"), "read /tmp/build.log");
+});
+
+test("readableError unwraps a provider's JSON envelope", () => {
+  assert.equal(
+    readableError('429: {"message":"Rate limit reached for requests","type":"rate_limit"}'),
+    "429: Rate limit reached for requests",
+  );
+  assert.equal(
+    readableError('529 {"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}'),
+    "529: Overloaded",
+  );
+});
+
+test("readableError leaves anything else as it is", () => {
+  assert.equal(readableError(" fetch failed "), "fetch failed");
+  assert.equal(readableError("500: {not json}"), "500: {not json}");
+  assert.equal(readableError('500: {"detail":"x"}'), '500: {"detail":"x"}');
+});
+
+test("turnFailure reports errored assistant turns only", () => {
+  const assistant = (extra: object) =>
+    ({ role: "assistant", content: [], ...extra }) as never;
+  assert.equal(turnFailure(assistant({ stopReason: "stop" })), null);
+  assert.equal(turnFailure(assistant({ stopReason: "aborted", errorMessage: "aborted" })), null);
+  assert.equal(turnFailure(assistant({ stopReason: "error", errorMessage: "fetch failed" })), "fetch failed");
+  assert.equal(turnFailure(assistant({ stopReason: "error" })), "The model request failed.");
 });

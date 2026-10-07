@@ -2,6 +2,7 @@ import type { Scenario } from "../scenario.ts";
 import chat from "./chat.ts";
 import cold from "./cold.ts";
 import empty from "./empty.ts";
+import errors from "./errors.ts";
 import files from "./files.ts";
 import gitConflict from "./git-conflict.ts";
 import gitDirty from "./git-dirty.ts";
@@ -12,6 +13,7 @@ export const scenarios: Scenario[] = [
   empty,
   chat,
   cold,
+  errors,
   files,
   gitDirty,
   gitNone,

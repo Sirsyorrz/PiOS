@@ -1,5 +1,5 @@
 import type { BufferedEvent, PiSession } from "@pios/pi-host";
-import { messageText } from "@pios/protocol";
+import { messageText, turnFailure } from "@pios/protocol";
 import type { PushMessage } from "./push.ts";
 
 /** Kept short: a lock screen shows two lines and iOS truncates the rest. */
@@ -36,6 +36,8 @@ interface TurnState {
   /** What the agent actually said last, which is the point of the alert. */
   lastText: string | null;
   errored: boolean;
+  /** The provider error that ended the turn, once pi has stopped retrying it. */
+  failure: string | null;
 }
 
 export class SettleNotifier {
@@ -72,7 +74,12 @@ export class SettleNotifier {
   private onEvent(session: PiSession, buffered: BufferedEvent): void {
     if (buffered.event.type !== "agent_event") return;
     const event = buffered.event.event;
-    const turn = this.turns.get(session.id) ?? { startedAt: null, lastText: null, errored: false };
+    const turn = this.turns.get(session.id) ?? {
+      startedAt: null,
+      lastText: null,
+      errored: false,
+      failure: null,
+    };
     this.turns.set(session.id, turn);
 
     switch (event.type) {
@@ -80,11 +87,13 @@ export class SettleNotifier {
         turn.startedAt ??= this.now();
         turn.lastText = null;
         turn.errored = false;
+        turn.failure = null;
         return;
       case "message_end": {
         // Only the assistant's prose: a tool call or a thinking block is not
         // what the agent came back to say.
         if (event.message.role !== "assistant") return;
+        turn.failure = turnFailure(event.message);
         const text = messageText(event.message).trim();
         if (text) turn.lastText = text;
         return;
@@ -116,7 +125,10 @@ function compose(session: PiSession, turn: TurnState, now: number): PushMessage 
     // The same label the session list shows, so the notification and the row
     // it opens name the same thing.
     title: info.name?.trim() || info.preview?.trim() || shortenPath(info.cwd),
-    body: turn.lastText
+    // A failure outranks whatever was said before it: the turn did not finish.
+    body: turn.failure
+      ? summarise(`Failed: ${turn.failure}`)
+      : turn.lastText
       ? summarise(turn.lastText)
       : [info.awaitingInput ? "Needs input" : turn.errored ? "Stopped" : "Finished", elapsed]
           .filter((part): part is string => Boolean(part))

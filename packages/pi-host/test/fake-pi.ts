@@ -81,6 +81,68 @@ function askDialog(id: string): Promise<Record<string, unknown>> {
   });
 }
 
+/** Pinned to a recorded trace of pi against an endpoint that only answers 429. */
+const RATE_LIMIT_ERROR = '429: {"message":"Rate limit reached for requests","type":"rate_limit"}';
+const RETRY_MAX = 2;
+/** Long enough to see the banner in the sandbox, short enough for a test. */
+const RETRY_DELAY_MS = 1500;
+
+let cancelRetry: (() => void) | null = null;
+function retryWait(): Promise<boolean> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => {
+      cancelRetry = null;
+      resolve(true);
+    }, RETRY_DELAY_MS);
+    cancelRetry = () => {
+      clearTimeout(timer);
+      cancelRetry = null;
+      resolve(false);
+    };
+  });
+}
+
+/**
+ * Fails `failures` attempts the way pi does: each one is persisted, ends its
+ * own `agent_end`, and is retried after `auto_retry_start`. Resolves true when
+ * an attempt is left to succeed.
+ */
+async function rateLimited(failures: number): Promise<boolean> {
+  for (let attempt = 1; attempt <= failures; attempt++) {
+    const failed = {
+      role: "assistant",
+      content: [],
+      stopReason: "error",
+      errorMessage: RATE_LIMIT_ERROR,
+      timestamp: Date.now(),
+    };
+    write({ type: "message_start", message: failed });
+    write({ type: "message_end", message: failed });
+    addEntry(failed);
+    write({ type: "turn_end", message: failed, toolResults: [] });
+    const willRetry = attempt <= RETRY_MAX;
+    write({ type: "agent_end", messages: [failed], willRetry });
+    if (!willRetry) {
+      write({ type: "auto_retry_end", success: false, attempt: RETRY_MAX, finalError: RATE_LIMIT_ERROR });
+      return false;
+    }
+    write({
+      type: "auto_retry_start",
+      attempt,
+      maxAttempts: RETRY_MAX,
+      delayMs: RETRY_DELAY_MS,
+      errorMessage: RATE_LIMIT_ERROR,
+    });
+    if (!(await retryWait())) {
+      write({ type: "auto_retry_end", success: false, attempt, finalError: "Retry cancelled" });
+      return false;
+    }
+    write({ type: "agent_start" });
+    write({ type: "turn_start" });
+  }
+  return true;
+}
+
 async function runTurn(text: string) {
   streaming = true;
   aborted = false;
@@ -121,6 +183,18 @@ async function runTurn(text: string) {
     });
   }
 
+  // pi closes a successful retry only once the next answer has landed.
+  let retriedAttempts = 0;
+  if (text.includes("RATE_LIMIT")) {
+    const failures = text.includes("RATE_LIMIT_ONCE") ? 1 : RETRY_MAX + 1;
+    retriedAttempts = failures;
+    if (!(await rateLimited(failures))) {
+      streaming = false;
+      write({ type: "agent_settled" });
+      return;
+    }
+  }
+
   const answer = text.includes("ASK_DIALOG") ? await askDialog(`${sessionId}-dialog`) : null;
   const reply = answer ? `dialog: ${JSON.stringify(answer)}` : `echo: ${text}`;
   write({ type: "message_start", message: { role: "assistant", content: [] } });
@@ -145,6 +219,7 @@ async function runTurn(text: string) {
 
   const assistant = { role: "assistant", content: [{ type: "text", text: reply }] };
   write({ type: "message_end", message: assistant });
+  if (retriedAttempts > 0) write({ type: "auto_retry_end", success: true, attempt: retriedAttempts });
   addEntry(assistant);
   write({ type: "turn_end", message: assistant, toolResults: [] });
   write({ type: "agent_end", messages: [], willRetry: false });
@@ -291,6 +366,11 @@ function handle(command: Record<string, any>) {
 
     case "abort":
       aborted = true;
+      cancelRetry?.();
+      return respond({ success: true });
+
+    case "abort_retry":
+      cancelRetry?.();
       return respond({ success: true });
 
     // Mirrors pi: the response carries the whole BashResult, the deltas go out

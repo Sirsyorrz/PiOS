@@ -1,0 +1,13 @@
+{"id":"req-1","type":"response","command":"prompt","success":true}
+{"type":"agent_start"}
+{"type":"turn_start"}
+{"type":"message_start","message":{"role":"user","content":[{"type":"text","text":"hello"}],"timestamp":1791344591939}}
+{"type":"message_end","message":{"role":"user","content":[{"type":"text","text":"hello"}],"timestamp":1791344591939}}
+{"type":"message_start","message":{"role":"assistant","content":[],"api":"openai-completions","provider":"flaky","model":"flaky-1","usage":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0,"totalTokens":0,"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0,"total":0}},"stopReason":"error","timestamp":1791344591971,"errorMessage":"429: {\"message\":\"Rate limit reached for requests\",\"type\":\"rate_limit\"}"}}
+{"type":"message_end","message":{"role":"assistant","content":[],"api":"openai-completions","provider":"flaky","model":"flaky-1","usage":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0,"totalTokens":0,"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0,"total":0}},"stopReason":"error","timestamp":1791344591971,"errorMessage":"429: {\"message\":\"Rate limit reached for requests\",\"type\":\"rate_limit\"}"}}
+{"type":"turn_end","message":{"role":"assistant","content":[],"api":"openai-completions","provider":"flaky","model":"flaky-1","usage":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0,"totalTokens":0,"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0,"total":0}},"stopReason":"error","timestamp":1791344591971,"errorMessage":"429: {\"message\":\"Rate limit reached for requests\",\"type\":\"rate_limit\"}"},"toolResults":[]}
+{"type":"agent_end","messages":[{"role":"user","content":[{"type":"text","text":"hello"}],"timestamp":1791344591939},{"role":"assistant","content":[],"api":"openai-completions","provider":"flaky","model":"flaky-1","usage":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0,"totalTokens":0,"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0,"total":0}},"stopReason":"error","timestamp":1791344591971,"errorMessage":"429: {\"message\":\"Rate limit reached for requests\",\"type\":\"rate_limit\"}"}],"willRetry":true}
+{"type":"auto_retry_start","attempt":1,"maxAttempts":2,"delayMs":60000,"errorMessage":"429: {\"message\":\"Rate limit reached for requests\",\"type\":\"rate_limit\"}"}
+{"type":"auto_retry_end","success":false,"attempt":1,"finalError":"Retry cancelled"}
+{"id":"req-2","type":"response","command":"abort_retry","success":true}
+{"type":"agent_settled"}

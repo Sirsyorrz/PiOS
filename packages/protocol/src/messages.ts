@@ -74,7 +74,10 @@ export const AssistantMessageSchema = z.looseObject({
   provider: z.string().optional(),
   model: z.string().optional(),
   usage: UsageSchema.optional(),
+  /** `stop`, `toolUse`, `length`, `error` or `aborted`; open-ended on the wire. */
   stopReason: z.string().optional(),
+  /** Set with `stopReason: "error"`: the provider failure, verbatim. */
+  errorMessage: z.string().optional(),
   timestamp: z.number().optional(),
 });
 export type AssistantMessage = z.infer<typeof AssistantMessageSchema>;
@@ -199,6 +202,31 @@ export function messagePreview(message: AgentMessage): string {
     part.type === "image" ? "<image>" : part.text,
   );
   return previewText(parts.join(" "));
+}
+
+/**
+ * A provider error as one readable line.
+ *
+ * pi reports HTTP failures as `<status>: <response body>`, and the body is the
+ * provider's JSON envelope, which buries the one sentence a person needs.
+ */
+export function readableError(raw: string): string {
+  const text = raw.trim();
+  const match = /^(\d{3}):?\s*(\{[\s\S]*\})$/.exec(text);
+  if (!match) return text;
+  try {
+    const body = JSON.parse(match[2]!);
+    const message = body?.error?.message ?? body?.message;
+    return typeof message === "string" && message.trim() ? `${match[1]}: ${message.trim()}` : text;
+  } catch {
+    return text;
+  }
+}
+
+/** Why an assistant turn failed, or null when it did not. */
+export function turnFailure(message: AgentMessage): string | null {
+  if (message.role !== "assistant" || message.stopReason !== "error") return null;
+  return readableError(message.errorMessage ?? "") || "The model request failed.";
 }
 
 /** Text of a message, ignoring thinking and tool calls. */

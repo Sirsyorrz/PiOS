@@ -260,6 +260,7 @@ export function ChatView({
               <MessageBubble
                 key={item.key}
                 message={item.message}
+                failedAttempts={item.failedAttempts}
                 tools={view.tools}
                 cwd={session?.cwd}
                 blocked={view.dialogs.length > 0}
@@ -365,6 +366,7 @@ export function ChatView({
         view={view}
         session={session}
         onTrust={onTrust}
+        onStopRetry={() => client.interrupt(sessionId)}
         onDismissNotice={(id) => client.sessions.dismissNotice(sessionId, id)}
       />
 

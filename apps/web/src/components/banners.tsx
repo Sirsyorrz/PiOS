@@ -1,4 +1,4 @@
-import type { SessionSummary } from "@pios/protocol";
+import { readableError, type RetryStatus, type SessionSummary } from "@pios/protocol";
 import type { SessionView, SupervisorState } from "@pios/client-core";
 
 /**
@@ -8,11 +8,13 @@ import type { SessionView, SupervisorState } from "@pios/client-core";
  * a compaction that is rewriting history all change what the agent will do
  * next, so they are surfaced even when they are noisy.
  */
-export function Banners({ state, view, session, onTrust, onDismissNotice }: {
+export function Banners({ state, view, session, onTrust, onStopRetry, onDismissNotice }: {
   state: SupervisorState;
   view: SessionView | null;
   session: SessionSummary | null;
   onTrust: () => void;
+  /** Gives up on a provider that keeps failing instead of waiting it out. */
+  onStopRetry: () => void;
   /** Extension messages are the only banners a user can clear by hand. */
   onDismissNotice: (id: string) => void;
 }) {
@@ -51,13 +53,19 @@ export function Banners({ state, view, session, onTrust, onDismissNotice }: {
     });
   }
   if (view?.status.retry) {
-    const retry = view.status.retry;
     banners.push({
       key: "retry",
       tone: "warn",
-      text: `Retrying (attempt ${retry.attempt}${retry.maxAttempts ? `/${retry.maxAttempts}` : ""})${
-        retry.error ? `: ${retry.error}` : ""
-      }`,
+      text: retryText("Retrying", view.status.retry),
+      actionLabel: "Stop",
+      action: onStopRetry,
+    });
+  }
+  if (view?.status.summarizationRetry) {
+    banners.push({
+      key: "summarization-retry",
+      tone: "warn",
+      text: retryText("Retrying summary", view.status.summarizationRetry),
     });
   }
   for (const [index, failure] of (view?.status.extensionErrors ?? []).entries()) {
@@ -93,6 +101,11 @@ export function Banners({ state, view, session, onTrust, onDismissNotice }: {
       ))}
     </div>
   );
+}
+
+function retryText(label: string, retry: RetryStatus): string {
+  const attempt = `attempt ${retry.attempt}${retry.maxAttempts ? `/${retry.maxAttempts}` : ""}`;
+  return `${label} (${attempt})${retry.error ? `: ${readableError(retry.error)}` : ""}`;
 }
 
 function transportText(state: SupervisorState): string {

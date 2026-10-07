@@ -295,6 +295,7 @@ function Workspace({ machine, settings, onSettingsChange, onForget }: {
             view={null}
             session={null}
             onTrust={() => {}}
+            onStopRetry={() => {}}
             onDismissNotice={() => {}}
           />
         </section>

@@ -10,7 +10,8 @@
     "sandbox:shot": "tsx packages/sandbox/src/cli.ts shot",
     "spike:rpc": "tsx spikes/rpc-probe.ts",
     "spike:gotchas": "tsx spikes/gotcha-probe.ts",
-    "spike:inproc": "tsx spikes/inproc-probe.ts"
+    "spike:inproc": "tsx spikes/inproc-probe.ts",
+    "spike:retry": "tsx spikes/retry-probe.ts"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",

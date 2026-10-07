@@ -1,6 +1,7 @@
 import {
   messageText,
   parsePartialJson,
+  turnFailure,
   type AgentMessage,
   type ImageContent,
   type PartialMessage,
@@ -13,8 +14,10 @@ import { TranscriptImage } from "./image-view.tsx";
 import { Markdown } from "./markdown.tsx";
 import { ToolCard } from "./tool-card.tsx";
 
-export function MessageBubble({ message, tools, cwd, blocked, onRewind }: {
+export function MessageBubble({ message, failedAttempts, tools, cwd, blocked, onRewind }: {
   message: AgentMessage;
+  /** Earlier attempts at this turn that pi retried. */
+  failedAttempts?: number;
   tools: Map<string, ToolExecution>;
   cwd?: string;
   /** A dialog is waiting on the user, so running timers must not advance. */
@@ -69,8 +72,31 @@ export function MessageBubble({ message, tools, cwd, blocked, onRewind }: {
         };
         return <ToolCard key={part.id} tool={tool} cwd={cwd} blocked={blocked} />;
       })}
+      <StopNote message={message} failedAttempts={failedAttempts ?? 0} />
     </div>
   );
+}
+
+/**
+ * How a turn ended, when that is not the normal way.
+ *
+ * A failed turn often has no content at all, so without this it renders as
+ * nothing and the transcript just stops, with no hint that it will not go on.
+ */
+function StopNote({ message, failedAttempts }: {
+  message: Extract<AgentMessage, { role: "assistant" }>;
+  failedAttempts: number;
+}) {
+  const failure = turnFailure(message);
+  if (failure) {
+    const attempts = failedAttempts > 0 ? ` (after ${failedAttempts + 1} attempts)` : "";
+    return <p className="error">{`Failed${attempts}: ${failure}`}</p>;
+  }
+  if (message.stopReason === "aborted") return <p className="muted">Stopped.</p>;
+  if (message.stopReason === "length") {
+    return <p className="muted">Cut off: the model reached its output limit.</p>;
+  }
+  return null;
 }
 
 /**

@@ -64,4 +64,5 @@ await sandbox.close();
 ## Talking to the stub agent
 
 The stub echoes prompts and reacts to magic words: `ASK_DIALOG`, `SLOW_TOOL`,
-`CRASH_NOW`, `CRASH_MIDSTREAM`. See `packages/pi-host/test/fake-pi.ts`.
+`CRASH_NOW`, `CRASH_MIDSTREAM`, `RATE_LIMIT` (retries run out),
+`RATE_LIMIT_ONCE` (one retry, then an answer). See `packages/pi-host/test/fake-pi.ts`.

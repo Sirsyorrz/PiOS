@@ -6,7 +6,7 @@ import { JsonlFramer } from "../src/jsonl.ts";
 import { parseRpcOutbound } from "../src/parse.ts";
 import { MessageAssembler, TranscriptAssembler } from "../src/assembler.ts";
 import type { AgentEvent } from "../src/events.ts";
-import type { AgentMessage, AssistantMessage } from "../src/messages.ts";
+import { turnFailure, type AgentMessage, type AssistantMessage } from "../src/messages.ts";
 import { GetEntriesDataSchema, isUnknownCursorError, type RpcResponse } from "../src/commands.ts";
 
 const TRACE_DIR = fileURLToPath(new URL("../../../spikes/traces/", import.meta.url));
@@ -151,6 +151,43 @@ test("prompt-basic.jsonl correlates tool execution by toolCallId", () => {
     .filter((d) => d.type === "toolcall_end")
     .map((d) => d.toolCall.id);
   assert.deepEqual(toolCallIds, [tools[0]!.toolCallId]);
+});
+
+test("rate-limit.jsonl: every attempt is kept, and the retry ends in failure", () => {
+  const { events, responses } = readTrace("rate-limit.jsonl");
+  const assembler = new TranscriptAssembler();
+  const retries: (number | null)[] = [];
+  for (const event of events) {
+    assembler.apply(event);
+    retries.push(assembler.snapshot().status.retry?.attempt ?? null);
+  }
+  assert.deepEqual([...new Set(retries.filter((r) => r !== null))], [1, 2]);
+
+  const snapshot = assembler.snapshot();
+  assert.equal(snapshot.running, false);
+  assert.equal(snapshot.status.retry, null);
+  const failed = snapshot.messages.filter((m) => turnFailure(m) !== null);
+  assert.equal(failed.length, 3);
+  assert.equal(turnFailure(failed[0]!), "429: Rate limit reached for requests");
+
+  const end = events.find((e) => e.type === "auto_retry_end");
+  assert.ok(end && end.type === "auto_retry_end" && !end.success && end.finalError);
+
+  // History keeps the failed attempts too, so a resync shows the same thing.
+  const entries = GetEntriesDataSchema.parse(responses.find((r) => r.command === "get_entries")!.data);
+  const persisted = entries.entries.flatMap((e) => (e.message ? [e.message] : []));
+  assert.equal(persisted.filter((m) => turnFailure(m) !== null).length, 3);
+});
+
+test("rate-limit-abort.jsonl: abort_retry ends the retry and settles the run", () => {
+  const { events } = readTrace("rate-limit-abort.jsonl");
+  const assembler = new TranscriptAssembler();
+  for (const event of events) assembler.apply(event);
+  const end = events.find((e) => e.type === "auto_retry_end");
+  assert.ok(end && end.type === "auto_retry_end");
+  assert.equal(end.finalError, "Retry cancelled");
+  assert.equal(assembler.snapshot().status.retry, null);
+  assert.equal(assembler.snapshot().running, false);
 });
 
 function assertMatches(assembler: MessageAssembler, final: AgentMessage, label: string) {

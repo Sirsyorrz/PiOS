@@ -26,6 +26,35 @@ export const say = (text: string): EntrySeed => ({
   },
 });
 
+let failures = 0;
+
+/**
+ * An attempt the provider refused. Has no content: pi records only the error.
+ * Timestamped apart, as pi's are, or identical retries would dedupe as one.
+ */
+export const fail = (errorMessage: string): EntrySeed => ({
+  message: {
+    timestamp: Date.UTC(2025, 0, 1) + ++failures,
+    role: "assistant",
+    model: "deep-1",
+    provider: "acme",
+    content: [],
+    stopReason: "error",
+    errorMessage,
+  },
+});
+
+/** Prose that ended some other way than a normal stop: `aborted` or `length`. */
+export const cut = (text: string, stopReason: "aborted" | "length"): EntrySeed => ({
+  message: {
+    role: "assistant",
+    model: "deep-1",
+    provider: "acme",
+    content: [{ type: "text", text }],
+    stopReason,
+  },
+});
+
 export const think = (thinking: string, text: string): EntrySeed => ({
   message: {
     role: "assistant",

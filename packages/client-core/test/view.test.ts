@@ -221,3 +221,78 @@ test("a tool card rebuilt from history keeps the call, not just its output", () 
   assert.deepEqual(tool?.args, { command: "ls -la" });
   assert.equal(tool?.status, "done");
 });
+
+const failedAttempt = (timestamp: number) => ({
+  role: "assistant" as const,
+  content: [],
+  stopReason: "error",
+  errorMessage: "429: rate limited",
+  timestamp,
+});
+
+test("retried attempts fold into the attempt that followed them", () => {
+  const store = new SessionStore();
+  const answer = { role: "assistant" as const, content: [{ type: "text" as const, text: "ok" }], timestamp: 4 };
+  store.applyEntries(
+    "s1",
+    [
+      { id: "e1", type: "message", message: userMessage },
+      { id: "e2", type: "message", message: failedAttempt(1) },
+      { id: "e3", type: "message", message: failedAttempt(2) },
+      { id: "e4", type: "message", message: failedAttempt(3) },
+      { id: "e5", type: "message", message: { role: "user", content: "again", timestamp: 3 } },
+      { id: "e6", type: "message", message: failedAttempt(4) },
+      { id: "e7", type: "message", message: answer },
+    ],
+    "e7",
+    true,
+  );
+
+  const items = sessionView(store, [], "s1").items.flatMap((item) =>
+    item.kind === "message" ? [[item.entryId, item.failedAttempts]] : [],
+  );
+  assert.deepEqual(items, [
+    ["e1", undefined],
+    ["e4", 2],
+    ["e5", undefined],
+    ["e7", 1],
+  ]);
+});
+
+test("a failed attempt folds into the retry that is streaming now", () => {
+  const store = new SessionStore();
+  store.applyEntries(
+    "s1",
+    [
+      { id: "e1", type: "message", message: userMessage },
+      { id: "e2", type: "message", message: failedAttempt(1) },
+    ],
+    "e2",
+    true,
+  );
+  store.applyEvent("s1", 1, {
+    type: "message_update",
+    assistantMessageEvent: { type: "text_delta", contentIndex: 0, delta: "wor" },
+  } as AgentEvent);
+
+  const kinds = sessionView(store, [], "s1").items.map((item) => item.kind);
+  assert.deepEqual(kinds, ["message", "streaming"]);
+});
+
+test("the latest failure is hidden while pi is still retrying it", () => {
+  const store = new SessionStore();
+  store.applyEntries(
+    "s1",
+    [
+      { id: "e1", type: "message", message: userMessage },
+      { id: "e2", type: "message", message: failedAttempt(1) },
+    ],
+    "e2",
+    true,
+  );
+  store.applyEvent("s1", 1, { type: "auto_retry_start", attempt: 1, maxAttempts: 2 } as AgentEvent);
+  assert.deepEqual(sessionView(store, [], "s1").items.map((item) => item.key), ["e:e1"]);
+
+  store.applyEvent("s1", 2, { type: "auto_retry_end", success: false, finalError: "x" } as AgentEvent);
+  assert.deepEqual(sessionView(store, [], "s1").items.map((item) => item.key), ["e:e1", "e:e2"]);
+});

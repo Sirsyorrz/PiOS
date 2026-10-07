@@ -179,10 +179,19 @@ export interface ToolExecution {
   durationMs?: number;
 }
 
+export interface RetryStatus {
+  attempt: number;
+  maxAttempts?: number;
+  delayMs?: number;
+  error?: string;
+}
+
 /** Long-running conditions the user has to be told about, not just logged. */
 export interface TranscriptStatus {
   compaction: { reason: string } | null;
-  retry: { attempt: number; maxAttempts?: number; delayMs?: number; error?: string } | null;
+  retry: RetryStatus | null;
+  /** Compaction or branch summary retrying a failed model call. */
+  summarizationRetry: RetryStatus | null;
   /** Never cleared automatically: a broken extension stays visible. */
   extensionErrors: { extensionPath?: string; event?: string; error: string }[];
 }
@@ -210,7 +219,12 @@ export class TranscriptAssembler {
   private streamingActive = false;
   private queue = { steering: [] as string[], followUp: [] as string[] };
   private running = false;
-  private status: TranscriptStatus = { compaction: null, retry: null, extensionErrors: [] };
+  private status: TranscriptStatus = {
+    compaction: null,
+    retry: null,
+    summarizationRetry: null,
+    extensionErrors: [],
+  };
 
   apply(event: AgentEvent): void {
     switch (event.type) {
@@ -222,6 +236,7 @@ export class TranscriptAssembler {
         // A settled run cannot still be retrying; a missed `auto_retry_end`
         // would otherwise leave the banner up forever.
         this.status.retry = null;
+        this.status.summarizationRetry = null;
         break;
       case "message_start":
         if (event.message.role === "assistant") {
@@ -293,6 +308,17 @@ export class TranscriptAssembler {
       case "auto_retry_end":
         this.status.retry = null;
         break;
+      case "summarization_retry_scheduled":
+        this.status.summarizationRetry = {
+          attempt: event.attempt,
+          maxAttempts: event.maxAttempts,
+          delayMs: event.delayMs,
+          error: event.errorMessage,
+        };
+        break;
+      case "summarization_retry_finished":
+        this.status.summarizationRetry = null;
+        break;
       case "extension_error":
         this.status.extensionErrors.push({
           extensionPath: event.extensionPath,
@@ -315,6 +341,7 @@ export class TranscriptAssembler {
       status: {
         compaction: this.status.compaction,
         retry: this.status.retry,
+        summarizationRetry: this.status.summarizationRetry,
         extensionErrors: [...this.status.extensionErrors],
       },
     };
@@ -347,6 +374,7 @@ export class TranscriptAssembler {
     this.streamingActive = false;
     this.assembler = new MessageAssembler();
     this.status.retry = null;
+    this.status.summarizationRetry = null;
     this.status.compaction = null;
     for (const tool of this.tools.values()) {
       if (tool.status === "running") tool.status = "abandoned";

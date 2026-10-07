@@ -175,3 +175,48 @@ test("tool output and thinking are not the answer", () => {
   emit({ type: "agent_settled" } as AgentEvent);
   assert.match(sent[0]!.message.body, /^Finished/);
 });
+
+test("a turn that ends in a provider error says so", () => {
+  const { sent, deps } = collector();
+  const notifier = new SettleNotifier(deps);
+  const { session, emit } = fakeSession();
+  notifier.attach(session);
+
+  const failed = {
+    type: "message_end",
+    message: {
+      role: "assistant",
+      content: [],
+      stopReason: "error",
+      errorMessage: '429: {"message":"Rate limit reached","type":"rate_limit"}',
+    },
+  } as AgentEvent;
+  emit({ type: "agent_start" } as AgentEvent);
+  emit(assistantMessage("Looking into it."));
+  emit(failed);
+  emit({ type: "agent_end" } as AgentEvent);
+  emit({ type: "agent_start" } as AgentEvent);
+  emit(failed);
+  emit({ type: "agent_settled" } as AgentEvent);
+
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0]!.message.body, "Failed: 429: Rate limit reached");
+});
+
+test("a retry that recovers reads as the answer, not the error", () => {
+  const { sent, deps } = collector();
+  const notifier = new SettleNotifier(deps);
+  const { session, emit } = fakeSession();
+  notifier.attach(session);
+
+  emit({ type: "agent_start" } as AgentEvent);
+  emit({
+    type: "message_end",
+    message: { role: "assistant", content: [], stopReason: "error", errorMessage: "overloaded" },
+  } as AgentEvent);
+  emit({ type: "agent_start" } as AgentEvent);
+  emit(assistantMessage("Done."));
+  emit({ type: "agent_settled" } as AgentEvent);
+
+  assert.equal(sent[0]!.message.body, "Done.");
+});

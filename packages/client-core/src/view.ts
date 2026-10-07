@@ -12,7 +12,14 @@ import type { BashRun, Notice, SessionStore } from "./session-store.ts";
 
 export type ViewItem =
   /** `entryId` is present only once the entry is persisted; live messages have none. */
-  | { kind: "message"; key: string; message: AgentMessage; entryId?: string }
+  | {
+      kind: "message";
+      key: string;
+      message: AgentMessage;
+      entryId?: string;
+      /** Failed attempts pi retried before this one, folded into it. */
+      failedAttempts?: number;
+    }
   | { kind: "streaming"; key: string; partial: PartialMessage }
   | { kind: "pending"; key: string; entry: OutboxEntry };
 
@@ -115,7 +122,7 @@ export function sessionView(
   }
 
   return {
-    items,
+    items: foldRetries(items, transcript.status.retry !== null),
     tools,
     queue: transcript.queue,
     running,
@@ -127,6 +134,41 @@ export function sessionView(
     hasOlder: store.hasOlder(sessionId),
     status: transcript.status,
   };
+}
+
+/**
+ * Collapses auto-retried attempts into the one that followed them.
+ *
+ * pi keeps every failed attempt in history, so a rate-limited turn would read
+ * as a stack of identical errors. An empty failed turn followed directly by
+ * another assistant turn can only be a retry: a new prompt would sit between.
+ * While a retry is waiting, the latest failure is not final yet either, and
+ * the retry banner already says what went wrong.
+ */
+function foldRetries(items: ViewItem[], retrying: boolean): ViewItem[] {
+  const folded: ViewItem[] = [];
+  const last = items.findLastIndex((item) => item.kind !== "pending");
+  let failed = 0;
+  items.forEach((item, index) => {
+    const superseded = isAssistantTurn(items[index + 1]) || (retrying && index === last);
+    if (isEmptyFailure(item) && superseded) {
+      failed += 1;
+      return;
+    }
+    folded.push(failed > 0 && item.kind === "message" ? { ...item, failedAttempts: failed } : item);
+    failed = 0;
+  });
+  return folded;
+}
+
+function isEmptyFailure(item: ViewItem): boolean {
+  if (item.kind !== "message" || item.message.role !== "assistant") return false;
+  return item.message.stopReason === "error" && item.message.content.length === 0;
+}
+
+function isAssistantTurn(item: ViewItem | undefined): boolean {
+  if (!item) return false;
+  return item.kind === "streaming" || (item.kind === "message" && item.message.role === "assistant");
 }
 
 /**
