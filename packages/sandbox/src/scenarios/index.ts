@@ -7,6 +7,7 @@ import files from "./files.ts";
 import gitConflict from "./git-conflict.ts";
 import gitDirty from "./git-dirty.ts";
 import gitNone from "./git-none.ts";
+import images from "./images.ts";
 import manySessions from "./many-sessions.ts";
 
 export const scenarios: Scenario[] = [
@@ -19,6 +20,7 @@ export const scenarios: Scenario[] = [
   gitNone,
   gitConflict,
   manySessions,
+  images,
 ];
 
 export function findScenario(name: string): Scenario {

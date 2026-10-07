@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { isDirectSrc, useFileObjectUrl } from "../files.ts";
+import { usePinchZoom } from "../pinch-zoom.ts";
 import { CloseIcon } from "./icons.tsx";
 
 /**
@@ -33,8 +34,10 @@ export function TranscriptImage({ src, alt }: { src: string; alt: string }) {
   );
 }
 
-/** Full-bleed view. The only affordance is leaving, on tap or on Escape. */
+/** Full-bleed view. Pinch or double-tap to zoom; a single tap or Escape leaves. */
 function Lightbox({ url, alt, onClose }: { url: string; alt: string; onClose: () => void }) {
+  const { frame, target } = usePinchZoom<HTMLDivElement, HTMLImageElement>(onClose);
+
   useEffect(() => {
     const key = (event: KeyboardEvent) => {
       if (event.key === "Escape") onClose();
@@ -44,11 +47,11 @@ function Lightbox({ url, alt, onClose }: { url: string; alt: string; onClose: ()
   }, [onClose]);
 
   return (
-    <div className="lightbox" onClick={onClose}>
+    <div className="lightbox" ref={frame}>
       <button type="button" className="icon ghost" aria-label="close" onClick={onClose}>
         <CloseIcon />
       </button>
-      <img alt={alt} src={url} />
+      <img ref={target} alt={alt} src={url} draggable={false} />
     </div>
   );
 }
