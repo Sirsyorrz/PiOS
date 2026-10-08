@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -13,6 +13,8 @@ import type { Scenario, SessionSpec } from "./scenario.ts";
 // which are the things that keep them honest about pi's actual behaviour.
 const FAKE_PI = fileURLToPath(new URL("../../pi-host/test/fake-pi.ts", import.meta.url));
 const { branchFakeSession } = await import("../../pi-host/test/fake-branch.ts");
+const { writeStubSession } = await import("../../pi-host/test/fake-session-file.ts");
+type StubEntry = import("../../pi-host/test/fake-session-file.ts").StubEntry;
 
 export interface SandboxOptions {
   scenario?: string | Scenario;
@@ -115,7 +117,7 @@ function seed(spec: SessionSpec, projects: string, sessionRoot: string): Sandbox
   const stateDir = projectSessionDir(cwd, sessionRoot);
   mkdirSync(stateDir, { recursive: true });
   const entries = buildEntries(spec.id, spec.entries ?? []);
-  writeFileSync(join(stateDir, `${spec.id}.json`), JSON.stringify(entries));
+  writeStubSession(join(stateDir, `${spec.id}.jsonl`), { id: spec.id, cwd }, entries as StubEntry[]);
   return { id: spec.id, name: spec.name, cwd };
 }
 

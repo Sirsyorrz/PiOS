@@ -2,6 +2,7 @@ import { createReadStream } from "node:fs";
 import { mkdir, readdir, readFile, rename, stat, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { previewText } from "@pios/protocol";
+import { entryTimestamp, scanTail } from "./session-tail.ts";
 
 /**
  * Index over pi's session files.
@@ -30,6 +31,12 @@ export interface SessionRecord {
   preview: string;
   /** Absent for a session too large to count without reading all of it. */
   messageCount?: number;
+  /**
+   * Last thing the user did: a prompt or a shell command, from this device or
+   * the TUI. The list is ordered on it rather than on the file's mtime, which
+   * a long unattended run keeps bumping past the conversation just left.
+   */
+  activeAt: number;
   mtimeMs: number;
   size: number;
 }
@@ -60,12 +67,22 @@ export interface SessionIndexOptions {
 
 const DEFAULT_LIMIT = 50;
 /** Bumped whenever `SessionRecord` changes shape; a mismatch drops the seed. */
-const CACHE_VERSION = 1;
+const CACHE_VERSION = 2;
 /**
  * A session file grows without bound, but everything the list shows lives in
  * its opening entries, so the skim stops here rather than at end of file.
  */
 const SKIM_BYTES = 64 * 1024;
+/**
+ * How far back from the end the last user action is looked for. A long run
+ * of tool output can bury it deeper, and then the oldest entry read stands in
+ * for it: the user acted before that, so it is never later than the truth.
+ */
+const TAIL_BYTES = 512 * 1024;
+/** Entries past the last user action still searched for a rename. */
+const NAME_LOOKBACK = 200;
+/** Entry timestamps are milliseconds, mtimes can round below them. */
+const MTIME_SLACK_MS = 1000;
 
 interface Candidate {
   path: string;
@@ -102,42 +119,32 @@ export class SessionIndex {
     const limit = options.limit ?? this.defaultLimit;
     const offset = Math.max(0, options.offset ?? 0);
 
-    // Newest first, from stat alone: ordering must not depend on parsing.
+    // Stat order first: `activeAt` is never later than mtime, so walking by
+    // mtime lets the scan stop as soon as nothing further down can make it in.
     const candidates = (await this.candidates()).sort((a, b) => b.mtimeMs - a.mtimeMs);
 
     const wanted = options.cwd ? resolve(options.cwd) : undefined;
     const needle = options.query?.trim().toLowerCase();
-    const page: SessionRecord[] = [];
+    const filtered = Boolean(wanted || needle);
+    const needed = offset + limit;
+    const kept: SessionRecord[] = [];
 
-    // Unfiltered, the order is known from stat alone, so only the page itself
-    // is skimmed. Filtering has to look at every record to know what matches.
-    if (!wanted && !needle) {
-      let seen = 0;
-      for (const candidate of candidates) {
-        if (page.length >= limit) break;
-        const record = await this.record(candidate);
-        if (!record) continue;
-        if (seen++ < offset) continue;
-        page.push(record);
-      }
-      this.persist();
-      // An upper bound: a file with no header is dropped above but counted
-      // here. Paging stays correct because the page is filled by walking on.
-      const total = candidates.length;
-      return { sessions: page, offset, total, hasMore: offset + page.length < total };
-    }
-
-    let total = 0;
     for (const candidate of candidates) {
+      const latest = candidate.mtimeMs + MTIME_SLACK_MS;
+      if (!filtered && kept.length >= needed && latest < kthActive(kept, needed)) break;
       const record = await this.record(candidate);
       if (!record) continue;
       if (wanted && resolve(record.cwd || "/") !== wanted) continue;
       if (needle && !matches(record, needle)) continue;
-      total++;
-      if (total > offset && page.length < limit) page.push(record);
+      kept.push(record);
     }
 
+    kept.sort((a, b) => b.activeAt - a.activeAt);
+    const page = kept.slice(offset, needed);
     this.persist();
+    // Unfiltered, an upper bound: a file with no header is counted but never
+    // listed. Paging stays correct because a page is filled by walking on.
+    const total = filtered ? kept.length : candidates.length;
     return { sessions: page, offset, total, hasMore: offset + page.length < total };
   }
 
@@ -163,6 +170,16 @@ export class SessionIndex {
   /** The session file for an id, from what the last scan saw. */
   fileFor(id: string): string | undefined {
     return this.recordFor(id)?.path;
+  }
+
+  /** The record for one file, re-read if it changed since the last look. */
+  async recordAt(path: string): Promise<SessionRecord | undefined> {
+    try {
+      const info = await stat(path);
+      return (await this.record({ path, mtimeMs: info.mtimeMs, size: info.size })) ?? undefined;
+    } catch {
+      return undefined;
+    }
   }
 
   /** Drops a cached record, for a file known to have changed underneath us. */
@@ -248,6 +265,13 @@ export class SessionIndex {
   }
 }
 
+/** The `k`th most recent `activeAt` among what has been read so far. */
+function kthActive(records: SessionRecord[], k: number): number {
+  return records
+    .map((record) => record.activeAt)
+    .sort((a, b) => b - a)[k - 1]!;
+}
+
 function matches(record: SessionRecord, needle: string): boolean {
   return `${record.path} ${record.name ?? ""} ${record.preview}`.toLowerCase().includes(needle);
 }
@@ -304,18 +328,59 @@ async function skim(candidate: Candidate): Promise<SessionRecord | null> {
   }
 
   if (!id) return null;
+  const tail = await skimTail(candidate);
   return {
     path: candidate.path,
     id,
     cwd,
-    name,
+    // A rename can land anywhere, and the head is only read so far.
+    name: tail.name ?? name,
     createdAt,
     modifiedAt: candidate.mtimeMs,
     preview,
     messageCount: complete ? messages : undefined,
+    activeAt: tail.activeAt ?? createdAt,
     mtimeMs: candidate.mtimeMs,
     size: candidate.size,
   };
+}
+
+/**
+ * The latest user action and name, read backwards from the end of the file.
+ *
+ * Both live near the end of a session that is in use, and nowhere near the
+ * head the list skim reads, so this reads the other end instead.
+ */
+async function skimTail(candidate: Candidate): Promise<{ activeAt?: number; name?: string }> {
+  let activeAt: number | undefined;
+  let name: string | undefined;
+  let oldest: number | undefined;
+  // A rename usually comes a few turns before the last prompt, so the scan
+  // looks a little further for one; any deeper and the head skim answers.
+  let beyond = 0;
+  try {
+    await scanTail(
+      candidate.path,
+      (entry) => {
+        const at = entryTimestamp(entry);
+        if (at !== undefined) oldest = at;
+        if (name === undefined && typeof entry.name === "string" && isNaming(entry.type)) name = entry.name;
+        if (activeAt === undefined && isUserAction(entry)) activeAt = at ?? oldest;
+        if (activeAt !== undefined) beyond++;
+        return name !== undefined ? activeAt !== undefined : beyond > NAME_LOOKBACK;
+      },
+      TAIL_BYTES,
+    );
+  } catch {
+    return {};
+  }
+  return { activeAt: activeAt ?? oldest, name };
+}
+
+function isUserAction(entry: Record<string, unknown>): boolean {
+  if (entry.type !== "message") return false;
+  const role = (entry.message as { role?: unknown } | undefined)?.role;
+  return role === "user" || role === "bashExecution";
 }
 
 function isNaming(type: unknown): boolean {

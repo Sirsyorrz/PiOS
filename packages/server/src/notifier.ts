@@ -120,22 +120,41 @@ export class SettleNotifier {
 function compose(session: PiSession, turn: TurnState, now: number): PushMessage {
   const info = session.info;
   const elapsed = turn.startedAt === null ? null : formatElapsed(now - turn.startedAt);
+  return pushFor(info, {
+    text: turn.lastText,
+    failure: turn.failure,
+    fallback: [info.awaitingInput ? "Needs input" : turn.errored ? "Stopped" : "Finished", elapsed]
+      .filter((part): part is string => Boolean(part))
+      .join(" - "),
+  });
+}
 
+/** What a notification is about: enough to name it the way the list does. */
+export interface PushTarget {
+  id: string;
+  name?: string;
+  preview?: string;
+  cwd: string;
+}
+
+/** One settled turn as a notification, wherever the turn ran. */
+export function pushFor(
+  target: PushTarget,
+  outcome: { text?: string | null; failure?: string | null; fallback: string },
+): PushMessage {
   return {
     // The same label the session list shows, so the notification and the row
     // it opens name the same thing.
-    title: info.name?.trim() || info.preview?.trim() || shortenPath(info.cwd),
+    title: target.name?.trim() || target.preview?.trim() || shortenPath(target.cwd),
     // A failure outranks whatever was said before it: the turn did not finish.
-    body: turn.failure
-      ? summarise(`Failed: ${turn.failure}`)
-      : turn.lastText
-      ? summarise(turn.lastText)
-      : [info.awaitingInput ? "Needs input" : turn.errored ? "Stopped" : "Finished", elapsed]
-          .filter((part): part is string => Boolean(part))
-          .join(" - "),
-    url: `/?session=${encodeURIComponent(session.id)}`,
+    body: outcome.failure
+      ? summarise(`Failed: ${outcome.failure}`)
+      : outcome.text
+      ? summarise(outcome.text)
+      : outcome.fallback,
+    url: `/?session=${encodeURIComponent(target.id)}`,
     // One live notification per session: a second settle replaces the first.
-    tag: `session:${session.id}`,
+    tag: `session:${target.id}`,
   };
 }
 

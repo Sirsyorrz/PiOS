@@ -7,9 +7,10 @@
  *
  * Behaviour is pinned to what the Phase 0 traces actually showed.
  */
-import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { JsonlFramer, encodeJsonl } from "@pios/protocol/jsonl";
 import { runFakeBash } from "./fake-bash.ts";
+import { readStubSession, writeStubSession, type StubEntry } from "./fake-session-file.ts";
 
 const argv = process.argv.slice(2);
 const arg = (name: string) => {
@@ -20,30 +21,23 @@ const arg = (name: string) => {
 // `--session <path>` binds to an exact file, `--session-id` looks one up.
 const sessionPath = arg("--session");
 const sessionDir = arg("--session-dir") ?? ".";
-const sessionId = sessionPath
-  ? sessionPath.split("/").pop()!.replace(/\.json$/, "")
+const requestedId = sessionPath
+  ? sessionPath.split("/").pop()!.replace(/\.jsonl$/, "")
   : arg("--session-id") ?? "fake";
 const trusted = argv.includes("--approve");
 // Mimics pi whose runtime dispose never settles: SIGTERM and EOF are ignored.
 const hangOnExit = argv.includes("--hang-on-exit");
 mkdirSync(sessionDir, { recursive: true });
-const statePath = sessionPath ?? `${sessionDir}/${sessionId}.json`;
+const statePath = sessionPath ?? `${sessionDir}/${requestedId}.jsonl`;
+const stored = existsSync(statePath) ? readStubSession(statePath) : null;
+const sessionId = stored?.header?.id ?? requestedId;
 // So tests can assert how the host launched pi, including on a relaunch.
 appendFileSync(`${sessionDir}/argv.log`, `${argv.join(" ")}\n`);
 
-interface Entry {
-  id: string;
-  parentId: string | null;
-  type: string;
-  message: unknown;
-}
+type Entry = StubEntry;
 
-let entries: Entry[] = [];
-try {
-  entries = JSON.parse(readFileSync(statePath, "utf8"));
-} catch {
-  entries = [];
-}
+let entries: Entry[] = stored?.entries ?? [];
+const header = { id: sessionId, cwd: stored?.header?.cwd ?? process.cwd() };
 
 let counter = entries.length;
 let streaming = false;
@@ -51,7 +45,7 @@ let aborted = false;
 let bashAborted = false;
 
 const write = (value: unknown) => process.stdout.write(encodeJsonl(value));
-const persist = () => writeFileSync(statePath, JSON.stringify(entries));
+const persist = () => writeStubSession(statePath, header, entries);
 const leafId = () => entries.at(-1)?.id ?? null;
 
 function addEntry(message: unknown): Entry {
@@ -59,6 +53,7 @@ function addEntry(message: unknown): Entry {
     id: `${sessionId.slice(0, 4)}-${++counter}`,
     parentId: leafId(),
     type: "message",
+    timestamp: new Date().toISOString(),
     message,
   };
   entries.push(entry);
@@ -70,6 +65,8 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /** How long the `SLOW_TOOL` fixture pretends to work, once approved. */
 const TOOL_WORK_MS = 120;
+/** Long enough to see the banner in the sandbox. */
+const COMPACT_MS = 800;
 
 // Mirrors pi: a dialog blocks the turn until the host answers by id, and no
 // timer is armed unless the extension asked for one.
@@ -237,6 +234,29 @@ let model = catalogue[0];
 const levelsFor = (id: string | undefined) =>
   id === "deep-1" ? ["off", "low", "medium", "high"] : ["off"];
 let thinkingLevel = "off";
+let sessionName = entries.findLast((entry) => entry.type === "session_info")?.name as string | undefined;
+let autoCompaction = true;
+
+/** Mirrors pi: the summary is an entry of its own, after the history it covers. */
+async function compact(instructions: string | undefined) {
+  write({ type: "compaction_start", reason: "manual" });
+  await sleep(COMPACT_MS);
+  const result = {
+    summary: `summary${instructions ? ` (${instructions})` : ""}`,
+    firstKeptEntryId: leafId() ?? undefined,
+    tokensBefore: 12_345,
+  };
+  entries.push({
+    id: `${sessionId.slice(0, 4)}-${++counter}`,
+    parentId: leafId(),
+    type: "compaction",
+    timestamp: new Date().toISOString(),
+    ...result,
+  });
+  persist();
+  write({ type: "compaction_end", reason: "manual", result, aborted: false, willRetry: false });
+  return result;
+}
 
 let queue: Promise<void> = Promise.resolve();
 
@@ -262,8 +282,35 @@ function handle(command: Record<string, any>) {
           trusted,
           model,
           thinkingLevel,
+          sessionName,
+          autoCompactionEnabled: autoCompaction,
         },
       });
+
+    case "set_session_name": {
+      const name = String(command.name ?? "").trim();
+      if (!name) return respond({ success: false, error: "Session name cannot be empty" });
+      sessionName = name;
+      entries.push({
+        id: `${sessionId.slice(0, 4)}-${++counter}`,
+        parentId: leafId(),
+        type: "session_info",
+        timestamp: new Date().toISOString(),
+        name,
+      });
+      persist();
+      return respond({ success: true });
+    }
+
+    case "compact":
+      void compact(command.customInstructions).then((result) =>
+        respond({ success: true, data: result }),
+      );
+      return;
+
+    case "set_auto_compaction":
+      autoCompaction = Boolean(command.enabled);
+      return respond({ success: true });
 
     case "get_commands":
       return respond({

@@ -28,7 +28,11 @@ function candidateDaemonUrls(): string[] {
   return origin === samePort ? [origin] : [origin, samePort];
 }
 
-export function PairingScreen({ onPaired }: { onPaired: (machine: Machine) => void }) {
+export function PairingScreen({ notice, onPaired }: {
+  /** Why the app is back here, when it did not start here. */
+  notice?: string | null;
+  onPaired: (machine: Machine) => void;
+}) {
   const [token, setToken] = useState("");
   const [url, setUrl] = useState(() => candidateDaemonUrls()[0]!);
   // A guess that was typed over is the user's, and must not be overwritten by
@@ -89,6 +93,7 @@ export function PairingScreen({ onPaired }: { onPaired: (machine: Machine) => vo
   return (
     <ModalCard onSubmit={submit}>
       <h1>Pair with a machine</h1>
+        {notice ? <p className="banner warn">{notice}</p> : null}
         <p className="muted">
           Run <code>pios-server pair</code> on the machine and open the printed link, or paste the
           token below.

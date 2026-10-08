@@ -1,10 +1,10 @@
 #!/usr/bin/env node
-import { spawn, type ChildProcess } from "node:child_process";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Browser, PHONE_VIEWPORT } from "./browser.ts";
 import { startSandbox, type Sandbox } from "./sandbox.ts";
 import { findScenario, scenarios } from "./scenarios/index.ts";
+import { appUrl as appUrlAt, startWeb as startWebAt, waitForWeb as waitForWebAt } from "./web.ts";
 
 const REPO_ROOT = fileURLToPath(new URL("../../..", import.meta.url));
 const WEB_PORT = Number(process.env.PIOS_SANDBOX_WEB_PORT ?? 5173);
@@ -91,32 +91,16 @@ async function shot(): Promise<void> {
   }
 }
 
-function startWeb(target: string, stdio: "inherit" | "ignore"): ChildProcess {
-  return spawn("pnpm", ["-F", "@pios/web", "dev", "--port", String(WEB_PORT), "--strictPort"], {
-    cwd: REPO_ROOT,
-    stdio,
-    // A machine-wide NODE_ENV=production would hand the dev server React's
-    // production build and no HMR.
-    env: { ...process.env, NODE_ENV: "development", PIOS_SANDBOX_TARGET: target },
-  });
+function startWeb(target: string, stdio: "inherit" | "ignore") {
+  return startWebAt(target, WEB_PORT, stdio);
 }
 
-async function waitForWeb(timeoutMs = 30_000): Promise<void> {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    try {
-      await fetch(`http://127.0.0.1:${WEB_PORT}/`);
-      return;
-    } catch {
-      await new Promise((resolve) => setTimeout(resolve, 150));
-    }
-  }
-  throw new Error("dev server did not start");
+function waitForWeb(): Promise<void> {
+  return waitForWebAt(WEB_PORT);
 }
 
-/** The one URL that pairs the app and opens it, with no clicks in between. */
 function appUrl(sandbox: Sandbox): string {
-  return `http://localhost:${WEB_PORT}/?sandbox=1&token=${sandbox.deviceToken}`;
+  return appUrlAt(sandbox, WEB_PORT);
 }
 
 function report(sandbox: Sandbox, url: string): void {

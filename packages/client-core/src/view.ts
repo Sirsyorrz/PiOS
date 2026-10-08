@@ -20,6 +20,8 @@ export type ViewItem =
       /** Failed attempts pi retried before this one, folded into it. */
       failedAttempts?: number;
     }
+  /** History before this point was summarised for the model; it is still shown. */
+  | { kind: "compaction"; key: string; tokensBefore?: number }
   | { kind: "streaming"; key: string; partial: PartialMessage }
   | { kind: "pending"; key: string; entry: OutboxEntry };
 
@@ -80,6 +82,15 @@ export function sessionView(
   };
 
   for (const entry of cached) {
+    if (entry.type === "compaction") {
+      const tokens = (entry as { tokensBefore?: unknown }).tokensBefore;
+      items.push({
+        kind: "compaction",
+        key: `e:${entry.id}`,
+        tokensBefore: typeof tokens === "number" ? tokens : undefined,
+      });
+      continue;
+    }
     if (!entry.message) continue;
     addMessage(entry.message, `e:${entry.id}`, entry.id);
   }

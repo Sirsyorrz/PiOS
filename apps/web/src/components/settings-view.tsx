@@ -109,7 +109,7 @@ function MachineRow({ machine, onForget }: { machine: Machine; onForget: () => v
             <button type="button" className="ghost" onClick={() => setConfirming(false)}>
               Cancel
             </button>
-            <button type="button" className="danger" onClick={onForget}>
+            <button type="button" className="danger" onClick={() => onForget()}>
               Forget
             </button>
           </>

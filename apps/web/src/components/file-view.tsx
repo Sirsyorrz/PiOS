@@ -30,7 +30,7 @@ import { ListRowButton, SearchField } from "./ui.tsx";
  * access object would refetch the file each time one arrives.
  */
 function accessKey(access: FileAccess): string {
-  return `${access.baseUrl}\u0000${access.deviceToken}\u0000${access.sessionId}`;
+  return `${access.baseUrl}\u0000${access.deviceToken}\u0000${access.sessionId}\u0000${access.cwd ?? ""}`;
 }
 
 const CodeEditor = lazy(() =>

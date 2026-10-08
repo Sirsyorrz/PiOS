@@ -1,7 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { SessionSummary } from "@pios/protocol";
 import { ClientProvider, useClient, useSupervisorState } from "./client-provider.tsx";
 import {
   activeMachine,
+  deviceRevoked,
   httpBase,
   loadMachines,
   saveMachines,
@@ -28,6 +30,7 @@ import { useKeepPushRegistered } from "./push.ts";
 export function App() {
   const [store, setStore] = useState<MachineStore>(() => adoptSandboxMachine() ?? loadMachines());
   const [settings, setSettingsState] = useState<Settings>(loadSettings);
+  const [pairingNotice, setPairingNotice] = useState<string | null>(null);
 
   function update(next: MachineStore) {
     saveMachines(next);
@@ -43,9 +46,11 @@ export function App() {
   if (!machine) {
     return (
       <PairingScreen
-        onPaired={(paired) =>
-          update({ machines: [...store.machines, paired], activeId: paired.id })
-        }
+        notice={pairingNotice}
+        onPaired={(paired) => {
+          setPairingNotice(null);
+          update({ machines: [...store.machines, paired], activeId: paired.id });
+        }}
       />
     );
   }
@@ -57,12 +62,13 @@ export function App() {
           machine={machine}
           settings={settings}
           onSettingsChange={setSettings}
-          onForget={() =>
+          onForget={(reason) => {
+            setPairingNotice(reason ?? null);
             update({
               machines: store.machines.filter((m) => m.id !== machine.id),
               activeId: null,
-            })
-          }
+            });
+          }}
         />
       </SettingsProvider>
     </ClientProvider>
@@ -73,7 +79,7 @@ function Workspace({ machine, settings, onSettingsChange, onForget }: {
   machine: Machine;
   settings: Settings;
   onSettingsChange: (settings: Settings) => void;
-  onForget: () => void;
+  onForget: (reason?: string) => void;
 }) {
   const client = useClient();
   const state = useSupervisorState();
@@ -92,10 +98,7 @@ function Workspace({ machine, settings, onSettingsChange, onForget }: {
   // Session commands are not queued, so a dropped one has to be said out loud.
   const [notice, setNotice] = useState<string | null>(null);
 
-  const session = useMemo(
-    () => state.sessions.find((s) => s.sessionId === activeId) ?? null,
-    [state.sessions, activeId],
-  );
+  const session = useStickySummary(state.sessions, activeId);
   const draft = useMemo(
     () => drafts.find((d) => d.id === activeId) ?? null,
     [drafts, activeId],
@@ -166,6 +169,20 @@ function Workspace({ machine, settings, onSettingsChange, onForget }: {
     }
     return commands;
   }
+
+  // A refused socket is not proof of anything on its own; a 401 from an
+  // authenticated route is. A revoked device forgets the machine instead of
+  // sitting on a banner it has no way to fix.
+  useEffect(() => {
+    if (state.transport !== "blocked") return;
+    let live = true;
+    void deviceRevoked(machine).then((revoked) => {
+      if (live && revoked) onForget("This device was unpaired on the machine. Pair it again to reconnect.");
+    });
+    return () => {
+      live = false;
+    };
+  }, [state.transport, machine]);
 
   useAttentionReport(client, activeId, state.transport);
   useKeepPushRegistered(base, machine.deviceToken);
@@ -295,11 +312,30 @@ function Workspace({ machine, settings, onSettingsChange, onForget }: {
             view={null}
             session={null}
             onTrust={() => {}}
-            onStopRetry={() => {}}
+            onStop={() => {}}
             onDismissNotice={() => {}}
           />
         </section>
       )}
     </div>
   );
+}
+
+/**
+ * The open session's summary, kept while the list page does not hold it.
+ *
+ * The list is whatever page and search is on screen, and it is replaced on
+ * every change to the store, which a running agent makes constantly. An open
+ * session outside that page would otherwise lose its directory, title and
+ * model on each refresh, and everything keyed on them would remount.
+ */
+function useStickySummary(
+  sessions: SessionSummary[],
+  activeId: string | null,
+): SessionSummary | null {
+  const last = useRef<SessionSummary | null>(null);
+  const found = sessions.find((s) => s.sessionId === activeId) ?? null;
+  if (found) last.current = found;
+  else if (last.current?.sessionId !== activeId) last.current = null;
+  return found ?? last.current;
 }

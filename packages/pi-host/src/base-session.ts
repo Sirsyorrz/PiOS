@@ -33,7 +33,6 @@ import type {
 export abstract class BaseSession {
   readonly id: string;
   readonly cwd: string;
-  readonly name: string | undefined;
 
   private trustedState: boolean;
 
@@ -52,6 +51,11 @@ export abstract class BaseSession {
   protected activityAt = Date.now();
   /** First user message: what a list row shows when the session has no name. */
   protected preview: string | undefined;
+  protected name: string | undefined;
+  /** Last prompt or shell command, absent until this process sees one. */
+  private userActiveAt: number | undefined;
+  /** pi's setting, absent until pi reports it. */
+  protected autoCompaction: boolean | undefined;
 
   private readonly buffer: EventRingBuffer;
   private readonly listeners = new Set<(event: BufferedEvent) => void>();
@@ -103,6 +107,7 @@ export abstract class BaseSession {
   ): Promise<BashResult> {
     if (this.bashRunning) throw new Error("a command is already running in this session");
     this.bashRunning = true;
+    this.userActiveAt = Date.now();
     this.publish({ type: "bash_state", command, excludeFromContext, running: true });
     try {
       const result = await run();
@@ -179,6 +184,8 @@ export abstract class BaseSession {
       model: this.model,
       thinkingLevel: this.thinkingLevel,
       thinkingLevels: this.thinkingLevels,
+      autoCompaction: this.autoCompaction,
+      userActiveAt: this.userActiveAt,
     };
   }
 
@@ -276,6 +283,19 @@ export abstract class BaseSession {
     this.publish({ type: "status", status: this.status });
   }
 
+  /** Published as a status event: every list row carries the name. */
+  protected recordName(name: string | undefined): void {
+    if (!name || name === this.name) return;
+    this.name = name;
+    this.publish({ type: "status", status: this.status });
+  }
+
+  protected recordAutoCompaction(enabled: boolean | undefined): void {
+    if (enabled === undefined || enabled === this.autoCompaction) return;
+    this.autoCompaction = enabled;
+    this.publish({ type: "status", status: this.status });
+  }
+
   /** Marks real work, so the idle sweep leaves this session alone for now. */
   protected noteActivity(): void {
     this.activityAt = Date.now();
@@ -295,6 +315,7 @@ export abstract class BaseSession {
   protected observeAgentEvent(event: AgentEvent): void {
     this.noteActivity();
     if (event.type === "message_start" && event.message.role === "user") {
+      this.userActiveAt = Date.now();
       this.notePreview(messagePreview(event.message));
     }
     if (event.type === "agent_start") this.setStatus("running");

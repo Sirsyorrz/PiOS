@@ -1,5 +1,5 @@
 import type { TextFile } from "@pios/protocol";
-import type { FileAccess } from "./files.ts";
+import { projectQuery, type FileAccess } from "./files.ts";
 
 /** What the daemon says about a file the editor is about to show. */
 export interface TreeEntry {
@@ -26,7 +26,7 @@ function headers(access: FileAccess): Record<string, string> {
 }
 
 function fileUrl(access: FileAccess, path: string, extra = ""): string {
-  const base = `${access.baseUrl}/file?session=${encodeURIComponent(access.sessionId)}&path=${encodeURIComponent(path)}`;
+  const base = `${access.baseUrl}/file?${projectQuery(access)}&path=${encodeURIComponent(path)}`;
   return extra ? `${base}&${extra}` : base;
 }
 
@@ -68,7 +68,7 @@ export async function saveTextFile(
 export async function loadTree(access: FileAccess, path?: string): Promise<TreeListing> {
   const at = path ? `&path=${encodeURIComponent(path)}` : "";
   const response = await fetch(
-    `${access.baseUrl}/dirs?session=${encodeURIComponent(access.sessionId)}&files=1${at}`,
+    `${access.baseUrl}/dirs?${projectQuery(access)}&files=1${at}`,
     { headers: headers(access) },
   );
   if (!response.ok) throw new Error("Unavailable");
@@ -77,7 +77,7 @@ export async function loadTree(access: FileAccess, path?: string): Promise<TreeL
 
 export async function searchFiles(access: FileAccess, query: string): Promise<string[]> {
   const response = await fetch(
-    `${access.baseUrl}/files?session=${encodeURIComponent(access.sessionId)}&q=${encodeURIComponent(query)}`,
+    `${access.baseUrl}/files?${projectQuery(access)}&q=${encodeURIComponent(query)}`,
     { headers: headers(access) },
   );
   if (!response.ok) throw new Error("Unavailable");

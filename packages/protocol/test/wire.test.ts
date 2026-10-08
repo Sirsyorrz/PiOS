@@ -180,3 +180,21 @@ test("entries can be asked for as a tail and paged backwards", () => {
   });
   assert.ok(page.type === "entries" && page.offset === 200 && page.total === 600);
 });
+
+test("renaming refuses an empty name rather than clearing it", () => {
+  const frame = { v: WIRE_VERSION, commandId: "c1", type: "set_session_name", sessionId: "s1" };
+  const ok = ClientFrameSchema.safeParse({ ...frame, name: "  release notes " });
+  assert.ok(ok.success);
+  assert.equal(ok.data.type === "set_session_name" ? ok.data.name : null, "release notes");
+  assert.equal(ClientFrameSchema.safeParse({ ...frame, name: "   " }).success, false);
+});
+
+test("compaction takes optional instructions and a separate auto toggle", () => {
+  const base = { v: WIRE_VERSION, commandId: "c1", sessionId: "s1" };
+  assert.ok(ClientFrameSchema.safeParse({ ...base, type: "compact" }).success);
+  assert.ok(
+    ClientFrameSchema.safeParse({ ...base, type: "compact", customInstructions: "keep the API" }).success,
+  );
+  assert.ok(ClientFrameSchema.safeParse({ ...base, type: "set_auto_compaction", enabled: false }).success);
+  assert.equal(ClientFrameSchema.safeParse({ ...base, type: "set_auto_compaction" }).success, false);
+});

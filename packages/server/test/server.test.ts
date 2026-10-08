@@ -1,6 +1,7 @@
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
 import { join } from "node:path";
 import { WIRE_VERSION, type ServerFrame } from "@pios/protocol";
 import { sessionDirName } from "@pios/pi-host";
@@ -668,4 +669,74 @@ test("a bash command streams to every subscriber and is acked once", async () =>
   const entries = await client.waitForCommand(client.send({ type: "get_entries", sessionId }));
   assert.equal(entries.type === "entries" && entries.entries.length, 1);
   client.close();
+});
+
+test("a session is named, compacted and switched off auto-compaction from the client", async () => {
+  const client = await hello(harness);
+  const sessionId = await openSession(harness, harness.dir);
+  await client.waitForCommand(client.send({ type: "subscribe", sessionId }));
+
+  const named = await client.waitForCommand(
+    client.send({ type: "set_session_name", sessionId, name: "release notes" }),
+  );
+  assert.equal(named.type === "session_state" ? named.summary.name : null, "release notes");
+  // Persisted by pi, so the list reads it back from the file, not from memory.
+  const listed = await client.waitForCommand(client.send({ type: "list_sessions" }));
+  assert.equal(
+    listed.type === "sessions"
+      ? listed.sessions.find((row) => row.sessionId === sessionId)?.name
+      : null,
+    "release notes",
+  );
+
+  const auto = await client.waitForCommand(
+    client.send({ type: "set_auto_compaction", sessionId, enabled: false }),
+  );
+  assert.equal(auto.type === "session_state" ? auto.summary.autoCompaction : null, false);
+
+  const compact = client.send({ type: "compact", sessionId, customInstructions: "keep the API" });
+  assert.equal((await client.waitForCommand(compact)).type, "ack", "acked before the summary exists");
+  const ended = await client.waitFor(
+    (f) => f.type === "agent_event" && f.sessionId === sessionId && f.event.type === "compaction_end",
+  );
+  assert.ok(ended.type === "agent_event" && ended.event.type === "compaction_end");
+  assert.equal(ended.event.result?.summary, "summary (keep the API)");
+
+  const page = await client.waitForCommand(client.send({ type: "get_entries", sessionId }));
+  assert.ok(page.type === "entries");
+  assert.equal(page.entries.at(-1)?.type, "compaction");
+  client.close();
+});
+
+test("a draft browses, searches and reads its directory before it is a session", async () => {
+  const bearer = { authorization: `Bearer ${harness.deviceToken}` };
+  // Drafts are contained to home, like the directory picker that chose them.
+  const dir = mkdtempSync(join(homedir(), ".pios-draft-files-"));
+  try {
+    mkdirSync(join(dir, "src"));
+    writeFileSync(join(dir, "src", "main.ts"), "export {};\n");
+    const project = `session=draft-not-started&cwd=${encodeURIComponent(dir)}`;
+
+    const tree = await fetch(`${harness.baseUrl}/dirs?${project}&files=1`, { headers: bearer });
+    assert.equal(tree.status, 200);
+    const listing = (await tree.json()) as { root: string; entries: { name: string }[] };
+    assert.equal(listing.root, dir);
+    assert.deepEqual(listing.entries.map((entry) => entry.name), ["src"]);
+
+    const search = await fetch(`${harness.baseUrl}/files?${project}&q=main`, { headers: bearer });
+    assert.deepEqual(((await search.json()) as { files: string[] }).files, ["src/main.ts"]);
+
+    const text = await fetch(`${harness.baseUrl}/file?${project}&path=src/main.ts&text=1`, {
+      headers: bearer,
+    });
+    assert.equal(((await text.json()) as { text: string }).text, "export {};\n");
+
+    const outside = await fetch(
+      `${harness.baseUrl}/file?session=x&cwd=${encodeURIComponent("/etc")}&path=passwd`,
+      { headers: bearer },
+    );
+    assert.equal(outside.status, 404, "a draft cannot name a directory outside home");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });

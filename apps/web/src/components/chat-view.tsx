@@ -1,16 +1,22 @@
-import type { ImageContent, SessionSummary, StreamingBehavior } from "@pios/protocol";
+import type {
+  ExtensionUiRequest,
+  ImageContent,
+  SessionSummary,
+  StreamingBehavior,
+} from "@pios/protocol";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useClient, useSessionView } from "../client-provider.tsx";
 import { useEdgeSwipe } from "../edge-swipe.ts";
 import { FileAccessContext } from "../files.ts";
-import { basename, isolate, sessionTitle } from "../format.ts";
+import { basename, compactCount, isolate, sessionTitle } from "../format.ts";
 import { useStickToBottom } from "../scroll.ts";
 import type { SessionView, SupervisorState } from "@pios/client-core";
 import { Banners } from "./banners.tsx";
 import { Composer } from "./composer.tsx";
 import type { NativeCommand } from "./native-commands.ts";
 import { sessionState } from "../session-status.ts";
-import { DialogSheet } from "./dialog-sheet.tsx";
+import { DialogSheet, type DialogAnswer } from "./dialog-sheet.tsx";
+import { Divider } from "./ui.tsx";
 import { GitControl } from "./git-view.tsx";
 import { FileView } from "./file-view.tsx";
 import { recallOpenFile, rememberOpenFile } from "../file-edit.ts";
@@ -165,6 +171,71 @@ export function ChatView({
   // One at a time, oldest first: an extension chains its questions, and a
   // stack of sheets makes it unclear which one is being answered.
   const dialog = view?.dialogs[0];
+  // A question one of this client's own commands asks, in the same sheet an
+  // extension's question uses. The agent is not waiting on it.
+  const [question, setQuestion] = useState<LocalQuestion | null>(null);
+  useEffect(() => setQuestion(null), [sessionId]);
+
+  function rename(name: string) {
+    if (name.trim()) client.setSessionName(sessionId, name.trim());
+  }
+
+  function setAutoCompaction(answer: string) {
+    const enabled = /^(on|true|yes|enable)/i.test(answer);
+    const disabled = /^(off|false|no|disable)/i.test(answer);
+    if (enabled || disabled) client.setAutoCompaction(sessionId, enabled);
+  }
+
+  /**
+   * pi's terminal commands about this session. Not for a draft: there is no
+   * session to name or compact until the first prompt creates one.
+   */
+  const sessionCommands: NativeCommand[] = draft
+    ? []
+    : [
+        {
+          name: "name",
+          description: "Name this session",
+          run: (args) =>
+            args
+              ? rename(args)
+              : setQuestion({
+                  request: {
+                    type: "extension_ui_request",
+                    id: "pios-name",
+                    method: "input",
+                    title: "Name this session",
+                    prefill: session?.name ?? "",
+                  },
+                  answer: (answer) => rename(answer.value ?? ""),
+                }),
+        },
+        {
+          name: "compact",
+          description: "Summarise the history to free up context",
+          run: (args) => client.compact(sessionId, args),
+        },
+        {
+          name: "autocompact",
+          description: "Compact on its own near the context limit",
+          run: (args) =>
+            args
+              ? setAutoCompaction(args)
+              : setQuestion({
+                  request: {
+                    type: "extension_ui_request",
+                    id: "pios-autocompact",
+                    method: "select",
+                    title:
+                      session?.autoCompaction === undefined
+                        ? "Auto-compaction"
+                        : `Auto-compaction is ${session.autoCompaction ? "on" : "off"}`,
+                    options: ["On", "Off"],
+                  },
+                  answer: (answer) => setAutoCompaction(answer.value ?? ""),
+                }),
+        },
+      ];
   const rowState = sessionState(session ?? undefined, {
     running: view?.running,
     interrupting: view?.interrupting,
@@ -173,9 +244,12 @@ export function ChatView({
     blocked: Boolean(dialog),
   });
 
+  // A draft is addressed by its directory: the file routes have no session
+  // to look it up by until the first prompt creates one.
+  const draftCwd = draft?.cwd;
   const files = useMemo(
-    () => ({ baseUrl, deviceToken, sessionId }),
-    [baseUrl, deviceToken, sessionId],
+    () => ({ baseUrl, deviceToken, sessionId, cwd: draftCwd }),
+    [baseUrl, deviceToken, sessionId, draftCwd],
   );
 
   // The open file survives the app being backgrounded, so coming back lands
@@ -269,6 +343,15 @@ export function ChatView({
                   item.entryId ? () => client.rewind(sessionId, item.entryId!) : undefined
                 }
               />
+            );
+          }
+          if (item.kind === "compaction") {
+            return (
+              <Divider key={item.key}>
+                {item.tokensBefore
+                  ? `Context compacted from ${compactCount(item.tokensBefore)} tokens`
+                  : "Context compacted"}
+              </Divider>
             );
           }
           if (item.kind === "streaming") {
@@ -366,7 +449,7 @@ export function ChatView({
         view={view}
         session={session}
         onTrust={onTrust}
-        onStopRetry={() => client.interrupt(sessionId)}
+        onStop={() => client.interrupt(sessionId)}
         onDismissNotice={(id) => client.sessions.dismissNotice(sessionId, id)}
       />
 
@@ -379,6 +462,15 @@ export function ChatView({
           request={dialog}
           onAnswer={(answer) => client.answerDialog(sessionId, dialog.id, answer)}
         />
+      ) : question ? (
+        <DialogSheet
+          key={question.request.id}
+          request={question.request}
+          onAnswer={(answer) => {
+            setQuestion(null);
+            if (!answer.cancelled) question.answer(answer);
+          }}
+        />
       ) : (
         <Composer
           sessionId={sessionId}
@@ -390,7 +482,7 @@ export function ChatView({
           interrupting={view?.interrupting ?? false}
           editorText={rewound?.text ?? view?.presentation.editorText}
           editorTextKey={rewound?.at}
-          nativeCommands={nativeCommands}
+          nativeCommands={[...nativeCommands, ...sessionCommands]}
           onSend={send}
           onBash={(command, excludeFromContext) =>
             client.runBash(sessionId, command, excludeFromContext)
@@ -404,4 +496,9 @@ export function ChatView({
     </section>
     </FileAccessContext.Provider>
   );
+}
+
+interface LocalQuestion {
+  request: ExtensionUiRequest;
+  answer: (answer: DialogAnswer) => void;
 }

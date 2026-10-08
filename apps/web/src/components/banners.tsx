@@ -8,13 +8,16 @@ import type { SessionView, SupervisorState } from "@pios/client-core";
  * a compaction that is rewriting history all change what the agent will do
  * next, so they are surfaced even when they are noisy.
  */
-export function Banners({ state, view, session, onTrust, onStopRetry, onDismissNotice }: {
+export function Banners({ state, view, session, onTrust, onStop, onDismissNotice }: {
   state: SupervisorState;
   view: SessionView | null;
   session: SessionSummary | null;
   onTrust: () => void;
-  /** Gives up on a provider that keeps failing instead of waiting it out. */
-  onStopRetry: () => void;
+  /**
+   * Gives up on whatever is in progress: a provider that keeps failing, or a
+   * compaction. pi's abort cancels both.
+   */
+  onStop: () => void;
   /** Extension messages are the only banners a user can clear by hand. */
   onDismissNotice: (id: string) => void;
 }) {
@@ -50,6 +53,8 @@ export function Banners({ state, view, session, onTrust, onStopRetry, onDismissN
       key: "compaction",
       tone: "info",
       text: `Compacting context (${view.status.compaction.reason})...`,
+      actionLabel: "Stop",
+      action: onStop,
     });
   }
   if (view?.status.retry) {
@@ -58,7 +63,7 @@ export function Banners({ state, view, session, onTrust, onStopRetry, onDismissN
       tone: "warn",
       text: retryText("Retrying", view.status.retry),
       actionLabel: "Stop",
-      action: onStopRetry,
+      action: onStop,
     });
   }
   if (view?.status.summarizationRetry) {
@@ -66,6 +71,8 @@ export function Banners({ state, view, session, onTrust, onStopRetry, onDismissN
       key: "summarization-retry",
       tone: "warn",
       text: retryText("Retrying summary", view.status.summarizationRetry),
+      actionLabel: "Stop",
+      action: onStop,
     });
   }
   for (const [index, failure] of (view?.status.extensionErrors ?? []).entries()) {

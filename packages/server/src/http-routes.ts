@@ -3,19 +3,11 @@ import { mkdir, readdir, stat, writeFile } from "node:fs/promises";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { homedir } from "node:os";
 import { basename, dirname, extname, join, sep } from "node:path";
-import { sessionDirName, type SessionRegistry } from "@pios/pi-host";
+import { sessionDirName, type SessionIndex, type SessionRegistry } from "@pios/pi-host";
 import { WIRE_VERSION } from "@pios/protocol";
 import { AuthStore, bearerToken } from "./auth.ts";
-import {
-  gitAction,
-  gitBranches,
-  gitDiff,
-  gitLog,
-  gitStashes,
-  gitStatus,
-  GitError,
-  parseGitAction,
-} from "./git.ts";
+import { gitBranches, gitDiff, gitLog, gitStashes, gitStatus, GitError } from "./git.ts";
+import { gitAction, parseGitAction } from "./git-actions.ts";
 import { invalidateFileIndex, searchFiles, SKIP_DIRS } from "./file-index.ts";
 import { etagOf, MAX_EDIT_BYTES, readTextFile, writeTextFile } from "./file-edit.ts";
 import { containedPath } from "./paths.ts";
@@ -75,7 +67,34 @@ export interface RouteContext {
   config: ServerConfig;
   auth: AuthStore;
   registry: SessionRegistry;
+  /** Sessions on disk, so a session with no process still has a directory. */
+  index: SessionIndex;
   push: PushStore;
+}
+
+/**
+ * The project directory a request is about.
+ *
+ * A session's own, whether or not pi is running for it: the transcript can
+ * show a cold session's images and its git state without waking anything.
+ * A draft has no session yet, only the directory it was started in, so it
+ * sends that instead, contained to home like the directory picker.
+ */
+async function projectRoot(ctx: RouteContext, url: URL): Promise<string | null> {
+  const sessionId = url.searchParams.get("session");
+  const cwd = url.searchParams.get("cwd");
+  if (sessionId) {
+    const known = ctx.registry.get(sessionId)?.info.cwd || ctx.index.recordFor(sessionId)?.cwd;
+    if (known) return known;
+    // A full scan is only worth it when there is nothing else to go on.
+    if (!cwd) return (await ctx.index.find(sessionId))?.cwd || null;
+  }
+  return cwd ? containedPath(homedir(), cwd) : null;
+}
+
+/** Whether the request names a project at all, as opposed to the home picker. */
+function namesProject(url: URL): boolean {
+  return url.searchParams.has("session") || url.searchParams.has("cwd");
 }
 
 export async function handleRequest(
@@ -134,7 +153,7 @@ export async function handleRequest(
     if (req.method === "GET" && url.pathname === "/dirs") return await listDirs(ctx, url, res);
     if (req.method === "GET" && url.pathname === "/file") {
       if (url.searchParams.get("text") === "1") return await serveFileText(ctx, url, res);
-      return serveFile(ctx, url, res);
+      return await serveFile(ctx, url, res);
     }
     if (req.method === "PUT" && url.pathname === "/file") return await saveFile(ctx, url, req, res);
     if (req.method === "GET" && url.pathname === "/files") return await findFiles(ctx, url, res);
@@ -237,13 +256,12 @@ async function pushSubscribe(
  * the directory someone wants next is nearly always one they worked in.
  */
 async function listDirs(ctx: RouteContext, url: URL, res: ServerResponse): Promise<void> {
-  const sessionId = url.searchParams.get("session");
-  // Session mode roots the browse at that session's cwd and includes files:
-  // it answers "what is in this project", not "where do I start a session".
-  const session = sessionId ? ctx.registry.get(sessionId) : null;
-  if (sessionId && !session) return json(res, 404, { error: "unknown_session" });
-  const root = session ? session.info.cwd : homedir();
-  const withFiles = Boolean(session) && url.searchParams.get("files") === "1";
+  // Project mode roots the browse at the project and includes files: it
+  // answers "what is in this project", not "where do I start a session".
+  const project = namesProject(url);
+  const root = project ? await projectRoot(ctx, url) : homedir();
+  if (!root) return json(res, 404, { error: "unknown_session" });
+  const withFiles = project && url.searchParams.get("files") === "1";
 
   const requested = url.searchParams.get("path") ?? root;
   const path = containedPath(root, requested);
@@ -322,14 +340,7 @@ async function gitRoute(
   req: IncomingMessage,
   res: ServerResponse,
 ): Promise<void> {
-  // A draft has a directory the user picked but no session yet, and git is
-  // about the directory. Anywhere the picker can reach is fair game; anything
-  // else is refused by the same containment rule the file routes use.
-  const sessionId = url.searchParams.get("session");
-  const requestedCwd = url.searchParams.get("cwd");
-  const session = sessionId ? ctx.registry.get(sessionId) : null;
-  if (sessionId && !session) return json(res, 404, { error: "unknown_session" });
-  const cwd = session ? session.info.cwd : requestedCwd && containedPath(homedir(), requestedCwd);
+  const cwd = await projectRoot(ctx, url);
   if (!cwd) return json(res, 404, { error: "not_found" });
 
   try {
@@ -385,30 +396,25 @@ async function gitRoute(
  * argument the agent will read, and the agent works in one directory.
  */
 async function findFiles(ctx: RouteContext, url: URL, res: ServerResponse): Promise<void> {
-  const sessionId = url.searchParams.get("session");
-  const session = sessionId ? ctx.registry.get(sessionId) : null;
-  if (!session) return json(res, 404, { error: "unknown_session" });
+  const root = await projectRoot(ctx, url);
+  if (!root) return json(res, 404, { error: "unknown_session" });
 
   const limit = Number(url.searchParams.get("limit") ?? 30);
   const files = await searchFiles(
-    session.info.cwd,
+    root,
     url.searchParams.get("q") ?? "",
     Number.isFinite(limit) ? Math.min(Math.max(limit, 1), 100) : 30,
   );
-  json(res, 200, { cwd: session.info.cwd, files: files.map((match) => match.path) });
+  json(res, 200, { cwd: root, files: files.map((match) => match.path) });
 }
 
-function serveFile(ctx: RouteContext, url: URL, res: ServerResponse): void {
-  const sessionId = url.searchParams.get("session");
-  const requested = url.searchParams.get("path");
-  if (!sessionId || !requested) return json(res, 400, { error: "bad_request" });
-
-  const session = ctx.registry.get(sessionId);
-  if (!session) return json(res, 404, { error: "unknown_session" });
-
-  const path = containedPath(session.info.cwd, requested);
-  // A path outside the session cwd is reported as missing, not as forbidden:
+async function serveFile(ctx: RouteContext, url: URL, res: ServerResponse): Promise<void> {
+  if (!namesProject(url) || !url.searchParams.get("path")) {
+    return json(res, 400, { error: "bad_request" });
+  }
+  // A path outside the project is reported as missing, not as forbidden:
   // the difference would confirm what exists on the machine.
+  const path = await projectPath(ctx, url);
   if (!path) return json(res, 404, { error: "not_found" });
 
   let stat;
@@ -438,7 +444,7 @@ function serveFile(ctx: RouteContext, url: URL, res: ServerResponse): void {
  * rewrite every line of it.
  */
 async function serveFileText(ctx: RouteContext, url: URL, res: ServerResponse): Promise<void> {
-  const path = sessionPath(ctx, url);
+  const path = await projectPath(ctx, url);
   if (!path) return json(res, 404, { error: "not_found" });
 
   const file = await readTextFile(path);
@@ -453,7 +459,7 @@ async function saveFile(
   req: IncomingMessage,
   res: ServerResponse,
 ): Promise<void> {
-  const path = sessionPath(ctx, url);
+  const path = await projectPath(ctx, url);
   if (!path) return json(res, 404, { error: "not_found" });
 
   const body = await readBody(req, MAX_EDIT_BYTES);
@@ -479,14 +485,12 @@ async function saveFile(
   return json(res, 413, { error: "too_large" });
 }
 
-/** The contained absolute path a `session` + `path` pair names, if any. */
-function sessionPath(ctx: RouteContext, url: URL): string | null {
-  const sessionId = url.searchParams.get("session");
+/** The contained absolute path a project + `path` pair names, if any. */
+async function projectPath(ctx: RouteContext, url: URL): Promise<string | null> {
   const requested = url.searchParams.get("path");
-  if (!sessionId || !requested) return null;
-  const session = ctx.registry.get(sessionId);
-  if (!session) return null;
-  return containedPath(session.info.cwd, requested);
+  if (!requested || !namesProject(url)) return null;
+  const root = await projectRoot(ctx, url);
+  return root ? containedPath(root, requested) : null;
 }
 
 /** Directories first, then files, both alphabetical: a file tree, not a picker. */
@@ -515,14 +519,13 @@ async function upload(
   req: IncomingMessage,
   res: ServerResponse,
 ): Promise<void> {
-  const sessionId = url.searchParams.get("session");
   const name = url.searchParams.get("name") ?? "upload.bin";
-  if (!sessionId) return json(res, 400, { error: "bad_request" });
+  if (!namesProject(url)) return json(res, 400, { error: "bad_request" });
 
-  const session = ctx.registry.get(sessionId);
-  if (!session) return json(res, 404, { error: "unknown_session" });
+  const root = await projectRoot(ctx, url);
+  if (!root) return json(res, 404, { error: "unknown_session" });
 
-  const dir = join(session.info.cwd, ".pios-uploads");
+  const dir = join(root, ".pios-uploads");
   const safeName = name.replace(/[^\w.-]/g, "_").slice(0, 96);
   const target = containedPath(dir, safeName);
   if (!target) return json(res, 400, { error: "bad_request" });

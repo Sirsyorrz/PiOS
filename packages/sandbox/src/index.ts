@@ -4,3 +4,4 @@ export * from "./scenarios/index.ts";
 export * from "./transcript.ts";
 export * from "./repo.ts";
 export * from "./browser.ts";
+export * from "./web.ts";

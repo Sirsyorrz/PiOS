@@ -1,3 +1,4 @@
+import { resolve } from "node:path";
 import type { SessionIndex, SessionInfo, SessionRecord, SessionRegistry } from "@pios/pi-host";
 import type { SessionSummary } from "@pios/protocol";
 
@@ -43,8 +44,14 @@ export async function listSessions(
   });
 
   // Only on the first page: a session with no file yet is brand new, and
-  // pushing it onto page three would put it where nobody is looking.
-  const unseeded = (query.offset ?? 0) === 0 ? [...live.values()].map((info) => liveSummary(info)) : [];
+  // pushing it onto page three would put it where nobody is looking. One that
+  // has a file is already wherever the index ordered it, or filtered out.
+  const unseeded =
+    (query.offset ?? 0) === 0
+      ? [...live.values()]
+          .filter((info) => !index.recordFor(info.id) && matchesQuery(info, query))
+          .map((info) => liveSummary(info))
+      : [];
 
   return {
     sessions: [...unseeded, ...rows],
@@ -52,6 +59,13 @@ export async function listSessions(
     total: page.total + unseeded.length,
     hasMore: page.hasMore,
   };
+}
+
+function matchesQuery(info: SessionInfo, query: ListQuery): boolean {
+  if (query.cwd && resolve(query.cwd) !== resolve(info.cwd || "/")) return false;
+  const needle = query.query?.trim().toLowerCase();
+  if (!needle) return true;
+  return `${info.cwd} ${info.name ?? ""} ${info.preview ?? ""}`.toLowerCase().includes(needle);
 }
 
 /** One session, live or cold, for a reply about a single id. */
@@ -80,11 +94,15 @@ export function liveSummary(info: SessionInfo, record?: SessionRecord): SessionS
     leafId: info.leafId,
     lastSeq: info.lastSeq,
     updatedAt: Math.max(info.updatedAt, record?.modifiedAt ?? 0),
+    // A woken session has done nothing new until it is prompted, so waking
+    // one must not move it up the list.
+    activeAt: Math.max(info.userActiveAt ?? 0, record?.activeAt ?? 0) || undefined,
     preview: info.preview ?? record?.preview,
     messageCount: record?.messageCount,
     model: info.model,
     thinkingLevel: info.thinkingLevel,
     thinkingLevels: info.thinkingLevels,
+    autoCompaction: info.autoCompaction,
   };
 }
 
@@ -101,6 +119,7 @@ function coldSummary(record: SessionRecord, isTrusted: TrustLookup): SessionSumm
     leafId: null,
     lastSeq: 0,
     updatedAt: record.modifiedAt,
+    activeAt: record.activeAt,
     preview: record.preview || undefined,
     messageCount: record.messageCount,
     thinkingLevels: [],

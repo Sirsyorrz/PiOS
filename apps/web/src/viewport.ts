@@ -34,7 +34,33 @@ export function trackViewport(): void {
     box.scrollLeft = 0;
   };
 
+  // iOS settles the viewport a few frames after it says anything, and on a
+  // return from the background it may say nothing at all: the app comes back
+  // sized for a keyboard that is gone, with the composer floating mid-screen.
+  // So a change that could move the keyboard is measured again after it lands.
+  const settle = () => {
+    apply();
+    for (const delay of [50, 150, 400, 800]) setTimeout(apply, delay);
+  };
+
+  // A field focused when the app is backgrounded comes back focused with no
+  // keyboard, so it is released on the way out rather than left to that.
+  const onVisibility = () => {
+    if (document.visibilityState === "hidden") {
+      const active = document.activeElement;
+      if (active instanceof HTMLElement && active.matches("input, textarea, [contenteditable]")) {
+        active.blur();
+      }
+      return;
+    }
+    settle();
+  };
+
   apply();
+  document.addEventListener("visibilitychange", onVisibility);
+  window.addEventListener("pageshow", settle);
+  window.addEventListener("focus", settle);
+  document.addEventListener("focusout", settle);
   // Capture, because a scroll event does not bubble.
   document.addEventListener("scroll", unscroll, true);
   vv?.addEventListener("resize", apply);

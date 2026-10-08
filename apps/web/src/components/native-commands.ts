@@ -9,7 +9,8 @@ export interface NativeCommand {
   /** Without the leading slash, matching pi's own name for it. */
   name: string;
   description: string;
-  run: () => void;
+  /** What followed the name on the line; empty when it was picked from the menu. */
+  run: (args: string) => void;
 }
 
 /**
@@ -21,10 +22,11 @@ export interface NativeCommand {
 export function nativeCommandFor(
   text: string,
   commands: NativeCommand[],
-): NativeCommand | undefined {
-  const match = /^\/(\S+)$/.exec(text.trim());
+): { command: NativeCommand; args: string } | undefined {
+  const match = /^\/(\S+)(?:\s+([\s\S]*))?$/.exec(text.trim());
   if (!match) return undefined;
-  return commands.find((command) => command.name === match[1]);
+  const command = commands.find((candidate) => candidate.name === match[1]);
+  return command ? { command, args: (match[2] ?? "").trim() } : undefined;
 }
 
 /** Opens a native select from a command, since there is nothing to tap. */

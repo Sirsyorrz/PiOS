@@ -10,7 +10,8 @@
     "pios-sandbox": "./src/cli.ts"
   },
   "scripts": {
-    "test": "node --test 'test/*.test.ts'"
+    "test": "node --test 'test/*.test.ts'",
+    "test:browser": "node --test test/browser.smoke.ts"
   },
   "dependencies": {
     "@pios/pi-host": "workspace:*",

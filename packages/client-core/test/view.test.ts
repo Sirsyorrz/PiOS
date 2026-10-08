@@ -296,3 +296,22 @@ test("the latest failure is hidden while pi is still retrying it", () => {
   store.applyEvent("s1", 2, { type: "auto_retry_end", success: false, finalError: "x" } as AgentEvent);
   assert.deepEqual(sessionView(store, [], "s1").items.map((item) => item.key), ["e:e1", "e:e2"]);
 });
+
+test("a compaction is a marker where it happened, and the history above it stays", () => {
+  const store = new SessionStore();
+  store.applyEntries(
+    "s1",
+    [
+      { id: "e1", type: "message", message: userMessage },
+      { id: "e2", type: "compaction", summary: "the story so far", tokensBefore: 48_000 },
+      { id: "e3", type: "message", message: { ...userMessage, content: "next", timestamp: 20 } },
+    ],
+    "e3",
+    true,
+  );
+
+  const kinds = sessionView(store, [], "s1").items.map((item) => item.kind);
+  assert.deepEqual(kinds, ["message", "compaction", "message"]);
+  const marker = sessionView(store, [], "s1").items[1];
+  assert.equal(marker?.kind === "compaction" ? marker.tokensBefore : null, 48_000);
+});

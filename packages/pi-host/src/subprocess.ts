@@ -62,6 +62,8 @@ const DEFAULT_REQUEST_TIMEOUT_MS = 120_000;
 const DEFAULT_KILL_GRACE_MS = 5_000;
 const DEFAULT_BASH_TIMEOUT_MS = 30 * 60_000;
 const DEFAULT_DIALOG_TIMEOUT_MS = 10 * 60_000;
+/** A summary of a long session is a model call over all of it. */
+const COMPACT_TIMEOUT_MS = 30 * 60_000;
 
 /**
  * Session backed by a `pi --mode rpc` child process.
@@ -146,8 +148,13 @@ export class SubprocessSession extends BaseSession implements PiSession {
     // and a session that silently loses project extensions is worse than one
     // that reports being untrusted.
     args.push(this.createOptions.trustProject ? "--approve" : "--no-approve");
-    if (this.createOptions.model) args.push("--model", this.createOptions.model);
-    if (this.createOptions.name) args.push("--name", this.createOptions.name);
+    // Only for a session being born. A file already holds its name and model,
+    // and repeating the ones it was created with on every wake would undo
+    // whatever was switched or renamed since.
+    if (!resumeFrom) {
+      if (this.createOptions.model) args.push("--model", this.createOptions.model);
+      if (this.createOptions.name) args.push("--name", this.createOptions.name);
+    }
     return [...(this.options.argsPrefix ?? []), ...args, ...(this.options.extraArgs ?? [])];
   }
 
@@ -189,10 +196,19 @@ export class SubprocessSession extends BaseSession implements PiSession {
     if (this.spawnError) throw this.spawnError;
     if (state.success) {
       const data = state.data as
-        | { sessionFile?: string; isStreaming?: boolean; model?: RpcModel; thinkingLevel?: string }
+        | {
+            sessionFile?: string;
+            isStreaming?: boolean;
+            model?: RpcModel;
+            thinkingLevel?: string;
+            sessionName?: string;
+            autoCompactionEnabled?: boolean;
+          }
         | undefined;
       this.sessionFile = data?.sessionFile;
       this.recordModel(toModelOption(data?.model));
+      this.recordName(data?.sessionName);
+      this.recordAutoCompaction(data?.autoCompactionEnabled);
       await this.refreshThinking(data?.thinkingLevel);
       if (data?.isStreaming) this.setStatus("running");
     }
@@ -414,6 +430,26 @@ export class SubprocessSession extends BaseSession implements PiSession {
     const response = await this.request({ type: "set_thinking_level", level });
     if (!response.success) throw new Error(response.error ?? "set_thinking_level failed");
     await this.refreshThinking(level);
+  }
+
+  async setName(name: string): Promise<void> {
+    const response = await this.request({ type: "set_session_name", name });
+    if (!response.success) throw new Error(response.error ?? "set_session_name failed");
+    this.recordName(name.trim());
+  }
+
+  async compact(customInstructions?: string): Promise<void> {
+    this.noteActivity();
+    // pi answers only once the summary is written, which takes as long as a
+    // turn. Start and end arrive as events; the answer only carries failure.
+    const done = this.request({ type: "compact", customInstructions }, COMPACT_TIMEOUT_MS);
+    void done.catch(() => {});
+  }
+
+  async setAutoCompaction(enabled: boolean): Promise<void> {
+    const response = await this.request({ type: "set_auto_compaction", enabled });
+    if (!response.success) throw new Error(response.error ?? "set_auto_compaction failed");
+    this.recordAutoCompaction(enabled);
   }
 
   /** Re-reads the level from pi when the caller does not already know it. */

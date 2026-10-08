@@ -2165,3 +2165,17 @@ button.scroll-bottom {
 .file-keys button {
   min-width: var(--control);
 }
+
+.divider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+}
+
+.divider::before,
+.divider::after {
+  content: "";
+  flex: 1;
+  border-top: 1px solid var(--line);
+}

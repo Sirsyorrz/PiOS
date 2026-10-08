@@ -196,10 +196,21 @@ Exit: full v0 scope usable from a phone browser.
 
 ---
 
-## Phase 6 - PWA feature completion
+## Phase 6 - PWA feature completion - DONE
 
 The PWA is the product until it stops being enough. Everything here lands in
 `apps/web` + `client-core`; no native work, no push.
+
+Shipped as listed. Three notes:
+
+- `/name`, `/compact [instructions]` and `/autocompact [on|off]` are native
+  commands, like `/model`: typed or picked, they never reach the model. A
+  native command now takes the rest of the line as arguments.
+- A manual compaction is acked once pi starts it; progress and the outcome are
+  the same `compaction_start`/`compaction_end` events an automatic one sends.
+  The transcript keeps the full history and marks where the summary was cut.
+- `abort_retry` needs no control of its own: pi's `abort` cancels a pending
+  retry and a running compaction too, so the banners' Stop is `interrupt`.
 
 1. Inline image rendering via the file HTTP endpoint.
 2. Phone-to-agent images (base64 `ImageContent` on prompt/steer/follow_up):
@@ -214,7 +225,7 @@ The PWA is the product until it stops being enough. Everything here lands in
    live daemon-side: `addAutocompleteProvider` is a no-op in RPC mode, so an
    installed picker extension (pi-fzfp) cannot serve the client.
 5. Slash commands with `/` autocomplete. Includes `/name` on
-   `set_session_name`, which also feeds the Phase 7.7 session list.
+   `set_session_name`, which also feeds the session list (Phase 7, item 7).
 6. Session controls: model switching, thinking level, compaction UI
    (`compact` + `set_auto_compaction`), interrupt affordance.
 7. One-shot `bash`: run a single command in the session cwd, stream
@@ -235,8 +246,11 @@ order inside this phase is expected to churn.
 
 1. Design system pass over `ui.tsx` and the CSS utilities: spacing, type scale,
    colour tokens, dark mode, one source for rows/cards/scrollers.
-2. Session list layout (spec 9). Today the list is a 280px grid column that
-   disappears below 720px, so a phone has no way back to it while chatting.
+2. Session list layout (spec 9). Mostly shipped: one component, docked at
+   280px on wide screens and an overlay drawer with scrim and edge swipe below
+   720px, with the chat kept mounted. Still open: a toggle for the docked
+   column, the 320px width, the centred 760px transcript, and one shared
+   progress value driving drawer position and backdrop blur.
    Target: one component, two presentations.
    - Wide: docked 320px column, list and transcript scroll independently,
      transcript capped around 760px and centred. No scrim, no blur. Selecting
@@ -257,11 +271,14 @@ order inside this phase is expected to churn.
 6. PWA shell: manifest, icons, install prompt, offline app-shell caching,
    standalone-mode routing.
 7. Session list quality: naming, ordering, search, archive/delete, unread and
-   busy indicators.
+   busy indicators. Naming, search, unread and busy have shipped. Ordering is
+   by the last prompt or shell command (`activeAt`), not mtime. Archive is
+   open; delete stays out (spec: the TUI owns the transcript too).
 8. Accessibility and error surfaces: focus order, contrast, every failure has a
-   visible, actionable state. Covers events that are parsed but never rendered
-   (`summarization_retry_*`, `setWidget`, `set_editor_text`), provider failures
-   such as rate limits, and `abort_retry` so a visible retry can be cancelled.
+   visible, actionable state. The event half has shipped: retries,
+   summarisation retries, widgets, editor text and provider failures all
+   render, and every retry or compaction banner has a Stop. Focus order and
+   contrast are open.
 9. Activity-lease reporting: 25s report, 45s TTL, carrying
    `visible` / `focused` / `appState` and warm scopes.
 
@@ -322,6 +339,24 @@ depending on an implementation detail the user could not see.
    that do not exist yet, no delete affordance, cached list and transcript for
    an instant cold launch.
 
+Follow-ups, also shipped:
+
+- A subscription made while a session is cold attaches when any socket wakes
+  it, not only the one that did, and gets the summary the startup announced
+  before anyone could listen. Subscribing always returns the session's
+  summary, so a session opened from outside the list page has one.
+- Models and commands asked for before the socket is up are asked again once
+  it is, for the sessions still on screen.
+- A woken session is launched from its file without `--name` or `--model`,
+  which would otherwise undo a rename or a model switch on every wake.
+- File, search, tree and git routes resolve a cold session's directory from
+  the index, and a draft's from the directory it names.
+- The list is ordered by `activeAt`; a rename deep in a large file is read
+  from the tail.
+- A turn finished in the TUI is pushed from the session file once it is quiet.
+- The stub pi writes pi's JSONL, so the sandbox lists, reads and resumes its
+  sessions through the same index and reader as real ones.
+
 ---
 
 ## Phase 7.8 - Relay instead of Tailscale - DONE
@@ -361,16 +396,22 @@ Cloudflare account.
 
 ## Phase 8 - Cleanup and hardening
 
+Done so far: `discovery.ts` removed, git split into reads (`git.ts`) and
+writes (`git-actions.ts`), `pnpm test:browser` as the browser smoke run, and
+`docs/setup.md` for install, pairing, configuration, troubleshooting and the
+sandbox workflow.
+
 1. Prune dead code and duplicated view logic surfaced by Phases 6-7.
 2. Absorb `cc-usage`: read the plan-usage source directly in
    `packages/server/src/usage.ts` rather than shelling out to a CLI the user
    has to install separately.
-3. Test debt: component tests for the chat view, one end-to-end browser smoke
-   run, fixture-replay coverage for any new events.
+3. Test debt: the browser smoke run exists (`packages/sandbox/test/
+   browser.smoke.ts`) and is where chat view behaviour gets pinned; no jsdom
+   layer. Fixture-replay coverage for any new events stays the rule.
 4. Daemon hardening review: auth, path containment, upload limits, token
    rotation.
-5. Docs: install path, pairing, systemd unit, troubleshooting. Include how an
-   agent runs and tests the web app locally.
+5. Docs: install path, pairing, systemd unit, troubleshooting, and how an
+   agent runs and tests the web app locally. Done: `docs/setup.md`.
 
 ---
 
@@ -394,7 +435,8 @@ Two things worth carrying forward:
 2. Device registration table in the daemon, per-device token. `revoke` drops
    the device's push subscriptions with its token.
 3. Notification content: session name, last tool, elapsed.
-4. Remaining: APNs for native (Phase 10), and richer content than one line.
+4. Turns finished in the TUI are pushed too, read from the session file.
+5. Remaining: APNs for native (Phase 10), and richer content than one line.
 
 ---
 
@@ -459,7 +501,7 @@ notification model.
 | Q | Resolve in |
 |---|---|
 | Two clients on one session simultaneously | **Yes.** Subscriptions fan out per session and every subscriber sees the same seq for the same event, so a late client replays and then tails. |
-| pi process crash recovery | Phase 2 step 4 |
+| pi process crash recovery | **Restart in place.** Same id, resumed from the session file, `session_recovered` with the new leaf; a crash loop stops after the budget. |
 | Offline transcript caching on device | **Cached.** `SessionStore` persists entries per session, schema-versioned. Cached data renders while offline but never decides freshness: that is always `leafId` from the daemon. |
 | Two agents writing one file | Document in Phase 3, no code |
-| Terminal renderer cost | Phase 9 |
+| Terminal renderer cost | Phase 11 |

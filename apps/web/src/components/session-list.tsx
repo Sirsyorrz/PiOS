@@ -41,7 +41,9 @@ export function SessionList({
   onCreate: () => void;
   onLoadMore: () => void;
 }) {
-  const ordered = [...sessions].sort((a, b) => b.updatedAt - a.updatedAt);
+  // The daemon's order: by the last thing the user did, so an agent left
+  // running does not bury the conversation that was just open.
+  const ordered = [...sessions].sort((a, b) => activeAt(b) - activeAt(a));
 
   return (
     <nav className="sessions">
@@ -78,7 +80,7 @@ export function SessionList({
                   {session.name ?? session.preview ?? shortenPath(session.cwd)}
                 </span>
                 <span className="muted line">
-                  {shortenPath(session.cwd)} · {relativeTime(session.updatedAt)}
+                  {shortenPath(session.cwd)} · {relativeTime(activeAt(session))}
                 </span>
                 <SessionBadge
                   session={session}
@@ -122,4 +124,8 @@ function MoreRow({ onVisible }: { onVisible: () => void }) {
       Loading more…
     </li>
   );
+}
+
+function activeAt(session: SessionSummary): number {
+  return session.activeAt ?? session.updatedAt;
 }

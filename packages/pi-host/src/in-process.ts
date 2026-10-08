@@ -65,6 +65,11 @@ export interface AgentSessionLike {
   readonly thinkingLevel?: string;
   setThinkingLevel?(level: string): void;
   getAvailableThinkingLevels?(): string[];
+  readonly sessionName?: string;
+  setSessionName?(name: string): void;
+  compact?(customInstructions?: string): Promise<unknown>;
+  readonly autoCompactionEnabled?: boolean;
+  setAutoCompactionEnabled?(enabled: boolean): void;
   readonly sessionId: string;
   readonly sessionFile: string | undefined;
   readonly sessionManager: {
@@ -155,6 +160,8 @@ export class InProcessSession extends BaseSession implements PiSession {
     this.unsubscribe = agent.subscribe((raw) => this.onAgentEvent(raw));
     this.recordModel(this.describe(agent.model));
     this.readThinking();
+    this.recordName(agent.sessionName);
+    this.recordAutoCompaction(agent.autoCompactionEnabled);
     this.setStatus(agent.isStreaming ? "running" : "idle");
   }
 
@@ -291,6 +298,30 @@ export class InProcessSession extends BaseSession implements PiSession {
     if (!agent.setThinkingLevel) throw new Error("this host cannot set a thinking level");
     agent.setThinkingLevel(level);
     this.readThinking();
+  }
+
+  async setName(name: string): Promise<void> {
+    const agent = this.requireAgent();
+    if (!agent.setSessionName) throw new Error("this host cannot name a session");
+    const trimmed = name.trim();
+    if (!trimmed) throw new Error("Session name cannot be empty");
+    agent.setSessionName(trimmed);
+    this.recordName(trimmed);
+  }
+
+  async compact(customInstructions?: string): Promise<void> {
+    const agent = this.requireAgent();
+    if (!agent.compact) throw new Error("this host cannot compact");
+    this.noteActivity();
+    // Runs as long as a turn; progress and failure arrive as compaction events.
+    void agent.compact(customInstructions).catch(() => {});
+  }
+
+  async setAutoCompaction(enabled: boolean): Promise<void> {
+    const agent = this.requireAgent();
+    if (!agent.setAutoCompactionEnabled) throw new Error("this host cannot change auto-compaction");
+    agent.setAutoCompactionEnabled(enabled);
+    this.recordAutoCompaction(enabled);
   }
 
   private readThinking(): void {

@@ -16,12 +16,14 @@ const DEBOUNCE_MS = 500;
 
 export class SessionStoreWatcher {
   private readonly root: string;
-  private readonly onChange: () => void;
+  private readonly onChange: (files: string[]) => void;
   private readonly watchers = new Map<string, FSWatcher>();
+  /** Files written since the last nudge. */
+  private readonly changed = new Set<string>();
   private timer: NodeJS.Timeout | null = null;
   private stopped = false;
 
-  constructor(root: string, onChange: () => void) {
+  constructor(root: string, onChange: (files: string[]) => void) {
     this.root = root;
     this.onChange = onChange;
   }
@@ -42,7 +44,7 @@ export class SessionStoreWatcher {
   private watchDir(dir: string): void {
     if (this.stopped || this.watchers.has(dir)) return;
     try {
-      const watcher = watch(dir, () => this.fire(dir));
+      const watcher = watch(dir, (_event, name) => this.fire(dir, name ? join(dir, String(name)) : null));
       watcher.on("error", () => {
         watcher.close();
         this.watchers.delete(dir);
@@ -68,15 +70,18 @@ export class SessionStoreWatcher {
   }
 
   /** Coalesces a burst of writes into one nudge. */
-  private fire(dir: string): void {
+  private fire(dir: string, file: string | null): void {
     if (this.stopped) return;
+    if (file?.endsWith(".jsonl")) this.changed.add(file);
     if (this.timer) clearTimeout(this.timer);
     this.timer = setTimeout(() => {
       this.timer = null;
       // A change at the root can be a project directory that did not exist
       // when the watchers were set up.
       if (dir === this.root) void this.watchProjects();
-      this.onChange();
+      const files = [...this.changed];
+      this.changed.clear();
+      this.onChange(files);
     }, DEBOUNCE_MS);
     this.timer.unref?.();
   }

@@ -1,0 +1,89 @@
+import assert from "node:assert/strict";
+import { after, before, describe, it } from "node:test";
+import type { ChildProcess } from "node:child_process";
+import { Browser } from "../src/browser.ts";
+import { startSandbox, type Sandbox } from "../src/sandbox.ts";
+import { appUrl, startWeb, waitForWeb } from "../src/web.ts";
+
+/**
+ * The PWA end to end: a real browser, the dev server, the real daemon, the
+ * stub pi. Slower than the rest and needs Chrome, so it runs on its own with
+ * `pnpm test:browser` rather than in `pnpm test`.
+ */
+
+const WEB_PORT = Number(process.env.PIOS_SMOKE_WEB_PORT ?? 5189);
+const API_PORT = Number(process.env.PIOS_SMOKE_API_PORT ?? 4329);
+
+describe("the web app against the sandbox", () => {
+  let sandbox: Sandbox;
+  let web: ChildProcess;
+  let browser: Browser;
+
+  before(async () => {
+    sandbox = await startSandbox({ scenario: "files", port: API_PORT });
+    web = startWeb(sandbox.baseUrl, WEB_PORT, "ignore");
+    await waitForWeb(WEB_PORT);
+    browser = await Browser.launch();
+    await browser.goto(appUrl(sandbox, WEB_PORT));
+    await browser.waitFor("#root *");
+    await until(() => browser.tapText("editor"), "the scenario's session to be listed");
+    await browser.waitFor("textarea");
+  });
+
+  after(async () => {
+    await browser?.close();
+    web?.kill();
+    await sandbox?.close();
+  });
+
+  async function send(text: string): Promise<void> {
+    assert.ok(await browser.type("textarea", text));
+    assert.ok(await browser.tap('button[aria-label="send"]'));
+  }
+
+  async function until(check: () => Promise<boolean>, what: string, timeoutMs = 10_000): Promise<void> {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      if (await check()) return;
+      await browser.sleep(100);
+    }
+    assert.fail(`timed out waiting for ${what}`);
+  }
+
+  const shows = (text: string) => async () => (await browser.text(".chat")).includes(text);
+
+  it("sends a prompt and shows the answer", async () => {
+    await send("hello from the smoke test");
+    await until(shows("echo: hello from the smoke test"), "the echo");
+  });
+
+  it("names the session with /name", async () => {
+    await send("/name smoke session");
+    await until(
+      async () => (await browser.text(".chat-header")).includes("smoke session"),
+      "the header to carry the new name",
+    );
+  });
+
+  it("compacts with /compact and marks where", async () => {
+    await send("/compact");
+    await until(shows("Context compacted"), "the compaction divider");
+  });
+
+  it("keeps an open editor through a streaming turn", async () => {
+    assert.ok(await browser.tap('button[aria-label="browse files"]'));
+    await until(() => browser.tapText("README.md"), "the file tree");
+    await until(() => browser.tapText("Edit"), "the editor");
+    await browser.eval(`(document.querySelector(".cm-editor").dataset.smoke = "1", true)`);
+
+    const live = sandbox.server.registry.get("sbx-files")!;
+    await live.prompt("streaming while the editor is open");
+    await browser.sleep(1500);
+
+    assert.equal(
+      await browser.eval(`document.querySelector(".cm-editor")?.dataset.smoke ?? null`),
+      "1",
+      "the editor was not rebuilt underneath the reader",
+    );
+  });
+});

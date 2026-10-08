@@ -290,9 +290,7 @@ input box.
 
 - Raw terminal tab (see section 9, deliberately deferred)
 - macOS / Windows daemon support
-- Session forking and branch browsing (`fork`, `clone`, `get_fork_messages`,
-  `get_tree`)
-- Model switching, thinking-level control, compaction UI
+- Branch browsing (`clone`, `get_fork_messages`, `get_tree`)
 
 ### Non-goals
 
@@ -332,10 +330,24 @@ A `pi --mode rpc` process is a cache in front of that file, nothing more.
   `get_entries` is a file read: `since` for a delta, `limit`/`before` for tail
   paging. A live process only adds partials on top. Entry id is the dedupe key
   and the persisted copy wins over the streamed one.
-- **Listed from disk.** `list_sessions` is a stat-only scan for ordering and
-  paging plus a byte-bounded skim of the page asked for, cached on mtime+size
-  and seeded from a file so a restarted daemon answers instantly. Search
-  matches path, name and preview, never whole transcripts.
+- **Listed from disk.** `list_sessions` reads the head of each file for id,
+  cwd and preview, and the tail for the last prompt and the latest name,
+  cached on mtime+size and seeded from a file so a restarted daemon answers
+  instantly. Search matches path, name and preview, never whole transcripts.
+- **Ordered by the user, not the agent.** The list sorts on the last prompt or
+  shell command (`activeAt`), not on mtime: an unattended run keeps writing
+  and would otherwise bury the conversation that was just open. `activeAt` is
+  never later than mtime, so a walk in mtime order stops as soon as nothing
+  further down can make the page.
+- **Files without a process.** File, search, tree and git routes resolve a
+  session's directory from the index as well as the registry, so a cold
+  session shows its images and git state without waking pi. A draft, which
+  has no session yet, names its directory instead, contained to home.
+- **Turns that ran elsewhere.** A turn the TUI finishes never reaches this
+  daemon's event stream. The store watcher passes the written files on, and a
+  file that goes quiet with a finished assistant message as its last entry is
+  pushed like a local `agent_settled`. A failure waits longer, because pi
+  retries it after a delay.
 - **Trust is a directory's, not a session's.** It is a launch flag, and launches
   now happen whenever a session is woken, so asking per session would ask the
   same question forever.

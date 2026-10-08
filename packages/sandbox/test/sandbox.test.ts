@@ -100,10 +100,17 @@ describe("cold sessions", () => {
     assert.equal(session.info.cwd.length > 0, true);
   });
 
-  it("wakes on the next command, with its transcript intact", async () => {
+  it("reads its transcript from disk without waking", async () => {
     const session = sandbox.server.registry.get("sbx-cold")!;
     const page = await session.getEntries();
     assert.equal(page.entries.length, 2);
+    assert.equal(session.info.status, "cold");
+  });
+
+  it("wakes on the next command, with its transcript intact", async () => {
+    const session = sandbox.server.registry.get("sbx-cold")!;
+    await session.listModels({ all: false });
     assert.equal(session.info.status !== "cold", true, "the command brought it back");
+    assert.equal((await session.getEntries()).entries.length, 2);
   });
 });

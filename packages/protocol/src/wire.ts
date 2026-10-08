@@ -114,6 +114,27 @@ export const ClientFrameSchema = z.discriminatedUnion("type", [
     sessionId: z.string(),
     level: z.string(),
   }),
+  /** pi's `/name`. Persisted in the session file, so the TUI shows it too. */
+  Envelope({
+    type: z.literal("set_session_name"),
+    sessionId: z.string(),
+    name: z.string().trim().min(1),
+  }),
+  /**
+   * pi's `/compact`. Acked once pi has started; the run itself is reported
+   * by `compaction_start` and `compaction_end` like an automatic one.
+   */
+  Envelope({
+    type: z.literal("compact"),
+    sessionId: z.string(),
+    customInstructions: z.string().optional(),
+  }),
+  /** pi's own setting: it applies to every session, here and in the TUI. */
+  Envelope({
+    type: z.literal("set_auto_compaction"),
+    sessionId: z.string(),
+    enabled: z.boolean(),
+  }),
   /**
    * Transcript, read from the session file.
    *
@@ -247,6 +268,12 @@ export const SessionSummarySchema = z.object({
    */
   lastSeq: z.number().default(0),
   updatedAt: z.number(),
+  /**
+   * Last prompt or shell command, which is what the list is ordered by: an
+   * agent working unattended keeps `updatedAt` moving, this stays put.
+   * Absent from an older daemon; `updatedAt` stands in.
+   */
+  activeAt: z.number().optional(),
   /** Entries in the transcript, absent when counting one would cost a read. */
   messageCount: z.number().optional(),
   /** First user message, for a row that reads without opening the session. */
@@ -260,6 +287,8 @@ export const SessionSummarySchema = z.object({
    * summary that carries the model rather than being assumed by the client.
    */
   thinkingLevels: z.array(z.string()).default([]),
+  /** Whether pi compacts on its own near the context limit; absent until known. */
+  autoCompaction: z.boolean().optional(),
 });
 export type SessionSummary = z.infer<typeof SessionSummarySchema>;
 

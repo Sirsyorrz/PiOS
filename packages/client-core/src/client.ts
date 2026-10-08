@@ -118,6 +118,10 @@ export class PiosClient {
   private readonly olderRequests = new Set<string>();
   /** Model lists by session, from the last `listModels`. */
   private readonly models = new Map<string, ModelListing>();
+  /** The last model question per session, re-asked on reconnect. */
+  private readonly modelsWanted = new Map<string, { all: boolean; create?: SessionCreate }>();
+  /** Sessions whose commands were asked for, re-asked on reconnect. */
+  private readonly commandsWanted = new Set<string>();
   private readonly modelHandlers = new Listeners<[sessionId: string, listing: ModelListing]>();
   /** Slash commands by session, from the last `listCommands`. Never persisted. */
   private readonly commands = new Map<string, CommandOption[]>();
@@ -235,12 +239,19 @@ export class PiosClient {
     sessionId: string,
     options: { all?: boolean; create?: SessionCreate } = {},
   ): boolean {
+    // Asked on mount, which after a cold launch is before the socket is up.
+    const wanted = { all: options.all ?? false, create: options.create };
+    this.modelsWanted.set(sessionId, wanted);
+    return this.sendListModels(sessionId, wanted);
+  }
+
+  private sendListModels(sessionId: string, wanted: { all: boolean; create?: SessionCreate }): boolean {
     return this.send({
       type: "list_models",
       sessionId,
-      all: options.all ?? false,
-      create: options.create
-        ? { ...options.create, trustProject: options.create.trustProject ?? false }
+      all: wanted.all,
+      create: wanted.create
+        ? { ...wanted.create, trustProject: wanted.create.trustProject ?? false }
         : undefined,
     });
   }
@@ -257,6 +268,7 @@ export class PiosClient {
    * no answer and the list is re-asked rather than replayed.
    */
   listCommands(sessionId: string): boolean {
+    this.commandsWanted.add(sessionId);
     return this.send({ type: "list_commands", sessionId });
   }
 
@@ -314,6 +326,31 @@ export class PiosClient {
   }
 
   /**
+   * Names a session, as pi's `/name` does.
+   *
+   * Not queued: renaming is a reply to what is on screen now. The daemon
+   * answers with `session_state` and nudges every device's list.
+   */
+  setSessionName(sessionId: string, name: string): boolean {
+    return this.send({ type: "set_session_name", sessionId, name });
+  }
+
+  /**
+   * Summarises the history so far, as pi's `/compact` does.
+   *
+   * Not queued: a compaction replayed after a reconnect would summarise a
+   * conversation that has moved on. Its progress arrives as events.
+   */
+  compact(sessionId: string, customInstructions?: string): boolean {
+    return this.send({ type: "compact", sessionId, customInstructions: customInstructions || undefined });
+  }
+
+  /** pi's own setting: it applies to every session, here and in the TUI. */
+  setAutoCompaction(sessionId: string, enabled: boolean): boolean {
+    return this.send({ type: "set_auto_compaction", sessionId, enabled });
+  }
+
+  /**
    * Relaunches a session with project trust enabled.
    *
    * The session id does not change, so the open transcript stays open; the
@@ -347,7 +384,6 @@ export class PiosClient {
     });
   }
 
-  /** Notifies on a rejected one-off command. Returns an unsubscribe. */
   /**
    * Continues from just before a user turn, in a new session.
    *
@@ -376,6 +412,7 @@ export class PiosClient {
     return text;
   }
 
+  /** Notifies on a rejected one-off command. Returns an unsubscribe. */
   onCommandError(handler: (error: CommandError) => void): () => void {
     return this.commandErrorHandlers.add(handler);
   }
@@ -437,6 +474,9 @@ export class PiosClient {
 
   unwatch(sessionId: string): void {
     this.subscribed.delete(sessionId);
+    // Re-asking these wakes the agent, which only a session on screen earns.
+    this.modelsWanted.delete(sessionId);
+    this.commandsWanted.delete(sessionId);
     this.send({ type: "unsubscribe", sessionId });
   }
 
@@ -458,7 +498,10 @@ export class PiosClient {
     for (const sessionId of this.subscribed) {
       this.resync(sessionId);
       if (this.statsWanted.has(sessionId)) this.send({ type: "get_stats", sessionId });
+      if (this.commandsWanted.has(sessionId)) this.send({ type: "list_commands", sessionId });
     }
+    // Not scoped to subscriptions: a draft asks for models before it exists.
+    for (const [sessionId, wanted] of this.modelsWanted) this.sendListModels(sessionId, wanted);
     this.outbox.drain();
   }
 
@@ -555,7 +598,11 @@ export class PiosClient {
         // A settled turn is on disk, so its entry ids exist. Without this the
         // transcript stays event-only until the next reconnect, and anything
         // that addresses a turn by id has nothing to address.
-        if (frame.event.type === "agent_settled") this.fetchNewEntries(frame.sessionId);
+        // A manual compaction ends without a turn, and its entry is the
+        // marker the transcript shows.
+        if (frame.event.type === "agent_settled" || frame.event.type === "compaction_end") {
+          this.fetchNewEntries(frame.sessionId);
+        }
         break;
       case "session_state":
         this.trackStatus([frame.summary]);

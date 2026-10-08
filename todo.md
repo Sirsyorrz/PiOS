@@ -1,27 +1,16 @@
-- surface errors (e.g. rate limits), plus summarization_retry_* / setWidget /
-  set_editor_text, which are parsed but never rendered
-- /name slash command on set_session_name
-- compaction UI: compact + set_auto_compaction
+- fullscreen git rework: git as a full-screen view like the file editor
+  instead of the floating control over the transcript (status, diff, log,
+  branches and stashes in one place)
 - absorb cc-usage into packages/server/src/usage.ts instead of shelling out
 - terminal (needs a real PTY; one-shot bash does not grow into it)
-- add missing native commands
+- missing native commands: pi names it `/thinking`, not `/think`; `/copy`
+  (last answer), `/session` (stats), `/reload`, `/export`
 - @ fuzzy picker must be daemon-side: RPC mode no-ops addAutocompleteProvider
   and setEditorComponent, so pi-fzfp cannot serve the client. Upstream idea:
   an RPC command that runs registered providers and returns AutocompleteItems
-- relay: plan phase 7.8. From pi-remote still worth copying: check the route
-  before connect so a revoked client forgets instead of retrying.
-- session list: docked column / overlay drawer, one component (plan phase 7.2)
-- fix floating input with no keyboard on app reopen bug
-- session model follow-ups
-  - push for a turn finished in the TUI: the store watcher sees the file
-    change, but notifications still come only from a live process
-  - the list is ordered by mtime; a long unattended run outranks the
-    conversation you were just in
+- relay: the phase 7.8 exit check on a real phone over cellular
 
-- when editing a file while agent is running, every time the agent updates
-  transcript, the text editor refreshes
-- draft sessions: /dirs, /files and /file are session-scoped, so browsing and
-  the @ picker do nothing until the first prompt creates the session. Git now
-  addresses the directory instead; the file routes could do the same
-
-- resuming sessions without a running pi session has some bugs, missing models, sending a message kicks off the pi session but invisibly to us.
+Verify on the phone (fixed, but only reproducible on iOS):
+- floating composer with no keyboard after reopening the app
+- resuming a cold session: model shown, and a first prompt that is visible
+  while it streams

@@ -6,6 +6,14 @@ export interface FileAccess {
   deviceToken: string;
   /** Session whose cwd a relative path is resolved against. */
   sessionId: string;
+  /** Set for a draft, which has a directory before it has a session. */
+  cwd?: string;
+}
+
+/** Query naming the project a file request is about. */
+export function projectQuery(access: FileAccess): string {
+  const session = `session=${encodeURIComponent(access.sessionId)}`;
+  return access.cwd ? `${session}&cwd=${encodeURIComponent(access.cwd)}` : session;
 }
 
 export const FileAccessContext = createContext<FileAccess | null>(null);
@@ -36,7 +44,7 @@ export function useFileObjectUrl(path: string | null): {
   const access = useFileAccess();
   const key =
     access?.baseUrl && path
-      ? `${access.baseUrl}/file?session=${encodeURIComponent(access.sessionId)}&path=${encodeURIComponent(path)}`
+      ? `${access.baseUrl}/file?${projectQuery(access)}&path=${encodeURIComponent(path)}`
       : null;
   const [url, setUrl] = useState<string | null>(() => (key ? (cache.get(key) ?? null) : null));
   const [error, setError] = useState<string | null>(null);

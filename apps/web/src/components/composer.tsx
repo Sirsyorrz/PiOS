@@ -153,7 +153,7 @@ export function Composer({
       return;
     }
     edit("");
-    entry.run();
+    entry.run("");
   }
 
   function send() {
@@ -164,7 +164,7 @@ export function Composer({
     const native = nativeCommandFor(trimmed, localCommands);
     if (native) {
       edit("");
-      native.run();
+      native.command.run(native.args);
       return;
     }
     // pi's own shell prefixes: `!` runs a command and keeps the output in the

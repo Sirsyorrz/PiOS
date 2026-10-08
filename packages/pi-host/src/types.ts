@@ -124,6 +124,10 @@ export interface SessionInfo {
   thinkingLevel?: string;
   /** Levels the active model accepts; `["off"]` for a model without reasoning. */
   thinkingLevels: string[];
+  /** Whether pi compacts on its own near the context limit; absent until known. */
+  autoCompaction?: boolean;
+  /** Last prompt or shell command this process saw, absent until one. */
+  userActiveAt?: number;
 }
 
 export interface PiSession {
@@ -174,6 +178,15 @@ export interface PiSession {
   getStats(): Promise<SessionStats>;
   setModel(provider: string, modelId: string): Promise<void>;
   setThinkingLevel(level: string): Promise<void>;
+  /** pi's `/name`: persisted in the session file, shown wherever it is listed. */
+  setName(name: string): Promise<void>;
+  /**
+   * pi's `/compact`. Resolves once pi has started it: a compaction runs for
+   * as long as a turn, and its progress and outcome arrive as events.
+   */
+  compact(customInstructions?: string): Promise<void>;
+  /** pi's own setting, so it outlives this session and reaches the TUI too. */
+  setAutoCompaction(enabled: boolean): Promise<void>;
 
   /**
    * Reloads the session under a different project trust, in place.

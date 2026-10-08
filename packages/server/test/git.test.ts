@@ -5,16 +5,15 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "nod
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import {
-  gitAction,
   gitBranches,
   gitDiff,
   gitLog,
   gitStashes,
   gitStatus,
   invalidateGitCache,
-  parseGitAction,
   parsePorcelainV2,
 } from "../src/git.ts";
+import { gitAction, parseGitAction } from "../src/git-actions.ts";
 
 function repo(): string {
   const dir = mkdtempSync(join(tmpdir(), "pios-git-"));

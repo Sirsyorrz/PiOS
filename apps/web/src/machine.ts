@@ -125,3 +125,28 @@ export async function probeEndpoint(url: string, timeoutMs = 3000): Promise<bool
     clearTimeout(timer);
   }
 }
+
+/**
+ * Whether the machine has revoked this device.
+ *
+ * Asked over plain HTTP once the socket is refused: only an authenticated
+ * route answering 401 proves it, so a relay hiccup or a machine that is off
+ * never costs the user a pairing.
+ */
+export async function deviceRevoked(machine: Machine, timeoutMs = 5000): Promise<boolean> {
+  const base = httpBase(machine);
+  if (!base) return false;
+  const abort = new AbortController();
+  const timer = setTimeout(() => abort.abort(), timeoutMs);
+  try {
+    const response = await fetch(new URL("/push/key", base), {
+      headers: { authorization: `Bearer ${machine.deviceToken}` },
+      signal: abort.signal,
+    });
+    return response.status === 401;
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(timer);
+  }
+}

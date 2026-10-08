@@ -18,7 +18,7 @@ export interface MenuEntry {
   /** Where it comes from: an app screen, or one of pi's own sources. */
   badge: string;
   /** Set for a command this client runs itself instead of prompting with. */
-  run?: () => void;
+  run?: (args: string) => void;
 }
 
 /**

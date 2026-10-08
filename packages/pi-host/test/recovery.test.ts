@@ -143,7 +143,7 @@ test("trusting a session relaunches it in place, keeping id and transcript", asy
   assert.match(launches[0]!, /--session-id trust-1 .*--no-approve/);
   // The relaunch resumes the exact file, so it cannot land on an empty
   // session when the project lookup by id misses.
-  assert.match(launches[1]!, /--session \S+trust-1\.json .*--approve/);
+  assert.match(launches[1]!, /--session \S+trust-1\.jsonl .*--approve/);
 
   assert.equal(registry.list().length, 1, "trusting must not fork a second session");
   assert.equal(session.info.trusted, true);

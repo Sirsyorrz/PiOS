@@ -97,3 +97,12 @@ export function SearchField({ value, placeholder, onChange }: {
     </div>
   );
 }
+
+/** A labelled rule across a scroller: a boundary in the content, not a control. */
+export function Divider({ children }: { children: ReactNode }) {
+  return (
+    <div className="divider muted" role="separator">
+      <span className="line">{children}</span>
+    </div>
+  );
+}

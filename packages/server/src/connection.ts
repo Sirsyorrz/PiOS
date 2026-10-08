@@ -135,6 +135,12 @@ export class Connection {
         return this.setModel(frame);
       case "set_thinking_level":
         return this.setThinkingLevel(frame);
+      case "set_session_name":
+        return this.setSessionName(frame);
+      case "compact":
+        return this.compact(frame);
+      case "set_auto_compaction":
+        return this.setAutoCompaction(frame);
       case "subscribe":
         return this.subscribe(frame);
       case "unsubscribe":
@@ -247,6 +253,44 @@ export class Connection {
     // Idempotent for the same reason as set_model: re-applying the level it
     // already has changes nothing.
     await session.setThinkingLevel(frame.level);
+    this.sendSessionState(frame.commandId, session);
+  }
+
+  private async setSessionName(frame: FrameOf<"set_session_name">): Promise<void> {
+    const session = await this.requireLive(frame.sessionId, frame.commandId);
+    if (!session) return;
+    // Idempotent: the same name twice is one rename. Every device's list
+    // shows it, so every device is nudged rather than only this one answered.
+    try {
+      await session.setName(frame.name);
+    } catch (error) {
+      return this.fail(frame.commandId, "bad_request", errorMessage(error));
+    }
+    this.deps.announceSessions?.();
+    this.sendSessionState(frame.commandId, session);
+  }
+
+  private async compact(frame: FrameOf<"compact">): Promise<void> {
+    const session = await this.requireLive(frame.sessionId, frame.commandId);
+    if (!session) return;
+    // A second summary of the same history costs a model call for nothing.
+    if (!this.deps.ledger.claim(frame.commandId)) return this.ack(frame.commandId, true);
+    try {
+      await session.compact(frame.customInstructions);
+    } catch (error) {
+      return this.fail(frame.commandId, "bad_request", errorMessage(error));
+    }
+    this.ack(frame.commandId);
+  }
+
+  private async setAutoCompaction(frame: FrameOf<"set_auto_compaction">): Promise<void> {
+    const session = await this.requireLive(frame.sessionId, frame.commandId);
+    if (!session) return;
+    try {
+      await session.setAutoCompaction(frame.enabled);
+    } catch (error) {
+      return this.fail(frame.commandId, "bad_request", errorMessage(error));
+    }
     this.sendSessionState(frame.commandId, session);
   }
 
@@ -377,7 +421,20 @@ export class Connection {
    * flight to miss, and seq only ever meant anything within one process, so
    * the client tails from zero once one exists.
    */
-  private subscribe(frame: FrameOf<"subscribe">): void {
+  private async subscribe(frame: FrameOf<"subscribe">): Promise<void> {
+    // A client can open a session it never saw in a list page: a push, a
+    // search, an old link. It is told what the session is either way.
+    if (!this.deps.registry.get(frame.sessionId)) await this.deps.index.find(frame.sessionId);
+    const summary = summaryFor(
+      this.deps.index,
+      this.deps.registry,
+      (cwd) => this.deps.trust.isTrusted(cwd),
+      frame.sessionId,
+    );
+    if (summary) {
+      this.send({ v: WIRE_VERSION, type: "session_state", sessionId: frame.sessionId, summary });
+    }
+
     const session = this.deps.registry.get(frame.sessionId);
     if (!session) {
       this.pendingSubscriptions.add(frame.sessionId);
@@ -435,13 +492,25 @@ export class Connection {
     this.subscriptions.delete(sessionId);
   }
 
-  /** Attaches any subscription that was made while the session was cold. */
-  private attachPending(session: PiSession): void {
+  /**
+   * Attaches a subscription made while the session had no process.
+   *
+   * Called for every new process, whichever socket started it: a session
+   * woken from another device is just as live here. The process announced
+   * its startup before anyone could attach, so the summary goes out now.
+   */
+  attachPending(session: PiSession): void {
     if (!this.pendingSubscriptions.delete(session.id)) return;
     this.subscriptions.set(
       session.id,
       session.subscribe((buffered) => this.forward(session, buffered)),
     );
+    this.send({
+      v: WIRE_VERSION,
+      type: "session_state",
+      sessionId: session.id,
+      summary: liveSummary(session.info),
+    });
   }
 
   /**
@@ -479,7 +548,6 @@ export class Connection {
         resumeFrom: record?.path,
       });
       if (create?.trustProject) this.deps.trust.set(cwd, true);
-      this.attachPending(session);
       this.deps.announceSessions?.();
       return session;
     } catch (error) {

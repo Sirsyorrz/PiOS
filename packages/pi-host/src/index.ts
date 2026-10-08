@@ -6,7 +6,7 @@ export * from "./in-process.ts";
 export * from "./subprocess.ts";
 export * from "./registry.ts";
 export * from "./default-factory.ts";
-export * from "./discovery.ts";
 export * from "./session-index.ts";
 export * from "./transcript-file.ts";
 export * from "./session-paths.ts";
+export * from "./session-tail.ts";

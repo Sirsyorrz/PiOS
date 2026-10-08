@@ -1,6 +1,7 @@
 import type { SessionStats } from "@pios/protocol";
 import { useEffect, useLayoutEffect, useState } from "react";
 import { useClient } from "../client-provider.tsx";
+import { compactCount } from "../format.ts";
 
 /**
  * Token, cost and context accounting for the session, under the transcript.
@@ -47,7 +48,7 @@ export function SessionStatsFooter({ sessionId, running, onResize }: {
 function tokens(stats: SessionStats) {
   const total = stats.tokens?.total;
   if (total === undefined) return null;
-  return <span>{compact(total)} tokens</span>;
+  return <span>{compactCount(total)} tokens</span>;
 }
 
 /** Null until pi knows the window, and again until a post-compaction reply. */
@@ -56,18 +57,12 @@ function contextLine(stats: SessionStats): string | null {
   if (!usage || usage.tokens == null) return null;
   const window = usage.contextWindow;
   const percent = usage.percent;
-  const of = window ? ` of ${compact(window)}` : "";
-  return `context ${compact(usage.tokens)}${of}${percent == null ? "" : ` (${Math.round(percent)}%)`}`;
+  const of = window ? ` of ${compactCount(window)}` : "";
+  return `context ${compactCount(usage.tokens)}${of}${percent == null ? "" : ` (${Math.round(percent)}%)`}`;
 }
 
 function cost(amount: number): string {
   // Sub-cent turns are the common case, so two decimals would read as free.
   const digits = amount > 0 && amount < 0.01 ? 4 : 2;
   return `$${amount.toFixed(digits)}`;
-}
-
-function compact(value: number): string {
-  if (value < 1000) return String(value);
-  if (value < 1_000_000) return `${(value / 1000).toFixed(value < 10_000 ? 1 : 0)}k`;
-  return `${(value / 1_000_000).toFixed(1)}M`;
 }

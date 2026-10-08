@@ -11,7 +11,8 @@ import { advertisedEndpoint, type Endpoint } from "./endpoints.ts";
 import { RelayConnector } from "./relay-connector.ts";
 import { RelayKey } from "./relay-key.ts";
 import { createSessionHost } from "./session-host.ts";
-import { SettleNotifier } from "./notifier.ts";
+import { SettleNotifier, type Notification } from "./notifier.ts";
+import { ExternalTurnNotifier } from "./external-turns.ts";
 import { PushStore } from "./push.ts";
 import { SessionStoreWatcher } from "./store-watcher.ts";
 import { TrustStore } from "./trust.ts";
@@ -46,6 +47,7 @@ export class PiosServer {
   private readonly trust: TrustStore;
   private readonly watcher: SessionStoreWatcher;
   private readonly notifier: SettleNotifier;
+  private readonly externalTurns: ExternalTurnNotifier;
   private relayConnector: RelayConnector | null = null;
 
   constructor(options: PiosServerOptions = {}) {
@@ -63,33 +65,47 @@ export class PiosServer {
     this.trust = new TrustStore(this.config.agentDir);
     // A change on disk invalidates what was skimmed for it and nudges every
     // client; the TUI writes to the same store this daemon reads.
-    this.watcher = new SessionStoreWatcher(this.config.sessionDir, () => {
-      this.index.invalidate();
+    // Records are checked against mtime and size on every read, so a change
+    // only needs the nudge; a turn that ended in the TUI needs a push.
+    this.watcher = new SessionStoreWatcher(this.config.sessionDir, (files) => {
       this.announceSessions();
+      this.externalTurns.changed(files);
     });
     this.push = new PushStore(pushStorePath(this.config), this.config.pushSubject);
     this.notifier = new SettleNotifier({
-      send: async (notification) => {
-        try {
-          await this.push.send(notification.message, notification.skipDeviceIds);
-        } catch (error) {
-          console.error("[pios] push failed", error);
-        }
+      send: (notification) => this.sendPush(notification),
+      watchers: (sessionId) => this.watchers(sessionId),
+    });
+    this.externalTurns = new ExternalTurnNotifier({
+      index: this.index,
+      isLive: (sessionId) => {
+        const status = this.registry.get(sessionId)?.info.status;
+        return status !== undefined && status !== "cold";
       },
       watchers: (sessionId) => this.watchers(sessionId),
+      send: (notification) => this.sendPush(notification),
     });
     this.registry = new SessionRegistry(
       options.sessionHost ?? createSessionHost(this.config),
       {
         idleMs: this.config.sessionIdleMs,
-        onCreate: (session) => this.notifier.attach(session),
+        onCreate: (session) => {
+          this.notifier.attach(session);
+          for (const connection of this.connections) connection.attachPending(session);
+        },
         onDispose: (id) => this.notifier.release(id),
       },
     );
 
     this.http = createServer((req, res) =>
       void handleRequest(
-        { config: this.config, auth: this.auth, registry: this.registry, push: this.push },
+        {
+          config: this.config,
+          auth: this.auth,
+          registry: this.registry,
+          index: this.index,
+          push: this.push,
+        },
         req,
         res,
       ),
@@ -164,6 +180,14 @@ export class PiosServer {
     return found;
   }
 
+  private async sendPush(notification: Notification): Promise<void> {
+    try {
+      await this.push.send(notification.message, notification.skipDeviceIds);
+    } catch (error) {
+      console.error("[pios] push failed", error);
+    }
+  }
+
   private announceSessions(): void {
     for (const connection of this.connections) connection.sendSessions();
   }
@@ -175,6 +199,7 @@ export class PiosServer {
   async close(): Promise<void> {
     await this.relayConnector?.stop();
     this.watcher.stop();
+    this.externalTurns.stop();
     this.notifier.releaseAll();
     await this.registry.disposeAll();
     for (const client of this.wss.clients) client.terminate();

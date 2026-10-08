@@ -31,6 +31,17 @@ pnpm sandbox:shot --headed                     # watch it happen
 Shots are taken in a 390x844 phone viewport through Chrome DevTools. Set
 `PIOS_CHROME` if your browser is not on `PATH` under a usual name.
 
+## Drive it end to end
+
+```
+pnpm test:browser
+```
+
+Boots a sandbox, the dev server and headless Chrome, then sends a prompt,
+renames and compacts a session, and checks that an open editor survives a
+streaming turn. Kept out of `pnpm test` because it needs Chrome and takes a
+few seconds; `test/browser.smoke.ts` is the place for more of these.
+
 ## Add a scenario
 
 Scenarios are data, in `src/scenarios/`. Declare the end state you need

@@ -411,6 +411,26 @@ test("stats asked for while offline are asked for again on reconnect", async () 
   assert.equal(stats?.sessionId, "s1");
 });
 
+test("models and commands asked for before the socket is up are asked again once it is", async () => {
+  const { scheduler, transports, client } = setup();
+  await flush();
+  client.watch("s1");
+  client.watch("s2");
+  assert.equal(client.listModels("s1"), false, "no socket yet, as on a cold launch");
+  assert.equal(client.listCommands("s1"), false);
+  client.listModels("s2");
+  client.unwatch("s2");
+
+  transports.last.acceptHello([summary({ sessionId: "s1" })]);
+  while (transports.last.sentOfType("list_models").length === 0) await scheduler.runNext();
+  assert.deepEqual(
+    transports.last.sentOfType("list_models").map((frame) => frame.sessionId),
+    ["s1"],
+    "a session closed since is not woken for it",
+  );
+  assert.equal(transports.last.sentOfType("list_commands")[0]?.sessionId, "s1");
+});
+
 test("slash commands are asked for and cached per session", async () => {
   const { transports, client } = setup();
   await flush();
