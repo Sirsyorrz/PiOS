@@ -342,6 +342,10 @@ test("named stashes are listed, applied and dropped", async () => {
   assert.equal(stashes[0]!.ref, "stash@{0}");
   assert.match(stashes[0]!.message, /work in progress/);
 
+  const patch = (await gitDiff(dir, { stash: "stash@{0}" }))!.diff;
+  assert.match(patch, /\+one/);
+  await assert.rejects(() => gitDiff(dir, { stash: "main" }));
+
   const applied = (await gitAction(dir, { type: "stash_apply", ref: "stash@{0}" }))!.status!;
   assert.equal(applied.untracked, 1);
   // Apply keeps the entry; drop is what removes it.

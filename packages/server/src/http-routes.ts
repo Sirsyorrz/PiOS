@@ -355,6 +355,7 @@ async function gitRoute(
         path: url.searchParams.get("path") ?? undefined,
         staged: url.searchParams.get("staged") === "1",
         commit: url.searchParams.get("commit") ?? undefined,
+        stash: url.searchParams.get("stash") ?? undefined,
       });
       return json(res, 200, result ?? { diff: null });
     }

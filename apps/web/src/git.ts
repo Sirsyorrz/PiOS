@@ -7,7 +7,7 @@ import type {
   GitStash,
   GitStatus,
 } from "@pios/protocol";
-import { useFileAccess, type FileAccess } from "./files.ts";
+import type { FileAccess } from "./files.ts";
 import { messageOf } from "./format.ts";
 
 /** Actions that can take a while and whose progress text is worth showing. */
@@ -110,6 +110,9 @@ async function call(
   return body;
 }
 
+/** What a patch is read from: a file in the tree or index, a commit, or a stash. */
+export type DiffSubject = { path?: string; staged?: boolean; commit?: string; stash?: string };
+
 export interface Git {
   /** Last status read, kept across a failed refresh so the chip never blanks. */
   status: GitStatus | null;
@@ -127,7 +130,7 @@ export interface Git {
   refresh: () => void;
   clearMessages: () => void;
   run: (action: GitAction) => Promise<boolean>;
-  diff: (options: { path?: string; staged?: boolean; commit?: string }) => Promise<string>;
+  diff: (options: DiffSubject) => Promise<string>;
   log: (options?: { skip?: number; limit?: number }) => Promise<GitLogEntry[]>;
   branches: () => Promise<GitBranches | null>;
   stashes: () => Promise<GitStash[]>;
@@ -142,11 +145,11 @@ export interface Git {
  * the agent has stopped writing files, and returning to the app re-reads
  * whatever happened in a terminal while it was away.
  *
- * `cwd` addresses the directory directly, for a draft whose session the daemon
- * has not created yet.
+ * A draft's access carries its directory, because the daemon has no session
+ * to look it up by yet.
  */
-export function useGitStatus(settled: unknown, cwd?: string | null): Git {
-  const access = useFileAccess();
+export function useGitStatus(access: FileAccess | null, settled: unknown): Git {
+  const cwd = access?.cwd;
   const [status, setStatus] = useState<GitStatus | null>(null);
   const [missing, setMissing] = useState(false);
   const [stale, setStale] = useState(false);
@@ -165,7 +168,7 @@ export function useGitStatus(settled: unknown, cwd?: string | null): Git {
     if (!access?.baseUrl) return;
     const mine = ++generation.current;
     setLoading(true);
-    call(access, "/git/status", { search: { cwd: cwd ?? undefined, fresh: tick > 0 ? "1" : undefined } })
+    call(access, "/git/status", { search: { cwd, fresh: tick > 0 ? "1" : undefined } })
       .then((body) => {
         if (generation.current !== mine) return;
         const next = ((body as { status?: GitStatus | null })?.status ?? null) as GitStatus | null;
@@ -216,9 +219,9 @@ export function useGitStatus(settled: unknown, cwd?: string | null): Git {
         const body = (await call(access, "/git/action", {
           method: "POST",
           body: JSON.stringify(action),
-          search: { cwd: cwd ?? undefined },
+          search: { cwd },
         })) as { status?: GitStatus | null; output?: string };
-        // The action response carries the recomputed status, so the sheet
+        // The action response carries the recomputed status, so the view
         // redraws without a second round trip.
         setStatus(body?.status ?? null);
         setMissing((body?.status ?? null) === null);
@@ -236,14 +239,15 @@ export function useGitStatus(settled: unknown, cwd?: string | null): Git {
   );
 
   const diff = useCallback(
-    async (options: { path?: string; staged?: boolean; commit?: string }) => {
+    async (options: DiffSubject) => {
       if (!access) return "";
       const body = await call(access, "/git/diff", {
         search: {
-          cwd: cwd ?? undefined,
+          cwd,
           path: options.path,
           staged: options.staged ? "1" : undefined,
           commit: options.commit,
+          stash: options.stash,
         },
       });
       return typeof (body as { diff?: unknown })?.diff === "string"
@@ -258,7 +262,7 @@ export function useGitStatus(settled: unknown, cwd?: string | null): Git {
       if (!access) return [];
       const body = await call(access, "/git/log", {
         search: {
-          cwd: cwd ?? undefined,
+          cwd,
           skip: options.skip ? String(options.skip) : undefined,
           limit: String(options.limit ?? 40),
         },
@@ -270,13 +274,13 @@ export function useGitStatus(settled: unknown, cwd?: string | null): Git {
 
   const branches = useCallback(async () => {
     if (!access) return null;
-    const body = await call(access, "/git/branches", { search: { cwd: cwd ?? undefined } });
+    const body = await call(access, "/git/branches", { search: { cwd } });
     return ((body as { branches?: GitBranches | null })?.branches ?? null) as GitBranches | null;
   }, [access, cwd]);
 
   const stashes = useCallback(async () => {
     if (!access) return [];
-    const body = await call(access, "/git/stashes", { search: { cwd: cwd ?? undefined } });
+    const body = await call(access, "/git/stashes", { search: { cwd } });
     return ((body as { stashes?: GitStash[] })?.stashes ?? []) as GitStash[];
   }, [access, cwd]);
 
@@ -303,25 +307,26 @@ export function useGitStatus(settled: unknown, cwd?: string | null): Git {
 }
 
 /**
- * The chat header's summary, split in two.
+ * The chat header's summary, sized for a row it shares with the title.
  *
- * `head` is context and may be truncated; `counts` are why anyone looks at the
- * chip and must survive a narrow screen intact. An operation in progress takes
- * the branch's place: which branch you are on matters less than being mid-merge.
+ * The branch is left to the git view's own title; the header only says whether
+ * anything is pending. Conflicts stay apart from other changes because they
+ * block the next commit. An operation in progress is named: being mid-merge
+ * matters more than any count.
  */
-export function statusChip(status: GitStatus): { head: string; counts: string } {
-  const head = status.operation
-    ? status.operation.toUpperCase()
-    : (status.branch ?? status.head ?? "detached");
-
+export function statusChip(status: GitStatus): { operation: string | null; counts: string } {
   const counts: string[] = [];
   if (status.upstream?.behind) counts.push(`↓${status.upstream.behind}`);
   if (status.upstream?.ahead) counts.push(`↑${status.upstream.ahead}`);
   if (status.conflicted > 0) counts.push(`!${status.conflicted}`);
-  if (status.staged > 0) counts.push(`+${status.staged}`);
-  if (status.unstaged > 0) counts.push(`~${status.unstaged}`);
-  if (status.untracked > 0) counts.push(`?${status.untracked}`);
-  return { head, counts: counts.join(" ") };
+  const changed = status.staged + status.unstaged + status.untracked;
+  if (changed > 0) counts.push(`±${changed}`);
+  return { operation: status.operation?.toUpperCase() ?? null, counts: counts.join(" ") };
+}
+
+/** A stash's own words, without the "On <branch>:" git puts in front of them. */
+export function stashTitle(stash: GitStash): string {
+  return stash.message.replace(/^(?:WIP on|On) [^:]+: /, "") || stash.message;
 }
 
 /** Single-letter label for a file row, worst state first. */
@@ -335,7 +340,7 @@ export function fileMark(file: GitFile): { mark: string; tone: "add" | "remove" 
   return { mark: "M", tone: "add" };
 }
 
-/** What the working tree amounts to, in words, for the sheet's subtitle. */
+/** What the working tree amounts to, in words, for the changes list. */
 export function summarise(status: GitStatus): string {
   const parts: string[] = [];
   if (status.conflicted) parts.push(`${status.conflicted} conflicted`);

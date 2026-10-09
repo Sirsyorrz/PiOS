@@ -641,25 +641,6 @@ button.link {
   padding-bottom: 8px;
 }
 
-/* Floats over the top of the transcript, out of flow, so it costs no height
-   and the messages behind it stay readable. */
-.git-float {
-  position: absolute;
-  top: calc(12px + var(--safe-top) + var(--control) + 18px);
-  left: calc(16px + var(--safe-left));
-  z-index: 2;
-  display: flex;
-  pointer-events: none;
-}
-
-.git-float > * {
-  pointer-events: auto;
-}
-
-.chat.composing .git-float {
-  display: none;
-}
-
 .chat-header .title {
   flex: 1;
   font-weight: 500;
@@ -1445,15 +1426,13 @@ button.scroll-bottom {
 }
 
 /* Reuses the extension status chip, tightened for a header that also holds a
-   title, a status word and two icon controls. */
+   title, a status mark and two icon controls. Never shrinks: the title is
+   what gives way, and the chip is already only as wide as its counts. */
 .git-chip {
   display: inline-flex;
-  align-items: baseline;
-  gap: 6px;
-  flex: 0 1 auto;
-  max-width: 70vw;
-  /* Raised off the transcript it sits on, so it never reads as a message. */
-  backdrop-filter: blur(8px);
+  align-items: center;
+  gap: 5px;
+  flex: none;
   /* A chip, not a control: the shared button height would box it. */
   min-height: 0;
   height: auto;
@@ -1467,19 +1446,17 @@ button.scroll-bottom {
   font-variant-numeric: tabular-nums;
 }
 
-/* The branch is context and may be cut; the counts are the reason anyone looks
-   at the chip, so they keep their width whatever the screen is. */
-.git-chip-head {
-  flex: 0 1 auto;
-  min-width: 0;
+.git-chip svg {
+  width: 14px;
+  height: 14px;
 }
 
-.git-chip-counts {
-  flex: none;
+.git-chip-op {
+  color: var(--warn);
 }
 
 /* A read that failed says nothing about the tree, so the last one stays up,
-   dimmed. The reason is in the sheet, which is one tap away. */
+   dimmed. The reason is in the git view, which is one tap away. */
 .git-chip.stale {
   opacity: 0.55;
 }
@@ -1487,7 +1464,7 @@ button.scroll-bottom {
 /* The same block a diff gets in the transcript, so a change reads identically
    wherever it is looked at. Scrolls sideways rather than folding: a wrapped
    line loses the column alignment that makes a patch readable. */
-.git-sheet .diff {
+.git-view .diff {
   background: rgba(0, 0, 0, 0.35);
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -1500,17 +1477,12 @@ button.scroll-bottom {
   overflow-x: auto;
 }
 
-/* Taller than a picker card: this is a working surface, not a single choice.
-   A fixed height, not a maximum: a tab that is still loading must not make the
-   card shrink and then jump back when its list arrives. */
-.git-sheet {
-  width: min(560px, 100%);
-  height: min(86vh, 760px);
+.git-view .scroll-y {
+  min-height: 120px;
 }
 
-.git-sheet .scroll-y {
-  flex: 1;
-  min-height: 120px;
+.git-stash-actions {
+  justify-content: flex-end;
 }
 
 .git-section {
@@ -1632,8 +1604,7 @@ button.scroll-bottom {
   font-size: 14px;
 }
 
-/* A card's labels stack over their field; a tick box sits beside its word. */
-.card .git-check {
+.git-check {
   display: flex;
   flex-direction: row;
   flex: 0 0 auto;
@@ -1654,7 +1625,7 @@ button.scroll-bottom {
   padding: 0;
 }
 
-/* A stash row is informational: it has controls, but the body is not a link. */
+/* Informational: it may have controls, but the body is not a link. */
 .list-row.static {
   cursor: default;
 }
@@ -2092,9 +2063,9 @@ button.scroll-bottom {
 }
 
 
-/* The file view takes the chat's place, with the same insets: it is a screen
+/* Files and git take the chat's place, with the same insets: each is a screen
    in the session, not a sheet over it. */
-.file-view {
+.subview {
   display: flex;
   flex-direction: column;
   min-height: 0;
@@ -2105,7 +2076,7 @@ button.scroll-bottom {
     max(4px, var(--safe-bottom)) calc(16px + var(--safe-left));
 }
 
-.file-head {
+.subview-head {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -2114,12 +2085,15 @@ button.scroll-bottom {
   padding-bottom: 8px;
 }
 
-.file-head h2 {
+.subview-head h2 {
   flex: 1;
   margin: 0;
   font-size: 15px;
   font-weight: 500;
-  /* The path is also the way back to the picker. */
+}
+
+/* The path is also the way back to the picker. */
+.file-view .subview-head h2 {
   cursor: pointer;
 }
 

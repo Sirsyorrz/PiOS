@@ -90,6 +90,27 @@ describe("the web app against the sandbox", () => {
     assert.ok(!(await browser.text("body")).includes("Rejected"), "the reload was accepted");
   });
 
+  it("opens git full screen and keeps a commit message across leaving it", async () => {
+    const openGit = () => browser.tap('.chat-header button[aria-label^="git"]');
+    const message = () => browser.eval<string | null>(`document.querySelector(".git-message")?.value ?? null`);
+
+    assert.ok(await openGit());
+    await until(async () => (await browser.text(".git-view")).includes("Stashes"), "the git view");
+    assert.equal(await browser.eval(`document.querySelector(".chat") === null`), true, "the chat is replaced");
+
+    assert.ok(await browser.type(".git-message", "smoke: keep me"));
+    assert.ok(await browser.tapText("History"));
+    assert.ok(await browser.tapText("Changes"));
+    assert.equal(await message(), "smoke: keep me");
+
+    assert.ok(await browser.tap('.git-view button[aria-label="back to chat"]'));
+    await browser.waitFor(".chat");
+    assert.ok(await openGit());
+    await until(async () => (await message()) === "smoke: keep me", "the message to survive");
+    assert.ok(await browser.tap('.git-view button[aria-label="back to chat"]'));
+    await browser.waitFor(".chat");
+  });
+
   it("keeps an open editor through a streaming turn", async () => {
     assert.ok(await browser.tap('button[aria-label="browse files"]'));
     await until(() => browser.tapText("README.md"), "the file tree");

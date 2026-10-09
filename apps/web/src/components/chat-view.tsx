@@ -18,7 +18,8 @@ import type { NativeCommand } from "./native-commands.ts";
 import { sessionState } from "../session-status.ts";
 import { DialogSheet, type DialogAnswer } from "./dialog-sheet.tsx";
 import { Divider } from "./ui.tsx";
-import { GitControl } from "./git-view.tsx";
+import { GitChip, GitView } from "./git-view.tsx";
+import { useGitStatus } from "../git.ts";
 import { FileView } from "./file-view.tsx";
 import { recallOpenFile, rememberOpenFile } from "../file-edit.ts";
 import {
@@ -306,16 +307,25 @@ export function ChatView({
     blocked: Boolean(dialog),
   });
 
+  // Re-read when a turn settles, because that is when the agent has stopped
+  // writing files. Held here rather than in the git view, so the header chip
+  // and the view show the same read.
+  const git = useGitStatus(files, view?.running ?? false);
+
   // The open file survives the app being backgrounded, so coming back lands
   // where the work was, and the header icon reopens it in one tap.
   const [openPath, setOpenPath] = useState<string | null>(() => recallOpenFile(sessionId));
-  const [showFiles, setShowFiles] = useState(false);
+  const [subview, setSubview] = useState<"files" | "git" | null>(null);
   useEffect(() => {
     setOpenPath(recallOpenFile(sessionId));
-    setShowFiles(false);
+    setSubview(null);
   }, [sessionId]);
 
-  if (showFiles && baseUrl && cwd) {
+  if (subview === "git" && baseUrl) {
+    return <GitView git={git} onClose={() => setSubview(null)} />;
+  }
+
+  if (subview === "files" && baseUrl && cwd) {
     return (
       <FileAccessContext.Provider value={files}>
         {/* The same object the context carries: a fresh one on every
@@ -328,7 +338,7 @@ export function ChatView({
             setOpenPath(path);
             rememberOpenFile(sessionId, path);
           }}
-          onClose={() => setShowFiles(false)}
+          onClose={() => setSubview(null)}
         />
       </FileAccessContext.Provider>
     );
@@ -347,10 +357,11 @@ export function ChatView({
           {title.path ? isolate(title.text) : title.text}
         </span>
         <StatusMark state={rowState} />
+        <GitChip git={git} onOpen={() => setSubview("git")} />
         <button
           type="button"
           className="icon ghost"
-          onClick={() => setShowFiles(true)}
+          onClick={() => setSubview("files")}
           aria-label={openPath ? `open ${openPath}` : "browse files"}
         >
           <FileIcon />
@@ -361,14 +372,6 @@ export function ChatView({
           <PlusIcon />
         </button>
       </header>
-
-      {/* Over the transcript rather than in the header: it is state of the
-          directory, not a control of the session, and giving it a row of its
-          own costs height on every screen that never looks at it.
-          A draft has no session yet, so git is addressed by directory. */}
-      <div className="git-float">
-        <GitControl running={view?.running ?? false} cwd={session ? null : cwd} />
-      </div>
 
       <div className="transcript scroll-y" ref={transcript.ref} onScroll={transcript.onScroll}>
         {/* The tail is loaded first, because a chat is read from the bottom;

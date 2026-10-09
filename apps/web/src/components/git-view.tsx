@@ -1,82 +1,100 @@
-import { useState } from "react";
-import type { GitAction, GitLogEntry, GitStatus } from "@pios/protocol";
+import { useEffect, useState, type ReactNode } from "react";
+import type { GitAction, GitLogEntry, GitStash, GitStatus } from "@pios/protocol";
 import {
   confirmationFor,
   confirmLabel,
   recoveryFor,
+  stashTitle,
   statusChip,
-  useGitStatus,
+  type DiffSubject,
   type Git,
 } from "../git.ts";
 import { isolate } from "../format.ts";
 import { BranchesTab } from "./git/branches.tsx";
-import { ChangesTab } from "./git/changes.tsx";
+import { ChangesTab, type CommitDraft } from "./git/changes.tsx";
 import { HistoryTab } from "./git/history.tsx";
+import { StashesTab } from "./git/stashes.tsx";
 import { ConfirmBar, DiffPane } from "./git/parts.tsx";
 import {
+  BranchIcon,
   ChevronLeftIcon,
   DownloadIcon,
+  MinusIcon,
+  PlusIcon,
   RefreshIcon,
   UploadIcon,
 } from "./icons.tsx";
-import { ModalCard, PickerHeader } from "./ui.tsx";
 
-type Tab = "changes" | "history" | "branches";
+type Tab = "changes" | "history" | "branches" | "stashes";
+
+const TABS: Tab[] = ["changes", "history", "branches", "stashes"];
 
 /** Runs an action, or opens its confirmation. False means nothing ran. */
 export type GitRun = (action: GitAction) => Promise<boolean>;
 
-/** A patch the sheet is showing instead of a tab. */
+/** A patch the view is showing instead of a tab. */
 type Detail =
   | { kind: "file"; path: string; staged: boolean }
-  | { kind: "commit"; commit: GitLogEntry };
+  | { kind: "commit"; commit: GitLogEntry }
+  | { kind: "stash"; stash: GitStash };
 
 /**
- * The chat header's git affordance.
- *
- * Absent entirely when the session cwd is not a repository, which is also the
- * honest signal that the feature does not apply here. Re-reads when a turn
- * settles, because that is when the agent has stopped writing files.
+ * Unsent commit messages by repository, so leaving for the chat and coming
+ * back does not lose one. Memory only: a message is minutes old, not a draft.
  */
-export function GitControl({ running, cwd }: { running: boolean; cwd?: string | null }) {
-  const git = useGitStatus(running, cwd);
-  const [open, setOpen] = useState(false);
-  const chip = git.status ? statusChip(git.status) : null;
+const commitDrafts = new Map<string, CommitDraft>();
 
+/**
+ * The chat header's git affordance: branch and counts, opening the git view.
+ *
+ * Always present, whatever the answer was: a chip that comes and goes reads as
+ * a bug, and every state it can be in leads somewhere.
+ */
+export function GitChip({ git, onOpen }: { git: Git; onOpen: () => void }) {
+  const chip = git.status ? statusChip(git.status) : null;
   return (
-    <>
-      <button
-        type="button"
-        className={`chip git-chip line${git.stale ? " stale" : ""}`}
-        aria-label="git"
-        onClick={() => {
-          git.refresh();
-          setOpen(true);
-        }}
-      >
-        {/* Always present, whatever the answer was: a chip that comes and goes
-            reads as a bug, and every state it can be in leads somewhere. */}
-        <span className="git-chip-head line">{chip?.head ?? "git"}</span>
-        {chip?.counts ? <span className="git-chip-counts">{chip.counts}</span> : null}
-      </button>
-      {open ? <GitSheet git={git} onClose={() => setOpen(false)} /> : null}
-    </>
+    <button
+      type="button"
+      className={`chip git-chip${git.stale ? " stale" : ""}`}
+      aria-label={git.status?.branch ? `git, on ${git.status.branch}` : "git"}
+      onClick={() => {
+        git.refresh();
+        onOpen();
+      }}
+    >
+      <BranchIcon />
+      {chip?.operation ? <span className="git-chip-op">{chip.operation}</span> : null}
+      {chip?.counts ? <span className="git-chip-counts">{chip.counts}</span> : null}
+    </button>
   );
 }
 
 /**
  * The whole git surface for the session's directory: working tree, history,
- * branches, and the remote.
+ * branches, stashes and the remote.
  *
- * One card with tabs rather than a stack of sheets, so switching between "what
- * changed" and "which branch" never loses the commit message being typed.
+ * Full screen, like the file editor: a diff needs the width, and a commit
+ * message needs the keyboard, and a card over the transcript has room for
+ * neither.
  */
-function GitSheet({ git, onClose }: { git: Git; onClose: () => void }) {
+export function GitView({ git, onClose }: { git: Git; onClose: () => void }) {
   const [tab, setTab] = useState<Tab>("changes");
   const [detail, setDetail] = useState<Detail | null>(null);
   const [confirming, setConfirming] = useState<GitAction | null>(null);
 
   const status = git.status;
+  const draftKey = status?.root ?? "";
+  const [draft, setDraftState] = useState<CommitDraft>(
+    () => commitDrafts.get(draftKey) ?? { message: "", amend: false },
+  );
+  useEffect(() => {
+    setDraftState(commitDrafts.get(draftKey) ?? { message: "", amend: false });
+  }, [draftKey]);
+  function setDraft(next: CommitDraft) {
+    setDraftState(next);
+    if (next.message || next.amend) commitDrafts.set(draftKey, next);
+    else commitDrafts.delete(draftKey);
+  }
 
   /**
    * Everything the tabs trigger goes through here, so a confirmation cannot be
@@ -93,62 +111,75 @@ function GitSheet({ git, onClose }: { git: Git; onClose: () => void }) {
     return ok;
   }
 
+  function confirm(action: GitAction) {
+    setConfirming(null);
+    void git.run(action).then((ok) => ok && setDetail(null));
+  }
+
+  const banners = (
+    <>
+      {git.error ? <GitFailure git={git} error={git.error} run={run} /> : null}
+      {git.notice ? (
+        <div className="banner git-confirm">
+          <span className="git-output">{git.notice}</span>
+          <span className="row">
+            <button type="button" onClick={git.clearMessages}>
+              Dismiss
+            </button>
+          </span>
+        </div>
+      ) : null}
+      {confirming ? (
+        <ConfirmBar
+          text={confirmationFor(confirming) ?? ""}
+          confirmLabel={confirmLabel(confirming)}
+          onCancel={() => setConfirming(null)}
+          alt={
+            confirming.type === "delete_branch" && !confirming.force
+              ? { label: "Force delete", onClick: () => confirm({ ...confirming, force: true }) }
+              : undefined
+          }
+          onConfirm={() => confirm(confirming)}
+        />
+      ) : null}
+    </>
+  );
+
   if (detail) {
     return (
-      <ModalCard overlay className="git-sheet">
-        <header className="picker-head">
-          <button type="button" className="ghost icon" aria-label="back" onClick={() => setDetail(null)}>
-            <ChevronLeftIcon />
-          </button>
-          <h2 className="line tail">
-            {isolate(detail.kind === "file" ? detail.path : detail.commit.subject)}
-          </h2>
-          <button type="button" className="ghost" onClick={onClose}>
-            Close
-          </button>
-        </header>
-        {detail.kind === "commit" ? (
-          <p className="muted git-summary line">
-            <code className="git-sha">{detail.commit.sha}</code> {detail.commit.author}
-          </p>
-        ) : (
-          <p className="muted git-summary line">{detail.staged ? "Staged changes" : "Working tree changes"}</p>
-        )}
-        <div className="scroll-y">
-          <DiffPane
-            subject={detail.kind === "file" ? `${detail.staged}:${detail.path}` : detail.commit.sha}
-            load={() =>
-              detail.kind === "file"
-                ? git.diff({ path: detail.path, staged: detail.staged })
-                : git.diff({ commit: detail.commit.sha })
-            }
-          />
-        </div>
-      </ModalCard>
+      <DetailScreen
+        detail={detail}
+        git={git}
+        run={run}
+        banners={banners}
+        onBack={() => setDetail(null)}
+      />
     );
   }
 
   return (
-    <ModalCard overlay className="git-sheet">
-      <PickerHeader
-        title={status ? (status.branch ?? `detached at ${status.head ?? "?"}`) : "Git"}
-        onCancel={onClose}
-        action={
-          <button
-            type="button"
-            className="ghost icon"
-            aria-label="refresh"
-            disabled={git.busy}
-            onClick={git.refresh}
-          >
-            <RefreshIcon />
-          </button>
-        }
-      />
+    <section className="subview git-view">
+      <header className="subview-head">
+        <button type="button" className="ghost icon" aria-label="back to chat" onClick={onClose}>
+          <ChevronLeftIcon />
+        </button>
+        <h2 className="line">
+          {status ? isolate(status.branch ?? `detached at ${status.head ?? "?"}`) : "Git"}
+        </h2>
+        <button
+          type="button"
+          className="ghost icon"
+          aria-label="refresh"
+          disabled={git.busy}
+          onClick={git.refresh}
+        >
+          <RefreshIcon />
+        </button>
+      </header>
 
       {!status ? (
         <>
-          {git.error ? <GitFailure git={git} error={git.error} run={run} /> : null}
+          {banners}
           <p className="muted">
             {git.loading ? "Reading…" : "This directory is not a git repository."}
           </p>
@@ -166,69 +197,11 @@ function GitSheet({ git, onClose }: { git: Git; onClose: () => void }) {
       ) : (
         <>
           <SyncBar status={status} git={git} run={run} />
-
-          {status.operation ? (
-            <div className="banner warn git-confirm">
-              <span className="git-confirm-text">
-                A {status.operation} is in progress.
-                {status.conflicted > 0
-                  ? " Resolve the conflicts, stage them, then continue."
-                  : " Continue it or throw it away."}
-              </span>
-              <span className="row">
-                <button type="button" disabled={git.busy} onClick={() => void run({ type: "abort" })}>
-                  Abort
-                </button>
-                <button
-                  type="button"
-                  className="primary"
-                  disabled={git.busy || status.conflicted > 0}
-                  onClick={() => void run({ type: "continue" })}
-                >
-                  Continue
-                </button>
-              </span>
-            </div>
-          ) : null}
-          {git.error ? <GitFailure git={git} error={git.error} run={run} /> : null}
-          {git.notice ? (
-            <div className="banner git-confirm">
-              <span className="git-output">{git.notice}</span>
-              <span className="row">
-                <button type="button" onClick={git.clearMessages}>
-                  Dismiss
-                </button>
-              </span>
-            </div>
-          ) : null}
-
-          {confirming ? (
-            <ConfirmBar
-              text={confirmationFor(confirming) ?? ""}
-              confirmLabel={confirmLabel(confirming)}
-              onCancel={() => setConfirming(null)}
-              alt={
-                confirming.type === "delete_branch" && !confirming.force
-                  ? {
-                      label: "Force delete",
-                      onClick: () => {
-                        const action = { ...confirming, force: true };
-                        setConfirming(null);
-                        void git.run(action);
-                      },
-                    }
-                  : undefined
-              }
-              onConfirm={() => {
-                const action = confirming;
-                setConfirming(null);
-                void git.run(action);
-              }}
-            />
-          ) : null}
+          {status.operation ? <OperationBanner status={status} git={git} run={run} /> : null}
+          {banners}
 
           <nav className="git-tabs" role="tablist">
-            {(["changes", "history", "branches"] as Tab[]).map((name) => (
+            {TABS.map((name) => (
               <button
                 type="button"
                 key={name}
@@ -246,6 +219,8 @@ function GitSheet({ git, onClose }: { git: Git; onClose: () => void }) {
             <ChangesTab
               git={git}
               run={run}
+              draft={draft}
+              onDraft={setDraft}
               onOpenDiff={(path, staged) => setDetail({ kind: "file", path, staged })}
             />
           ) : null}
@@ -253,9 +228,147 @@ function GitSheet({ git, onClose }: { git: Git; onClose: () => void }) {
             <HistoryTab git={git} onOpenCommit={(commit) => setDetail({ kind: "commit", commit })} />
           ) : null}
           {tab === "branches" ? <BranchesTab git={git} run={run} /> : null}
+          {tab === "stashes" ? (
+            <StashesTab git={git} run={run} onOpenStash={(stash) => setDetail({ kind: "stash", stash })} />
+          ) : null}
         </>
       )}
-    </ModalCard>
+    </section>
+  );
+}
+
+/**
+ * One patch, full width. A file's patch carries the verb that moves it
+ * between the tree and the index, so reviewing and staging is one place.
+ */
+function DetailScreen({ detail, git, run, banners, onBack }: {
+  detail: Detail;
+  git: Git;
+  run: GitRun;
+  banners: ReactNode;
+  onBack: () => void;
+}) {
+  const { title, summary, subject, key } = describe(detail);
+  return (
+    <section className="subview git-view">
+      <header className="subview-head">
+        <button type="button" className="ghost icon" aria-label="back" onClick={onBack}>
+          <ChevronLeftIcon />
+        </button>
+        <h2 className="line tail">{isolate(title)}</h2>
+        {detail.kind === "file" ? (
+          <button
+            type="button"
+            className="ghost icon"
+            aria-label={detail.staged ? `unstage ${detail.path}` : `stage ${detail.path}`}
+            disabled={git.busy}
+            onClick={() =>
+              void run(
+                detail.staged
+                  ? { type: "unstage", paths: [detail.path] }
+                  : { type: "stage", paths: [detail.path] },
+              )
+            }
+          >
+            {detail.staged ? <MinusIcon /> : <PlusIcon />}
+          </button>
+        ) : null}
+      </header>
+      {banners}
+      <p className="muted git-summary line">{summary}</p>
+      {detail.kind === "stash" ? (
+        <div className="row git-stash-actions">
+          <button
+            type="button"
+            className="danger"
+            disabled={git.busy}
+            onClick={() => void run({ type: "stash_drop", ref: detail.stash.ref })}
+          >
+            Drop
+          </button>
+          <button
+            type="button"
+            disabled={git.busy}
+            onClick={() => void run({ type: "stash_apply", ref: detail.stash.ref })}
+          >
+            Apply
+          </button>
+          <button
+            type="button"
+            className="primary"
+            disabled={git.busy}
+            onClick={() => void run({ type: "stash_pop", ref: detail.stash.ref })}
+          >
+            Pop
+          </button>
+        </div>
+      ) : null}
+      <div className="scroll-y">
+        <DiffPane subject={key} load={() => git.diff(subject)} />
+      </div>
+    </section>
+  );
+}
+
+function describe(detail: Detail): {
+  title: string;
+  summary: ReactNode;
+  subject: DiffSubject;
+  key: string;
+} {
+  switch (detail.kind) {
+    case "file":
+      return {
+        title: detail.path,
+        summary: detail.staged ? "Staged changes" : "Working tree changes",
+        subject: { path: detail.path, staged: detail.staged },
+        key: `${detail.staged}:${detail.path}`,
+      };
+    case "commit":
+      return {
+        title: detail.commit.subject,
+        summary: (
+          <>
+            <code className="git-sha">{detail.commit.sha}</code> {detail.commit.author}
+          </>
+        ),
+        subject: { commit: detail.commit.sha },
+        key: detail.commit.sha,
+      };
+    case "stash":
+      return {
+        title: stashTitle(detail.stash),
+        summary: detail.stash.branch ? `${detail.stash.ref} · on ${detail.stash.branch}` : detail.stash.ref,
+        subject: { stash: detail.stash.ref },
+        // Refs shift as stashes are dropped; the message and time do not.
+        key: `${detail.stash.ref}:${detail.stash.at}`,
+      };
+  }
+}
+
+function OperationBanner({ status, git, run }: { status: GitStatus; git: Git; run: GitRun }) {
+  return (
+    <div className="banner warn git-confirm">
+      <span className="git-confirm-text">
+        A {status.operation} is in progress.
+        {status.conflicted > 0
+          ? " Resolve the conflicts, stage them, then continue."
+          : " Continue it or throw it away."}
+      </span>
+      <span className="row">
+        <button type="button" disabled={git.busy} onClick={() => void run({ type: "abort" })}>
+          Abort
+        </button>
+        <button
+          type="button"
+          className="primary"
+          disabled={git.busy || status.conflicted > 0}
+          onClick={() => void run({ type: "continue" })}
+        >
+          Continue
+        </button>
+      </span>
+    </div>
   );
 }
 
@@ -280,9 +393,14 @@ function GitFailure({ git, error, run }: { git: Git; error: string; run: GitRun 
 }
 
 function label(tab: Tab, status: GitStatus): string {
-  if (tab !== "changes") return tab[0]!.toUpperCase() + tab.slice(1);
-  const count = status.staged + status.unstaged + status.untracked + status.conflicted;
-  return count ? `Changes ${count}` : "Changes";
+  const name = tab[0]!.toUpperCase() + tab.slice(1);
+  const count =
+    tab === "changes"
+      ? status.staged + status.unstaged + status.untracked + status.conflicted
+      : tab === "stashes"
+        ? status.stashes
+        : 0;
+  return count ? `${name} ${count}` : name;
 }
 
 /**
@@ -345,8 +463,7 @@ function SyncBar({ status, git, run }: { status: GitStatus; git: Git; run: GitRu
         </button>
       </div>
       {more ? (
-        // One line, so the sheet's height does not depend on a disclosure:
-        // the verbs above name the operation, these only qualify it.
+        // The verbs above name the operation; these only qualify it.
         <div className="row git-sync-more">
           <button type="button" disabled={git.busy} onClick={() => void run({ type: "fetch", prune: true })}>
             Prune

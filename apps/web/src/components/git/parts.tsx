@@ -2,7 +2,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import type { GitFile } from "@pios/protocol";
 import { fileMark, patchLines } from "../../git.ts";
 
-/** Pieces shared by the git sheet's tabs. Nothing here fetches on its own. */
+/** Pieces shared by the git view's tabs. Nothing here fetches on its own. */
 
 /**
  * A tiny keyed store for what a tab drew last.

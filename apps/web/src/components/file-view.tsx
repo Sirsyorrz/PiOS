@@ -119,8 +119,8 @@ function FilePicker({ access, onPick, onClose }: {
   // At the top it is the project; below it, the path inside the project.
   const here = listing ? (listing.parent ? relativeTo(listing.root, listing.path) : listing.name) : null;
   return (
-    <section className="file-view">
-      <header className="file-head">
+    <section className="subview file-view">
+      <header className="subview-head">
         <button type="button" className="ghost icon" aria-label="back to chat" onClick={onClose}>
           <ChevronLeftIcon />
         </button>
@@ -259,8 +259,8 @@ function FileEditor({ access, path, onBrowse, onClose }: {
 
   const readOnly = !editing || !file?.editable;
   return (
-    <section className="file-view">
-      <header className="file-head">
+    <section className="subview file-view">
+      <header className="subview-head">
         <button
           type="button"
           className="ghost icon"

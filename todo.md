@@ -1,6 +1,3 @@
-- fullscreen git rework: git as a full-screen view like the file editor
-  instead of the floating control over the transcript (status, diff, log,
-  branches and stashes in one place)
 - absorb cc-usage into packages/server/src/usage.ts instead of shelling out
 - terminal (needs a real PTY; one-shot bash does not grow into it)
 - @ fuzzy picker must be daemon-side: RPC mode no-ops addAutocompleteProvider

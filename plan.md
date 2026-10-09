@@ -403,7 +403,10 @@ Cloudflare account.
 Done so far: `discovery.ts` removed, git split into reads (`git.ts`) and
 writes (`git-actions.ts`), `pnpm test:browser` as the browser smoke run, and
 `docs/setup.md` for install, pairing, configuration, troubleshooting and the
-sandbox workflow.
+sandbox workflow. Git moved from a floating chip and card over the
+transcript to a header chip and a full-screen view beside the file editor:
+changes, history, branches and stashes as tabs, every patch full width, stash
+patches read with `stash show --include-untracked`.
 
 1. Prune dead code and duplicated view logic surfaced by Phases 6-7.
 2. Absorb `cc-usage`: read the plan-usage source directly in

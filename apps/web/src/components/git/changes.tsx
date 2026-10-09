@@ -1,10 +1,13 @@
-import { useEffect, useState } from "react";
-import type { GitStash } from "@pios/protocol";
 import { summarise, type Git } from "../../git.ts";
-import { relativeTime } from "../../format.ts";
 import type { GitRun } from "../git-view.tsx";
-import { ArchiveIcon, MinusIcon, PlusIcon, TrashIcon, UploadIcon } from "../icons.tsx";
+import { MinusIcon, PlusIcon, TrashIcon } from "../icons.tsx";
 import { Empty, FileRow, GitSection, IconButton } from "./parts.tsx";
+
+/** A commit being written, held by the view so a diff or a tab switch keeps it. */
+export interface CommitDraft {
+  message: string;
+  amend: boolean;
+}
 
 /**
  * The working tree: what is staged, what is not, and the commit that ends it.
@@ -12,28 +15,15 @@ import { Empty, FileRow, GitSection, IconButton } from "./parts.tsx";
  * The message field sits above the file list because it is what the commit
  * button acts on, and a long list must not push the two apart.
  */
-export function ChangesTab({ git, run, onOpenDiff }: {
+export function ChangesTab({ git, run, draft, onDraft, onOpenDiff }: {
   git: Git;
   run: GitRun;
+  draft: CommitDraft;
+  onDraft: (draft: CommitDraft) => void;
   onOpenDiff: (path: string, staged: boolean) => void;
 }) {
   const status = git.status;
-  const [message, setMessage] = useState("");
-  const [amend, setAmend] = useState(false);
-  const [stashes, setStashes] = useState<GitStash[]>([]);
-
-  const stashCount = status?.stashes ?? 0;
-  useEffect(() => {
-    if (stashCount === 0) {
-      setStashes([]);
-      return;
-    }
-    let cancelled = false;
-    git.stashes().then((list) => !cancelled && setStashes(list)).catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, [git, stashCount]);
+  const { message, amend } = draft;
 
   if (!status) return null;
 
@@ -44,8 +34,7 @@ export function ChangesTab({ git, run, onOpenDiff }: {
   // The message survives a failed commit: it is the only copy of it.
   async function commit() {
     if (!(await run({ type: "commit", message, amend }))) return;
-    setMessage("");
-    setAmend(false);
+    onDraft({ message: "", amend: false });
   }
 
   return (
@@ -56,14 +45,14 @@ export function ChangesTab({ git, run, onOpenDiff }: {
           rows={2}
           value={message}
           placeholder={amend ? "Amend message (blank keeps the old one)" : "Commit message"}
-          onChange={(event) => setMessage(event.target.value)}
+          onChange={(event) => onDraft({ message: event.target.value, amend })}
         />
         <div className="row spread git-commit-row">
           <label className="git-check">
             <input
               type="checkbox"
               checked={amend}
-              onChange={(event) => setAmend(event.target.checked)}
+              onChange={(event) => onDraft({ message, amend: event.target.checked })}
             />
             Amend
           </label>
@@ -164,41 +153,6 @@ export function ChangesTab({ git, run, onOpenDiff }: {
 
         {status.truncated ? (
           <Empty>Too many changes to list; the counts above are exact.</Empty>
-        ) : null}
-
-        {stashes.length > 0 ? (
-          <GitSection title={`Stashes (${stashes.length})`}>
-            {stashes.map((stash) => (
-              <div className="git-row" key={stash.ref}>
-                <div className="list-row iconic static">
-                  <span className="row-icon">
-                    <ArchiveIcon />
-                  </span>
-                  <span className="row-main">
-                    <span className="line">{stash.message}</span>
-                    <span className="row-sub">
-                      {stash.ref} · {relativeTime(stash.at)}
-                    </span>
-                  </span>
-                </div>
-                <IconButton
-                  label={`drop ${stash.ref}`}
-                  danger
-                  disabled={git.busy}
-                  onClick={() => void run({ type: "stash_drop", ref: stash.ref })}
-                >
-                  <TrashIcon />
-                </IconButton>
-                <IconButton
-                  label={`pop ${stash.ref}`}
-                  disabled={git.busy}
-                  onClick={() => void run({ type: "stash_pop", ref: stash.ref })}
-                >
-                  <UploadIcon />
-                </IconButton>
-              </div>
-            ))}
-          </GitSection>
         ) : null}
       </div>
     </>

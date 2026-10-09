@@ -170,6 +170,18 @@ export function FolderUpIcon(props: SVGProps<SVGSVGElement>) {
   );
 }
 
+/** A branch leaving a line: git, as opposed to the files under it. */
+export function BranchIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Svg {...props}>
+      <circle cx="6" cy="5" r="2" />
+      <circle cx="6" cy="19" r="2" />
+      <circle cx="18" cy="7" r="2" />
+      <path d="M6 7v10M18 9c0 5-6 4-11.2 8.6" />
+    </Svg>
+  );
+}
+
 export function FileIcon(props: SVGProps<SVGSVGElement>) {
   return (
     <Svg {...props}>

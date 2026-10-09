@@ -343,12 +343,24 @@ export function checkStash(name: string): string {
 /** Unified diff for one file, or for the whole tree when `path` is omitted. */
 export async function gitDiff(
   cwd: string,
-  options: { path?: string; staged?: boolean; context?: number; commit?: string } = {},
+  options: { path?: string; staged?: boolean; context?: number; commit?: string; stash?: string } = {},
 ): Promise<{ root: string; diff: string; untracked: boolean } | null> {
   const root = await repoRoot(cwd);
   if (!root) return null;
 
   const context = `--unified=${clampContext(options.context)}`;
+
+  // A stash is a merge commit whose second and third parents are the index and
+  // the untracked files; `git show` on it prints a combined diff that hides
+  // both. `stash show` reads it the way it was made.
+  if (options.stash) {
+    const ref = checkStash(options.stash);
+    return {
+      root,
+      diff: await git(root, ["stash", "show", "--no-color", "--patch", "--include-untracked", context, ref]),
+      untracked: false,
+    };
+  }
 
   // A commit is a fixed object: its diff is against its own parent, so the
   // index and worktree play no part.
