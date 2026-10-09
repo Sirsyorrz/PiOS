@@ -134,6 +134,7 @@ export class PiosClient {
   /** Failures of one-off commands, for the UI to say out loud. */
   private readonly commandErrorHandlers = new Listeners<[error: CommandError]>();
   private readonly rewindHandlers = new Listeners<[branchSessionId: string, text: string]>();
+  private readonly exportHandlers = new Listeners<[sessionId: string, path: string]>();
   /** Text waiting for the branched session's composer to mount and claim it. */
   private readonly rewoundText = new Map<string, string>();
   private lastTransport: SupervisorState["transport"] = "idle";
@@ -348,6 +349,28 @@ export class PiosClient {
   /** pi's own setting: it applies to every session, here and in the TUI. */
   setAutoCompaction(sessionId: string, enabled: boolean): boolean {
     return this.send({ type: "set_auto_compaction", sessionId, enabled });
+  }
+
+  /**
+   * pi's `/reload`. Not queued: a reload replayed later would cut off a turn
+   * started since. The daemon refuses while the agent is busy, and the new
+   * agent is announced with `session_recovered`.
+   */
+  reload(sessionId: string): boolean {
+    return this.send({ type: "reload_session", sessionId });
+  }
+
+  /**
+   * pi's `/export` to HTML, written on the machine. Not queued: the file
+   * would describe the conversation as it was when the reply finally ran.
+   */
+  exportSession(sessionId: string, outputPath?: string): boolean {
+    return this.send({ type: "export_session", sessionId, outputPath: outputPath || undefined });
+  }
+
+  /** Fires with the absolute path an export was written to. */
+  onExported(handler: (sessionId: string, path: string) => void): () => void {
+    return this.exportHandlers.add(handler);
   }
 
   /**
@@ -655,14 +678,21 @@ export class PiosClient {
         this.rewindHandlers.emit(frame.branchSessionId, text);
         break;
       }
+      case "exported":
+        this.exportHandlers.emit(frame.sessionId, frame.path);
+        break;
       case "session_recovered":
         // The process behind the session was replaced, by a crash, a trust
-        // change, or a wake. Whether the transcript moved is decided by the
-        // leaf it came back with, not by assuming either way.
+        // change, a reload, or a wake. Whether the transcript moved is decided
+        // by the leaf it came back with, not by assuming either way.
         if (this.sessions.needsFullRefetch(frame.sessionId, frame.leafId)) {
           this.sessions.clear(frame.sessionId);
         }
         if (this.subscribed.has(frame.sessionId)) this.resync(frame.sessionId);
+        // A new agent may have loaded different extensions, templates, skills.
+        if (this.commandsWanted.has(frame.sessionId)) {
+          this.send({ type: "list_commands", sessionId: frame.sessionId });
+        }
         break;
       default:
         break;

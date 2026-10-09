@@ -205,7 +205,11 @@ Shipped as listed. Three notes:
 
 - `/name`, `/compact [instructions]` and `/autocompact [on|off]` are native
   commands, like `/model`: typed or picked, they never reach the model. A
-  native command now takes the rest of the line as arguments.
+  native command now takes the rest of the line as arguments. Later joined by
+  `/thinking [level]`, `/copy`, `/session`, `/export [path]` (HTML only; the
+  file is downloaded to the device when it lands in the project) and
+  `/reload` (RPC has no reload, so the daemon relaunches pi in place and
+  refuses while a turn, compaction or `!` command runs).
 - A manual compaction is acked once pi starts it; progress and the outcome are
   the same `compaction_start`/`compaction_end` events an automatic one sends.
   The transcript keeps the full history and marks where the summary was cut.

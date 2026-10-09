@@ -192,6 +192,12 @@ export class FakeAgentSession implements AgentSessionLike {
     this.bashAborted = true;
   }
 
+  async exportToHtml(outputPath?: string): Promise<string> {
+    const path = outputPath ?? `pi-session-${this.sessionId}.html`;
+    writeFileSync(path, `<!doctype html><title>${this.sessionId}</title>`);
+    return path;
+  }
+
   dispose(): void {
     this.disposed = true;
     this.listeners.clear();

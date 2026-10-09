@@ -326,14 +326,7 @@ export class SessionStore {
   applyPresentationRequest(sessionId: string, request: ExtensionUiRequest): void {
     if (isDialogRequest(request)) return;
     if (request.method === "notify") {
-      if (!request.message) return;
-      const notices = [...(this.notices.get(sessionId) ?? []), {
-        id: `n${++this.noticeCounter}`,
-        message: stripAnsi(request.message),
-        type: request.notifyType ?? "info",
-      }].slice(-MAX_NOTICES);
-      this.notices.set(sessionId, notices);
-      this.notify(sessionId);
+      if (request.message) this.addNotice(sessionId, stripAnsi(request.message), request.notifyType);
       return;
     }
     const current = this.presentation(sessionId);
@@ -351,6 +344,17 @@ export class SessionStore {
 
   presentation(sessionId: string): SessionPresentation {
     return this.presentations.get(sessionId) ?? emptyPresentation();
+  }
+
+  /** A message for the reader, shown with the extension's own until dismissed. */
+  addNotice(sessionId: string, message: string, type: Notice["type"] = "info"): void {
+    const notices = [...(this.notices.get(sessionId) ?? []), {
+      id: `n${++this.noticeCounter}`,
+      message,
+      type,
+    }].slice(-MAX_NOTICES);
+    this.notices.set(sessionId, notices);
+    this.notify(sessionId);
   }
 
   openNotices(sessionId: string): Notice[] {

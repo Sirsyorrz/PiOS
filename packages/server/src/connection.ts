@@ -141,6 +141,10 @@ export class Connection {
         return this.compact(frame);
       case "set_auto_compaction":
         return this.setAutoCompaction(frame);
+      case "reload_session":
+        return this.reloadSession(frame);
+      case "export_session":
+        return this.exportSession(frame);
       case "subscribe":
         return this.subscribe(frame);
       case "unsubscribe":
@@ -292,6 +296,41 @@ export class Connection {
       return this.fail(frame.commandId, "bad_request", errorMessage(error));
     }
     this.sendSessionState(frame.commandId, session);
+  }
+
+  /**
+   * A session with no process reads everything fresh when it wakes, so only a
+   * running one is relaunched. Clients hear of it through `session_recovered`.
+   */
+  private async reloadSession(frame: FrameOf<"reload_session">): Promise<void> {
+    const live = this.deps.registry.get(frame.sessionId);
+    if (!live || live.info.status === "cold") return this.ack(frame.commandId);
+    // A reload replayed after a reconnect would cut off whatever started since.
+    if (!this.deps.ledger.claim(frame.commandId)) return this.ack(frame.commandId, true);
+    try {
+      await this.deps.registry.reload(frame.sessionId);
+    } catch (error) {
+      return this.fail(frame.commandId, "agent_busy", errorMessage(error));
+    }
+    this.ack(frame.commandId);
+  }
+
+  private async exportSession(frame: FrameOf<"export_session">): Promise<void> {
+    const session = await this.requireLive(frame.sessionId, frame.commandId);
+    if (!session) return;
+    let path: string;
+    try {
+      path = await session.exportHtml(frame.outputPath);
+    } catch (error) {
+      return this.fail(frame.commandId, "bad_request", errorMessage(error));
+    }
+    this.send({
+      v: WIRE_VERSION,
+      type: "exported",
+      commandId: frame.commandId,
+      sessionId: frame.sessionId,
+      path,
+    });
   }
 
   /**

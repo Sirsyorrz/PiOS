@@ -52,7 +52,7 @@ function tokens(stats: SessionStats) {
 }
 
 /** Null until pi knows the window, and again until a post-compaction reply. */
-function contextLine(stats: SessionStats): string | null {
+export function contextLine(stats: SessionStats): string | null {
   const usage = stats.contextUsage;
   if (!usage || usage.tokens == null) return null;
   const window = usage.contextWindow;
@@ -61,7 +61,7 @@ function contextLine(stats: SessionStats): string | null {
   return `context ${compactCount(usage.tokens)}${of}${percent == null ? "" : ` (${Math.round(percent)}%)`}`;
 }
 
-function cost(amount: number): string {
+export function cost(amount: number): string {
   // Sub-cent turns are the common case, so two decimals would read as free.
   const digits = amount > 0 && amount < 0.01 ? 4 : 2;
   return `$${amount.toFixed(digits)}`;

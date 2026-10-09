@@ -136,6 +136,21 @@ export const ClientFrameSchema = z.discriminatedUnion("type", [
     enabled: z.boolean(),
   }),
   /**
+   * pi's `/reload`: extensions, skills, templates and context files are read
+   * again. RPC mode has no such command, so the agent is relaunched in place
+   * and announced with `session_recovered`, as a trust change is.
+   */
+  Envelope({ type: z.literal("reload_session"), sessionId: z.string() }),
+  /**
+   * pi's `/export` to HTML. Answered with `exported`. Without a path pi picks
+   * one in the session cwd.
+   */
+  Envelope({
+    type: z.literal("export_session"),
+    sessionId: z.string(),
+    outputPath: z.string().trim().min(1).optional(),
+  }),
+  /**
    * Transcript, read from the session file.
    *
    * `since` answers "what changed" and `before` answers "what came earlier":
@@ -373,6 +388,12 @@ export const ServerFrameSchema = z.discriminatedUnion("type", [
     type: z.literal("session_stats"),
     sessionId: z.string(),
     stats: SessionStatsSchema,
+  }),
+  /** Reply to `export_session`: where the file landed, absolute. */
+  ServerEnvelope({
+    type: z.literal("exported"),
+    sessionId: z.string(),
+    path: z.string(),
   }),
   ServerEnvelope({
     type: z.literal("session_state"),

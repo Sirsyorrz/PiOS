@@ -8,6 +8,7 @@ import type {
   SessionStats,
 } from "@pios/protocol";
 import { AgentEventSchema, BashResultSchema, SessionStatsSchema } from "@pios/protocol";
+import { basename, extname, resolve } from "node:path";
 import { BaseSession } from "./base-session.ts";
 import { messageOf } from "./errors.ts";
 import { sliceEntries } from "./transcript-file.ts";
@@ -70,6 +71,8 @@ export interface AgentSessionLike {
   compact?(customInstructions?: string): Promise<unknown>;
   readonly autoCompactionEnabled?: boolean;
   setAutoCompactionEnabled?(enabled: boolean): void;
+  /** Resolves to the path written, relative to the process cwd when relative. */
+  exportToHtml?(outputPath?: string): Promise<string>;
   readonly sessionId: string;
   readonly sessionFile: string | undefined;
   readonly sessionManager: {
@@ -402,6 +405,23 @@ export class InProcessSession extends BaseSession implements PiSession {
     await this.relaunch(trustProject ? "directory trusted" : "trust revoked");
   }
 
+  /** A rebuilt agent reads its resources again, as a fresh child would. */
+  async reload(): Promise<void> {
+    this.requireAgent();
+    this.assertReloadable();
+    this.setStatus("starting");
+    await this.relaunch("reloaded");
+  }
+
+  async exportHtml(outputPath?: string): Promise<string> {
+    const agent = this.requireAgent();
+    if (!agent.exportToHtml) throw new Error("this host cannot export a session");
+    // pi resolves a relative path against the daemon's cwd here, not the
+    // session's, so it is anchored before pi sees it.
+    const target = resolve(this.cwd, outputPath ?? defaultExportName(agent.sessionFile, this.id));
+    return resolve(this.cwd, await agent.exportToHtml(target));
+  }
+
   private async relaunch(reason: string): Promise<void> {
     this.unsubscribe?.();
     try {
@@ -441,6 +461,12 @@ function toCommandOption(
     scope: command.sourceInfo?.scope,
     path: command.sourceInfo?.path,
   };
+}
+
+/** pi's own default name, placed in the session cwd as the subprocess host does. */
+function defaultExportName(sessionFile: string | undefined, id: string): string {
+  const stem = sessionFile ? basename(sessionFile, extname(sessionFile)) : id;
+  return `pi-session-${stem}.html`;
 }
 
 function modelKey(provider: string, modelId: string): string {

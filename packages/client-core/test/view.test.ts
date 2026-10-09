@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { AgentEvent } from "@pios/protocol";
 import { SessionStore } from "../src/session-store.ts";
-import { sessionView } from "../src/view.ts";
+import { lastAssistantText, sessionView } from "../src/view.ts";
 import type { OutboxEntry } from "../src/outbox.ts";
 
 const userMessage = { role: "user" as const, content: "hello", timestamp: 10 };
@@ -314,4 +314,30 @@ test("a compaction is a marker where it happened, and the history above it stays
   assert.deepEqual(kinds, ["message", "compaction", "message"]);
   const marker = sessionView(store, [], "s1").items[1];
   assert.equal(marker?.kind === "compaction" ? marker.tokensBefore : null, 48_000);
+});
+
+test("/copy takes the last answer's text, past a turn stopped before it spoke", () => {
+  const store = new SessionStore();
+  const answer = {
+    role: "assistant" as const,
+    content: [
+      { type: "thinking" as const, thinking: "hmm" },
+      { type: "text" as const, text: " the answer " },
+    ],
+    timestamp: 20,
+  };
+  const stopped = { role: "assistant" as const, content: [], stopReason: "aborted", timestamp: 40 };
+  store.applyEntries(
+    "s1",
+    [
+      { id: "e1", type: "message", message: userMessage },
+      { id: "e2", type: "message", message: answer },
+      { id: "e3", type: "message", message: { ...userMessage, content: "again", timestamp: 30 } },
+      { id: "e4", type: "message", message: stopped },
+    ],
+    "e4",
+    true,
+  );
+  assert.equal(lastAssistantText(sessionView(store, [], "s1")), "the answer");
+  assert.equal(lastAssistantText(sessionView(new SessionStore(), [], "s2")), undefined);
 });

@@ -581,3 +581,40 @@ test("the last session list is shown before the socket is up", async () => {
     "rendered from the cache, never trusted for freshness",
   );
 });
+
+test("a reloaded agent's slash commands are asked for again", async () => {
+  const { transports, client } = setup();
+  await flush();
+  transports.last.acceptHello([summary({ sessionId: "s1" })]);
+  client.watch("s1");
+  client.listCommands("s1");
+
+  assert.equal(client.reload("s1"), true);
+  assert.equal(transports.last.sentOfType("reload_session").length, 1);
+  transports.last.emit({
+    v: WIRE_VERSION,
+    type: "session_recovered",
+    sessionId: "s1",
+    leafId: null,
+    reason: "reloaded",
+  });
+  assert.equal(transports.last.sentOfType("list_commands").length, 2);
+});
+
+test("an export reports where the file landed", async () => {
+  const { transports, client } = setup();
+  await flush();
+  transports.last.acceptHello([summary({ sessionId: "s1" })]);
+  const paths: string[] = [];
+  client.onExported((sessionId, path) => paths.push(`${sessionId}:${path}`));
+
+  client.exportSession("s1");
+  client.exportSession("s1", "notes.html");
+  assert.deepEqual(
+    transports.last.sentOfType("export_session").map((frame) => frame.outputPath),
+    [undefined, "notes.html"],
+  );
+
+  transports.last.emit({ v: WIRE_VERSION, type: "exported", sessionId: "s1", path: "/w/a.html" });
+  assert.deepEqual(paths, ["s1:/w/a.html"]);
+});

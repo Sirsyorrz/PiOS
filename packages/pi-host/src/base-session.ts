@@ -91,6 +91,18 @@ export abstract class BaseSession {
 
   /** A command is in flight; a second one has nothing to cancel it with. */
   private bashRunning = false;
+  /** A compaction outlives its turn, and a manual one has no turn at all. */
+  private compacting = false;
+
+  /**
+   * Replacing the agent now would cut off work in flight. pi's own `/reload`
+   * refuses on the same grounds.
+   */
+  protected assertReloadable(): void {
+    if (this.status === "running") throw new Error("wait for the current response to finish before reloading");
+    if (this.compacting) throw new Error("wait for compaction to finish before reloading");
+    if (this.bashRunning) throw new Error("wait for the shell command to finish before reloading");
+  }
 
   abstract getEntries(since?: string): Promise<EntriesPage>;
 
@@ -308,6 +320,8 @@ export abstract class BaseSession {
   protected setStatus(status: SessionStatus): void {
     if (this.status === status) return;
     this.status = status;
+    // A replaced agent took its compaction with it; no end event will come.
+    if (status === "starting" || status === "crashed") this.compacting = false;
     this.publish({ type: "status", status });
   }
 
@@ -318,6 +332,8 @@ export abstract class BaseSession {
       this.userActiveAt = Date.now();
       this.notePreview(messagePreview(event.message));
     }
+    if (event.type === "compaction_start") this.compacting = true;
+    if (event.type === "compaction_end") this.compacting = false;
     if (event.type === "agent_start") this.setStatus("running");
     // Only agent_settled is terminal; agent_end may be followed by a retry,
     // a compaction, or a queued continuation.

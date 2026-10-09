@@ -70,6 +70,26 @@ describe("the web app against the sandbox", () => {
     await until(shows("Context compacted"), "the compaction divider");
   });
 
+  it("copies the last answer with /copy", async () => {
+    await send("/copy");
+    await until(shows("the last answer"), "the copy notice");
+  });
+
+  it("shows the session's accounting with /session", async () => {
+    await send("/session");
+    await until(shows("2,400 total"), "the token count");
+    assert.ok(await browser.tap('.dialog button[aria-label="cancel"]'));
+    await browser.waitFor("textarea");
+  });
+
+  it("exports with /export and reloads with /reload", async () => {
+    await send("/export");
+    await until(shows("Exported to"), "the export notice");
+    await send("/reload");
+    await browser.sleep(500);
+    assert.ok(!(await browser.text("body")).includes("Rejected"), "the reload was accepted");
+  });
+
   it("keeps an open editor through a streaming turn", async () => {
     assert.ok(await browser.tap('button[aria-label="browse files"]'));
     await until(() => browser.tapText("README.md"), "the file tree");

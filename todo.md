@@ -3,8 +3,6 @@
   branches and stashes in one place)
 - absorb cc-usage into packages/server/src/usage.ts instead of shelling out
 - terminal (needs a real PTY; one-shot bash does not grow into it)
-- missing native commands: pi names it `/thinking`, not `/think`; `/copy`
-  (last answer), `/session` (stats), `/reload`, `/export`
 - @ fuzzy picker must be daemon-side: RPC mode no-ops addAutocompleteProvider
   and setEditorComponent, so pi-fzfp cannot serve the client. Upstream idea:
   an RPC command that runs registered providers and returns AutocompleteItems

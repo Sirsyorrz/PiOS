@@ -1,4 +1,5 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { resolve as resolvePath } from "node:path";
 import { SettingsManager } from "@earendil-works/pi-coding-agent";
 import type {
   BashResult,
@@ -634,12 +635,32 @@ export class SubprocessSession extends BaseSession implements PiSession {
     if (this.disposed || this.trusted === trustProject) return;
     this.createOptions.trustProject = trustProject;
     this.setTrusted(trustProject);
+    await this.replaceChild(trustProject ? "directory trusted" : "trust revoked");
+  }
+
+  /** RPC mode has no reload command; a fresh child reads everything again. */
+  async reload(): Promise<void> {
+    if (this.disposed) throw new Error(`session ${this.id} is not running`);
+    this.assertReloadable();
+    await this.replaceChild("reloaded");
+  }
+
+  async exportHtml(outputPath?: string): Promise<string> {
+    const response = await this.request({ type: "export_html", outputPath });
+    if (!response.success) throw new Error(response.error ?? "export_html failed");
+    const path = (response.data as { path?: string } | undefined)?.path;
+    if (!path) throw new Error("export_html returned no path");
+    // pi answers relative to its own working directory, which is the cwd.
+    return resolvePath(this.createOptions.cwd, path);
+  }
+
+  private async replaceChild(reason: string): Promise<void> {
     const proc = this.proc;
     this.proc = null;
     // Two children on one session file would interleave their writes.
     if (proc) await this.stopChild(proc);
     this.setStatus("starting");
-    await this.relaunch(trustProject ? "directory trusted" : "trust revoked");
+    await this.relaunch(reason);
   }
 
   private async relaunch(reason: string): Promise<void> {

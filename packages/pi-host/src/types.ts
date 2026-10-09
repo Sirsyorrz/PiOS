@@ -196,6 +196,16 @@ export interface PiSession {
    */
   setProjectTrust(trustProject: boolean): Promise<void>;
 
+  /**
+   * pi's `/reload`: extensions, skills, templates and context files are read
+   * again. Replaces the agent in place, like a trust change. Refused while
+   * the agent, a compaction or a shell command is running, as pi refuses it.
+   */
+  reload(): Promise<void>;
+
+  /** pi's `/export` to HTML. Resolves to the absolute path written. */
+  exportHtml(outputPath?: string): Promise<string>;
+
   subscribe(listener: (event: BufferedEvent) => void): () => void;
   /** Buffered events after `sinceSeq`, for a client that was away. */
   replay(sinceSeq?: number): { events: BufferedEvent[]; gap: boolean };

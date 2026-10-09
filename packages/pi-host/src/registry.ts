@@ -175,9 +175,22 @@ export class SessionRegistry {
     const session = this.sessions.get(id);
     if (!session || session.info.status === "disposed") return false;
     await session.setProjectTrust(trustProject);
+    this.countAsFreshStart(id);
+    return true;
+  }
+
+  /** pi's `/reload`, counted as a fresh start for the same reason as trust. */
+  async reload(id: string): Promise<boolean> {
+    const session = this.sessions.get(id);
+    if (!session || session.info.status === "disposed") return false;
+    await session.reload();
+    this.countAsFreshStart(id);
+    return true;
+  }
+
+  private countAsFreshStart(id: string): void {
     this.startedAt.set(id, this.options.now());
     this.restarts.set(id, 0);
-    return true;
   }
 
   async dispose(id: string): Promise<void> {

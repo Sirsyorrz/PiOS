@@ -12,7 +12,7 @@ export function ThinkingPicker({ sessionId, current, levels, selectRef }: {
   sessionId: string;
   current?: string;
   levels: string[];
-  /** Lets `/think` open the same control the dock shows. */
+  /** Lets `/thinking` open the same control the dock shows. */
   selectRef?: RefObject<HTMLSelectElement | null>;
 }) {
   const client = useClient();

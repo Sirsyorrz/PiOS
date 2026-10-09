@@ -84,3 +84,28 @@ export function useFileObjectUrl(path: string | null): {
 
   return { url, error };
 }
+
+/**
+ * Saves a file from the project to this device.
+ *
+ * Handed over as an opaque download rather than opened: a blob URL shares
+ * the app's origin, and an HTML file rendered there could run as the app.
+ */
+export async function downloadFile(access: FileAccess, path: string): Promise<void> {
+  if (!access.baseUrl) throw new Error("not connected");
+  const url = `${access.baseUrl}/file?${projectQuery(access)}&path=${encodeURIComponent(path)}`;
+  const response = await fetch(url, {
+    headers: { authorization: `Bearer ${access.deviceToken}` },
+  });
+  if (!response.ok) throw new Error(response.status === 404 ? "not found" : "unavailable");
+  const blob = new Blob([await response.arrayBuffer()], { type: "application/octet-stream" });
+  const objectUrl = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = objectUrl;
+  link.download = path.split("/").at(-1) || "download";
+  document.body.append(link);
+  link.click();
+  link.remove();
+  // Long enough for the browser to have started reading it.
+  setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+}

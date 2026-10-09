@@ -1,4 +1,5 @@
 import { Fragment, type ReactNode, useEffect, useRef, useState } from "react";
+import { copyText } from "../clipboard.ts";
 import { TranscriptImage } from "./image-view.tsx";
 import { CheckIcon, CopyIcon } from "./icons.tsx";
 
@@ -280,11 +281,7 @@ function CodeBlock({ lang, code }: { lang: string; code: string }) {
   useEffect(() => () => clearTimeout(timer.current), []);
 
   const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(code);
-    } catch {
-      return;
-    }
+    if (!(await copyText(code))) return;
     setCopied(true);
     clearTimeout(timer.current);
     timer.current = setTimeout(() => setCopied(false), 1500);

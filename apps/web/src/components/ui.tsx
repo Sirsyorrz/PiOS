@@ -1,4 +1,5 @@
 import type { FormEvent, MouseEventHandler, ReactNode } from "react";
+import { isolate } from "../format.ts";
 import { CloseIcon, SearchIcon } from "./icons.tsx";
 
 function withBase(base: string, className?: string): string {
@@ -103,6 +104,21 @@ export function Divider({ children }: { children: ReactNode }) {
   return (
     <div className="divider muted" role="separator">
       <span className="line">{children}</span>
+    </div>
+  );
+}
+
+/** One labelled value in a list: read, not tapped. */
+export function FactRow({ label, value, path }: {
+  label: string;
+  value: string;
+  /** Clipped from the front, as paths are everywhere else. */
+  path?: boolean;
+}) {
+  return (
+    <div className="list-row static">
+      <span className="muted line">{label}</span>
+      <span className={path ? "line tail" : "line"}>{path ? isolate(value) : value}</span>
     </div>
   );
 }

@@ -1,6 +1,7 @@
 import type { ImageContent, ModelOption, StreamingBehavior } from "@pios/protocol";
 import type { SessionCreate } from "@pios/client-core";
 import { useEffect, useRef, useState } from "react";
+import { useClient } from "../client-provider.tsx";
 import { useSettings } from "../settings.ts";
 import { browserStorage } from "../storage.ts";
 import { CommandMenu, slashQuery, useSlashCommands, type MenuEntry } from "./command-menu.tsx";
@@ -60,6 +61,7 @@ export function Composer({
   /** Focus of the field, so the pane can give the keyboard more room. */
   onComposingChange?: (composing: boolean) => void;
 }) {
+  const client = useClient();
   const steeringMode = useSettings().steeringMode;
   const [text, setText] = useState("");
   const [images, setImages] = useState<ImageContent[]>([]);
@@ -78,11 +80,17 @@ export function Composer({
   const dockCommands: NativeCommand[] = [
     { name: "model", description: "Switch models", run: () => setModelDialog(true) },
   ];
-  if ((thinkingLevels?.length ?? 0) > 1) {
+  if (thinkingLevels && thinkingLevels.length > 1) {
     dockCommands.push({
-      name: "think",
+      name: "thinking",
       description: "Set the thinking level",
-      run: () => openSelect(thinkingSelect.current),
+      // A level it does not offer opens the picker: that is the list of the
+      // ones it does.
+      run: (args) => {
+        const level = args.toLowerCase();
+        if (thinkingLevels.includes(level)) client.setThinkingLevel(sessionId, level);
+        else openSelect(thinkingSelect.current);
+      },
     });
   }
 
@@ -271,7 +279,7 @@ export function Composer({
       />
 
       <div className="composer-actions">
-        {/* Collapsed while typing: the pickers are one `/model` or `/think`
+        {/* Collapsed while typing: the pickers are one `/model` or `/thinking`
             away, and the room they take is transcript on a phone. */}
         <div className="composer-options">
         <label className="attach ghost icon" title="Attach an image">

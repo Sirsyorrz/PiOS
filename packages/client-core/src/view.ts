@@ -242,3 +242,19 @@ function messageKey(message: AgentMessage): string {
   const suffix = message.role === "toolResult" ? message.toolCallId : messageText(message);
   return `m:${message.role}:${timestamp}:${suffix}`;
 }
+
+/**
+ * What pi's `/copy` copies: the text of the last answer, tool calls and
+ * thinking left out. A turn stopped before it said anything is skipped; one
+ * that only called tools has nothing to copy, as in pi.
+ */
+export function lastAssistantText(view: SessionView): string | undefined {
+  const last = view.items.findLast(
+    (item) =>
+      item.kind === "message" &&
+      item.message.role === "assistant" &&
+      !(item.message.stopReason === "aborted" && item.message.content.length === 0),
+  );
+  if (last?.kind !== "message") return undefined;
+  return messageText(last.message).trim() || undefined;
+}

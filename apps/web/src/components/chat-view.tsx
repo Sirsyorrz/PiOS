@@ -7,10 +7,11 @@ import type {
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useClient, useSessionView } from "../client-provider.tsx";
 import { useEdgeSwipe } from "../edge-swipe.ts";
-import { FileAccessContext } from "../files.ts";
-import { basename, compactCount, isolate, sessionTitle } from "../format.ts";
+import { copyText } from "../clipboard.ts";
+import { downloadFile, FileAccessContext } from "../files.ts";
+import { basename, collapseHome, compactCount, isolate, messageOf, sessionTitle } from "../format.ts";
 import { useStickToBottom } from "../scroll.ts";
-import type { SessionView, SupervisorState } from "@pios/client-core";
+import { lastAssistantText, type SessionView, type SupervisorState } from "@pios/client-core";
 import { Banners } from "./banners.tsx";
 import { Composer } from "./composer.tsx";
 import type { NativeCommand } from "./native-commands.ts";
@@ -30,6 +31,7 @@ import {
 } from "./icons.tsx";
 import type { SessionState } from "../session-status.ts";
 import { BashCard, MessageBubble, StreamingBubble } from "./message.tsx";
+import { SessionInfo } from "./session-info.tsx";
 import { SessionStatsFooter } from "./session-stats.tsx";
 import { useSettings } from "../settings.ts";
 import type { Draft } from "../drafts.ts";
@@ -143,6 +145,14 @@ export function ChatView({
     [draft],
   );
   const cwd = session?.cwd ?? draft?.cwd;
+
+  // A draft is addressed by its directory: the file routes have no session
+  // to look it up by until the first prompt creates one.
+  const draftCwd = draft?.cwd;
+  const files = useMemo(
+    () => ({ baseUrl, deviceToken, sessionId, cwd: draftCwd }),
+    [baseUrl, deviceToken, sessionId, draftCwd],
+  );
   const title = view?.presentation.title
     ? { text: view.presentation.title, path: false }
     : sessionTitle(session?.name, cwd);
@@ -174,7 +184,43 @@ export function ChatView({
   // A question one of this client's own commands asks, in the same sheet an
   // extension's question uses. The agent is not waiting on it.
   const [question, setQuestion] = useState<LocalQuestion | null>(null);
-  useEffect(() => setQuestion(null), [sessionId]);
+  const [showInfo, setShowInfo] = useState(false);
+  useEffect(() => {
+    setQuestion(null);
+    setShowInfo(false);
+  }, [sessionId]);
+
+  const say = (message: string, type?: "info" | "warning" | "error") =>
+    client.sessions.addNotice(sessionId, message, type);
+
+  async function copyLastAnswer() {
+    const text = view ? lastAssistantText(view) : undefined;
+    if (!text) return say("There is no answer to copy yet.", "warning");
+    if (await copyText(text)) say("Copied the last answer.");
+    else say("This browser could not copy the last answer.", "warning");
+  }
+
+  function exportSession(path: string) {
+    // RPC mode only exports HTML; a `.jsonl` name would hold HTML.
+    if (/\.jsonl$/i.test(path)) return say("Only HTML exports are available here.", "warning");
+    client.exportSession(sessionId, path);
+  }
+
+  // Only this device's own request is answered, so the file is fetched to the
+  // device that asked for it. One outside the project is not served, and the
+  // path on the machine is all there is to show.
+  useEffect(
+    () =>
+      client.onExported((exportedFrom, path) => {
+        if (exportedFrom !== sessionId) return;
+        say(`Exported to ${collapseHome(path)}`);
+        if (!cwd || !path.startsWith(`${cwd}/`)) return;
+        downloadFile(files, path).catch((error: unknown) =>
+          say(`The export could not be downloaded: ${messageOf(error)}`, "warning"),
+        );
+      }),
+    [client, sessionId, cwd, files],
+  );
 
   function rename(name: string) {
     if (name.trim()) client.setSessionName(sessionId, name.trim());
@@ -215,6 +261,22 @@ export function ChatView({
           description: "Summarise the history to free up context",
           run: (args) => client.compact(sessionId, args),
         },
+        { name: "copy", description: "Copy the last answer", run: () => void copyLastAnswer() },
+        {
+          name: "session",
+          description: "Session file, messages, tokens and cost",
+          run: () => setShowInfo(true),
+        },
+        {
+          name: "export",
+          description: "Export the session as HTML",
+          run: exportSession,
+        },
+        {
+          name: "reload",
+          description: "Reload extensions, skills, templates and context files",
+          run: () => client.reload(sessionId),
+        },
         {
           name: "autocompact",
           description: "Compact on its own near the context limit",
@@ -243,14 +305,6 @@ export function ChatView({
     // the one being asked.
     blocked: Boolean(dialog),
   });
-
-  // A draft is addressed by its directory: the file routes have no session
-  // to look it up by until the first prompt creates one.
-  const draftCwd = draft?.cwd;
-  const files = useMemo(
-    () => ({ baseUrl, deviceToken, sessionId, cwd: draftCwd }),
-    [baseUrl, deviceToken, sessionId, draftCwd],
-  );
 
   // The open file survives the app being backgrounded, so coming back lands
   // where the work was, and the header icon reopens it in one tap.
@@ -471,6 +525,8 @@ export function ChatView({
             if (!answer.cancelled) question.answer(answer);
           }}
         />
+      ) : showInfo ? (
+        <SessionInfo sessionId={sessionId} session={session} onClose={() => setShowInfo(false)} />
       ) : (
         <Composer
           sessionId={sessionId}

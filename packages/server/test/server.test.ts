@@ -1,6 +1,6 @@
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { WIRE_VERSION, type ServerFrame } from "@pios/protocol";
@@ -705,6 +705,27 @@ test("a session is named, compacted and switched off auto-compaction from the cl
   const page = await client.waitForCommand(client.send({ type: "get_entries", sessionId }));
   assert.ok(page.type === "entries");
   assert.equal(page.entries.at(-1)?.type, "compaction");
+  client.close();
+});
+
+test("a session is exported and reloaded from the client", async () => {
+  const client = await hello(harness);
+  const cwd = join(harness.dir, "export");
+  mkdirSync(cwd, { recursive: true });
+  const sessionId = await openSession(harness, cwd);
+  await client.waitForCommand(client.send({ type: "subscribe", sessionId }));
+
+  const exported = await client.waitForCommand(client.send({ type: "export_session", sessionId }));
+  assert.ok(exported.type === "exported");
+  assert.ok(exported.path.startsWith(`${cwd}/`), "anchored to the session, not the daemon");
+  assert.ok(existsSync(exported.path));
+
+  const reload = client.send({ type: "reload_session", sessionId });
+  assert.equal((await client.waitForCommand(reload)).type, "ack");
+  const recovered = await client.waitFor(
+    (f) => f.type === "session_recovered" && f.sessionId === sessionId,
+  );
+  assert.equal(recovered.type === "session_recovered" ? recovered.reason : null, "reloaded");
   client.close();
 });
 

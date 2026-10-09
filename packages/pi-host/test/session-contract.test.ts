@@ -1,6 +1,6 @@
 import { test, describe, before, after } from "node:test";
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -257,6 +257,44 @@ for (const harness of harnesses) {
       assert.equal(opening.sessionFile, undefined);
 
       await assert.rejects(() => local.branch(before.entries[1]!.id), /user message/);
+      await local.dispose();
+    });
+
+    test("an export lands in the session cwd and reports an absolute path", async () => {
+      const path = await session.exportHtml();
+      assert.ok(path.startsWith(`${dir}/`), path);
+      assert.ok(existsSync(path));
+
+      const named = await session.exportHtml("named.html");
+      assert.equal(named, join(dir, "named.html"));
+      assert.ok(existsSync(named));
+    });
+
+    test("a reload replaces the agent in place, and waits for a running one", async () => {
+      const local = await harness.start(dir, "sreload");
+      const done = settled(local);
+      const started = new Promise<void>((resolve) => {
+        const off = local.subscribe((b) => {
+          if (isAgentEvent(b, "agent_start")) {
+            off();
+            resolve();
+          }
+        });
+      });
+      await local.prompt("before");
+      await started;
+      await assert.rejects(() => local.reload(), /finish/);
+      await done;
+
+      const reasons: string[] = [];
+      const off = local.subscribe((b) => {
+        if (b.event.type === "session_recovered") reasons.push(b.event.reason);
+      });
+      await local.reload();
+      off();
+      assert.deepEqual(reasons, ["reloaded"]);
+      assert.equal(local.info.status, "idle");
+      assert.equal((await local.getEntries()).entries.length, 2, "the transcript survives");
       await local.dispose();
     });
 

@@ -32,6 +32,7 @@ export const RpcCommandSchema = z.discriminatedUnion("type", [
   withId({ type: z.literal("get_entries"), since: z.string().optional() }),
   withId({ type: z.literal("get_tree") }),
   withId({ type: z.literal("get_session_stats") }),
+  withId({ type: z.literal("export_html"), outputPath: z.string().optional() }),
   withId({ type: z.literal("get_commands") }),
   withId({ type: z.literal("set_session_name"), name: z.string() }),
   withId({ type: z.literal("set_model"), provider: z.string(), modelId: z.string() }),
@@ -108,9 +109,12 @@ export type GetEntriesData = z.infer<typeof GetEntriesDataSchema>;
  * are null right after a compaction until a fresh response reports usage.
  */
 export const SessionStatsSchema = z.looseObject({
+  sessionFile: z.string().optional(),
+  sessionId: z.string().optional(),
   userMessages: z.number().optional(),
   assistantMessages: z.number().optional(),
   toolCalls: z.number().optional(),
+  toolResults: z.number().optional(),
   totalMessages: z.number().optional(),
   tokens: z
     .looseObject({

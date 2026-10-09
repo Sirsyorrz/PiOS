@@ -1896,7 +1896,7 @@ button.scroll-bottom {
   max-width: 100%;
 }
 
-/* Kept in the tree rather than removed: `/think` opens the select by ref. */
+/* Kept in the tree rather than removed: `/thinking` opens the select by ref. */
 .chat.composing .composer-options {
   flex: 0 0 0;
   max-width: 0;

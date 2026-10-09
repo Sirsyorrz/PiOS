@@ -198,3 +198,23 @@ test("compaction takes optional instructions and a separate auto toggle", () => 
   assert.ok(ClientFrameSchema.safeParse({ ...base, type: "set_auto_compaction", enabled: false }).success);
   assert.equal(ClientFrameSchema.safeParse({ ...base, type: "set_auto_compaction" }).success, false);
 });
+
+test("an export names its file only when asked to, and its reply is a path", () => {
+  const base = { v: WIRE_VERSION, commandId: "c1", sessionId: "s1" };
+  assert.ok(ClientFrameSchema.safeParse({ ...base, type: "export_session" }).success);
+  assert.ok(
+    ClientFrameSchema.safeParse({ ...base, type: "export_session", outputPath: "out.html" }).success,
+  );
+  assert.equal(
+    ClientFrameSchema.safeParse({ ...base, type: "export_session", outputPath: "  " }).success,
+    false,
+  );
+  assert.ok(ClientFrameSchema.safeParse({ ...base, type: "reload_session" }).success);
+  const reply = ServerFrameSchema.safeParse({
+    v: WIRE_VERSION,
+    type: "exported",
+    sessionId: "s1",
+    path: "/work/pi-session-s1.html",
+  });
+  assert.ok(reply.success);
+});

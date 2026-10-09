@@ -349,6 +349,13 @@ function handle(command: Record<string, any>) {
         },
       });
 
+    case "export_html": {
+      // Relative to the process cwd, as pi answers.
+      const path = command.outputPath ?? `pi-session-${sessionId}.html`;
+      writeFileSync(path, `<!doctype html><title>${sessionId}</title>`);
+      return respond({ success: true, data: { path } });
+    }
+
     case "get_available_models":
       return respond({ success: true, data: { models: catalogue } });
 
