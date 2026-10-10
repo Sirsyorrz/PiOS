@@ -447,7 +447,16 @@ export function ChatView({
               </span>
               {item.entry.status === "failed" ? (
                 <span className="row">
-                  <button type="button" onClick={() => client.outbox.requeue(item.entry.commandId)}>
+                  <button type="button" onClick={() =>
+                      // The usual refusal is a prompt sent mid-turn without
+                      // a behaviour, so a retry while busy queues it.
+                      client.outbox.requeue(item.entry.commandId, {
+                        streamingBehavior: view?.running
+                          ? (item.entry.streamingBehavior ?? "followUp")
+                          : item.entry.streamingBehavior,
+                      })
+                    }
+                  >
                     Retry
                   </button>
                   <button type="button" onClick={() => client.outbox.discard(item.entry.commandId)}>
