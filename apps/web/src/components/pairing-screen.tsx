@@ -14,6 +14,18 @@ function takePairingTokenFromHash(): string | null {
   return token;
 }
 
+/** Splits a pasted `pios-server pair` link into its origin and token. */
+export function parsePairingLink(input: string): { origin: string; token: string } | null {
+  let link: URL;
+  try {
+    link = new URL(input.trim());
+  } catch {
+    return null;
+  }
+  const token = new URLSearchParams(link.hash.replace(/^#/, "")).get("pt");
+  return token ? { origin: link.origin, token } : null;
+}
+
 /**
  * Where the daemon probably is.
  *
@@ -96,7 +108,7 @@ export function PairingScreen({ notice, onPaired }: {
         {notice ? <p className="banner warn">{notice}</p> : null}
         <p className="muted">
           Run <code>pios-server pair</code> on the machine and open the printed link, or paste the
-          token below.
+          whole link (or just the token) below.
         </p>
 
         <label>
@@ -111,8 +123,18 @@ export function PairingScreen({ notice, onPaired }: {
           />
         </label>
         <label>
-          Pairing token
-          <input value={token} onChange={(e) => setToken(e.target.value)} autoComplete="off" />
+          Pairing link or token
+          <input
+            value={token}
+            onChange={(e) => {
+              const link = parsePairingLink(e.target.value);
+              if (!link) return setToken(e.target.value);
+              setToken(link.token);
+              setEdited(true);
+              setUrl(link.origin);
+            }}
+            autoComplete="off"
+          />
         </label>
         <label>
           Device label
