@@ -138,3 +138,35 @@ test("presentation survives a reconnect; a stray control byte does not eat a fra
   assert.deepEqual(presentation.status, [{ key: "nolo", text: "YOLO" }]);
   returning.close();
 });
+
+test("a reload drops the statuses the old process declared", async () => {
+  const client = await hello(harness);
+  const cwd = join(harness.dir, "dialog-d");
+  mkdirSync(cwd, { recursive: true });
+  const sessionId = nextSessionId();
+  await client.waitForCommand(client.send({ type: "subscribe", sessionId }));
+
+  client.send({
+    type: "prompt",
+    sessionId,
+    create: { cwd, trustProject: false },
+    messageId: "d-m1",
+    text: "SHOW_STATUS",
+    images: [],
+  });
+  await client.waitFor(
+    (f) => f.type === "agent_event" && f.sessionId === sessionId && f.event.type === "agent_settled",
+  );
+  // An uninstalled extension never clears its own status, so the reload must.
+  await client.waitForCommand(client.send({ type: "reload_session", sessionId }));
+  client.close();
+
+  const returning = await hello(harness);
+  await returning.waitForCommand(returning.send({ type: "subscribe", sessionId, sinceSeq: 9_999 }));
+  const snapshot = await returning.waitFor(
+    (f) => f.type === "extension_ui_state" && f.sessionId === sessionId,
+  );
+  const presentation = (snapshot as Extract<ServerFrame, { type: "extension_ui_state" }>).presentation;
+  assert.deepEqual(presentation.status, []);
+  returning.close();
+});

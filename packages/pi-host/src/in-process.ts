@@ -430,6 +430,7 @@ export class InProcessSession extends BaseSession implements PiSession {
       /* the agent is already broken */
     }
     this.agent = null;
+    this.resetPresentation();
     await this.attach();
     this.publish({ type: "session_recovered", leafId: this.leafId, reason });
   }
