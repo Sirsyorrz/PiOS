@@ -214,6 +214,11 @@ export abstract class BaseSession {
     return true;
   }
 
+  /** A replaced process re-declares its own; the old one's would linger. */
+  protected resetPresentation(): void {
+    this.presentationState = emptyPresentation();
+  }
+
   get pendingDialogs(): ExtensionUiRequest[] {
     return [...this.dialogs.values()];
   }

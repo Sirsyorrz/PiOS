@@ -664,6 +664,7 @@ export class SubprocessSession extends BaseSession implements PiSession {
   }
 
   private async relaunch(reason: string): Promise<void> {
+    this.resetPresentation();
     await this.spawnChild();
     this.publish({ type: "session_recovered", leafId: this.leafId, reason });
   }
