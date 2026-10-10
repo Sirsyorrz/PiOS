@@ -616,6 +616,9 @@ button.link {
   border-right: 1px solid var(--line);
   padding: calc(12px + var(--safe-top)) 12px max(12px, var(--safe-bottom))
     calc(12px + var(--safe-left));
+  /* A grid item defaults to `min-height: auto` and grows with its content,
+     which #root then clips instead of letting the session list scroll. */
+  min-height: 0;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
@@ -778,6 +781,8 @@ button.link {
 }
 
 .sessions {
+  flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   gap: 12px;
