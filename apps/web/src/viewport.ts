@@ -16,6 +16,10 @@ function editing(): boolean {
 export function trackViewport(): void {
   const root = document.documentElement;
   const vv = window.visualViewport;
+  // Android shrinks the layout viewport along with the visual one, so the
+  // keyboard only shows up as a drop from the tallest height seen.
+  let tallest = 0;
+  let wasKeyboard = false;
 
   const apply = () => {
     // With nothing to type into there is no keyboard, whatever the viewport
@@ -34,7 +38,18 @@ export function trackViewport(): void {
     // Anything the visual viewport lost to an overlay is assumed to be the
     // keyboard; below that threshold it is just collapsing browser chrome.
     const hidden = window.innerHeight - height - offset;
-    const keyboard = hidden > MIN_KEYBOARD;
+    tallest = Math.max(tallest, height);
+    const keyboard = hidden > MIN_KEYBOARD || tallest - height > MIN_KEYBOARD;
+
+    // Android's keyboard-hide key leaves the field focused, and everything
+    // that collapses while typing stays collapsed until it blurs.
+    if (wasKeyboard && !keyboard) {
+      const active = document.activeElement;
+      if (active instanceof HTMLElement && active.matches("input, textarea, [contenteditable]")) {
+        active.blur();
+      }
+    }
+    wasKeyboard = keyboard;
 
     root.style.setProperty("--app-height", `${height}px`);
     root.style.setProperty("--app-offset", `${offset}px`);
@@ -83,5 +98,8 @@ export function trackViewport(): void {
   vv?.addEventListener("resize", apply);
   vv?.addEventListener("scroll", apply);
   window.addEventListener("resize", apply);
-  window.addEventListener("orientationchange", apply);
+  window.addEventListener("orientationchange", () => {
+    tallest = 0;
+    apply();
+  });
 }
