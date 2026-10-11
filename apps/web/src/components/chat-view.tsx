@@ -9,7 +9,7 @@ import { useClient, useSessionView } from "../client-provider.tsx";
 import { useEdgeSwipe } from "../edge-swipe.ts";
 import { copyText } from "../clipboard.ts";
 import { downloadFile, FileAccessContext } from "../files.ts";
-import { basename, collapseHome, compactCount, isolate, messageOf, sessionTitle } from "../format.ts";
+import { collapseHome, compactCount, isolate, messageOf, sessionTitle } from "../format.ts";
 import { useStickToBottom } from "../scroll.ts";
 import { lastAssistantText, type SessionView, type SupervisorState } from "@pios/client-core";
 import { Banners } from "./banners.tsx";
@@ -137,9 +137,6 @@ export function ChatView({
       draft
         ? {
             cwd: draft.cwd,
-            // Named for the directory at birth, so the list never shows a
-            // session whose name is the id it was given.
-            name: basename(draft.cwd),
             trustProject: draft.trustProject,
           }
         : undefined,
