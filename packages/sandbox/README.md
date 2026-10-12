@@ -61,6 +61,9 @@ export default scenario("my-bug", {
 });
 ```
 
+Sessions are trusted unless a spec sets `trusted: false`; `empty` does, for
+the untrusted banner.
+
 Register it in `src/scenarios/index.ts`. Entry builders are in
 `src/transcript.ts`; repo fixtures in `src/repo.ts`.
 

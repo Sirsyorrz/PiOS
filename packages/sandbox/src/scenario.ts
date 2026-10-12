@@ -18,6 +18,11 @@ export interface SessionSpec {
    */
   repo?: RepoSpec | false;
   entries?: EntrySeed[];
+  /**
+   * Defaults to true: a user's day-to-day projects are trusted, so the
+   * untrusted banner would otherwise sit in every screenshot.
+   */
+  trusted?: boolean;
 }
 
 export interface Scenario {

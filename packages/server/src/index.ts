@@ -12,3 +12,4 @@ export * from "./push.ts";
 export * from "./server.ts";
 export * from "./relay-connector.ts";
 export * from "./relay-key.ts";
+export * from "./trust.ts";

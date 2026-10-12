@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { projectSessionDir, subprocessHost } from "@pios/pi-host";
-import { PiosServer } from "@pios/server";
+import { PiosServer, TrustStore } from "@pios/server";
 import { createRepo } from "./repo.ts";
 import { buildEntries } from "./transcript.ts";
 import { findScenario } from "./scenarios/index.ts";
@@ -28,6 +28,7 @@ export interface SandboxSession {
   id: string;
   name: string;
   cwd: string;
+  trusted: boolean;
 }
 
 export interface Sandbox {
@@ -61,6 +62,8 @@ export async function startSandbox(options: SandboxOptions = {}): Promise<Sandbo
   mkdirSync(projects, { recursive: true });
 
   const sessions = scenario.sessions.map((spec) => seed(spec, projects, sessionRoot));
+  const trust = new TrustStore(join(dir, "agent"));
+  for (const session of sessions) trust.set(session.cwd, session.trusted);
 
   const server = new PiosServer({
     host: options.host ?? "127.0.0.1",
@@ -88,7 +91,12 @@ export async function startSandbox(options: SandboxOptions = {}): Promise<Sandbo
   const deviceToken = await pair(baseUrl, server);
 
   for (const session of sessions) {
-    await server.registry.create({ id: session.id, cwd: session.cwd, name: session.name });
+    await server.registry.create({
+      id: session.id,
+      cwd: session.cwd,
+      name: session.name,
+      trustProject: session.trusted,
+    });
   }
   // A scenario that asks for reaping gets it now, rather than after a wait
   // nobody watching a screenshot is going to sit through.
@@ -118,7 +126,7 @@ function seed(spec: SessionSpec, projects: string, sessionRoot: string): Sandbox
   mkdirSync(stateDir, { recursive: true });
   const entries = buildEntries(spec.id, spec.entries ?? []);
   writeStubSession(join(stateDir, `${spec.id}.jsonl`), { id: spec.id, cwd }, entries as StubEntry[]);
-  return { id: spec.id, name: spec.name, cwd };
+  return { id: spec.id, name: spec.name, cwd, trusted: spec.trusted ?? true };
 }
 
 async function pair(baseUrl: string, server: PiosServer): Promise<string> {
