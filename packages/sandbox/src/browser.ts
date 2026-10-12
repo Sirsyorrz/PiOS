@@ -80,6 +80,11 @@ export class Browser {
     const browser = new Browser(proc, socket, profileDir);
     await browser.send("Page.enable");
     await browser.send("Runtime.enable");
+    // Downloads land in the throwaway profile, not ~/Downloads, so close() removes them.
+    await browser.send("Page.setDownloadBehavior", {
+      behavior: "allow",
+      downloadPath: join(profileDir, "downloads"),
+    });
     await browser.send("Emulation.setDeviceMetricsOverride", {
       width: viewport.width,
       height: viewport.height,
