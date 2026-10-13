@@ -211,7 +211,7 @@ export class PiosServer {
   }
 
   endpoint(): Endpoint {
-    return advertisedEndpoint(this.port, this.config.relayUrl);
+    return advertisedEndpoint(this.port, this.config.relayUrl, this.config.publicUrl);
   }
 
   async close(): Promise<void> {

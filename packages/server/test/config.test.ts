@@ -56,3 +56,10 @@ function restore(name: string, previous: string | undefined): void {
   if (previous === undefined) delete process.env[name];
   else process.env[name] = previous;
 }
+
+test("relay and public url together are refused", () => {
+  assert.throws(
+    () => defaultConfig({ relayUrl: "https://r.example", publicUrl: "https://box.tail1.ts.net" }),
+    /not both/,
+  );
+});

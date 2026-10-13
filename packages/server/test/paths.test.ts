@@ -75,3 +75,10 @@ test("without a relay the daemon only advertises itself locally", () => {
   assert.equal(endpoint.kind, "local");
   assert.equal(endpoint.url, "http://localhost:4111");
 });
+
+test("a public url is advertised when there is no relay", () => {
+  const endpoint = advertisedEndpoint(4111, null, "https://box.tail1234.ts.net");
+  assert.equal(endpoint.kind, "public");
+  assert.equal(endpoint.key, "public:box.tail1234.ts.net");
+  assert.equal(endpoint.url, "https://box.tail1234.ts.net");
+});

@@ -57,6 +57,12 @@ export interface ServerConfig {
    * means local only: a browser on this machine, the sandbox, development.
    */
   relayUrl: string | null;
+  /**
+   * An https reverse proxy in front of the loopback daemon, e.g.
+   * `tailscale serve`. Only changes what `pair` prints; the app remembers
+   * whatever origin it was opened from.
+   */
+  publicUrl: string | null;
 }
 
 export type SessionHostMode = "subprocess" | "in-process";
@@ -81,6 +87,14 @@ export function defaultConfig(overrides: Partial<ServerConfig> = {}): ServerConf
       overrides.relayUrl !== undefined ? overrides.relayUrl : (process.env.PIOS_RELAY_URL ?? null),
     ),
   );
+  const publicUrl = checkPublicUrl(
+    normalizeUrl(
+      overrides.publicUrl !== undefined ? overrides.publicUrl : (process.env.PIOS_PUBLIC_URL ?? null),
+    ),
+  );
+  // One route per daemon: a second origin is a second install and pairing on
+  // the phone, and the pairing link could only ever name one of them.
+  if (relayUrl && publicUrl) throw new Error("set PIOS_RELAY_URL or PIOS_PUBLIC_URL, not both");
   return {
     host: overrides.host ?? process.env.PIOS_BIND ?? "127.0.0.1",
     port: overrides.port ?? 4111,
@@ -99,12 +113,13 @@ export function defaultConfig(overrides: Partial<ServerConfig> = {}): ServerConf
     activityTtlMs: overrides.activityTtlMs ?? 45_000,
     webDir: overrides.webDir !== undefined ? overrides.webDir : defaultWebDir(),
     relayUrl,
+    publicUrl,
     // The relay's https origin identifies this daemon better than a generic
     // URL, and is the one address the operator already knows is real.
     pushSubject:
       overrides.pushSubject ??
       process.env.PIOS_PUSH_SUBJECT ??
-      (relayUrl?.startsWith("https://") ? relayUrl : DEFAULT_PUSH_SUBJECT),
+      (relayUrl?.startsWith("https://") ? relayUrl : (publicUrl ?? DEFAULT_PUSH_SUBJECT)),
   };
 }
 
@@ -147,6 +162,19 @@ function checkRelayUrl(url: string | null): string | null {
   const loopback = ["localhost", "127.0.0.1", "[::1]"].includes(parsed.hostname);
   if (parsed.protocol === "http:" && loopback) return url;
   throw new Error(`PIOS_RELAY_URL must be https:// (got ${url})`);
+}
+
+// iOS only installs the app and delivers push from a secure origin.
+function checkPublicUrl(url: string | null): string | null {
+  if (!url) return null;
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    throw new Error(`PIOS_PUBLIC_URL is not a URL: ${url}`);
+  }
+  if (parsed.protocol !== "https:") throw new Error(`PIOS_PUBLIC_URL must be https:// (got ${url})`);
+  return url;
 }
 
 function normalizeUrl(url: string | null): string | null {

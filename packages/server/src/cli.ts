@@ -58,7 +58,7 @@ function pair(): void {
   const auth = new AuthStore(authStorePath(config));
   const { token, code, expiresAt } = auth.createPairing();
 
-  const endpoint = advertisedEndpoint(port, config.relayUrl);
+  const endpoint = advertisedEndpoint(port, config.relayUrl, config.publicUrl);
 
   // The token goes in the fragment: a fragment is never sent to a server and
   // never lands in an access log or a Referer header. The client strips it
@@ -69,7 +69,7 @@ function pair(): void {
   console.log(`  expires: ${new Date(expiresAt).toLocaleTimeString()}\n`);
   console.log(`  endpoint key: ${endpoint.key}\n`);
   if (endpoint.kind === "local") {
-    console.log("  PIOS_RELAY_URL is not set, so this link only works on this machine.\n");
+    console.log("  Neither PIOS_RELAY_URL nor PIOS_PUBLIC_URL is set, so this link only works on this machine.\n");
   }
 }
 
