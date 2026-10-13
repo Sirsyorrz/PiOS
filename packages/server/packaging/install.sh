@@ -103,7 +103,9 @@ install -m 0644 "${repo_root}/packages/server/packaging/pios-server.service" \
   "${unit_dir}/pios-server.service"
 
 systemctl --user daemon-reload
-systemctl --user enable --now pios-server.service
+systemctl --user enable pios-server.service
+# `enable --now` leaves an already-running daemon on the old code and shim.
+systemctl --user restart pios-server.service
 
 # Without this the daemon stops when the last login session ends, which defeats
 # the entire point of a daemon that owns long-running agents.
