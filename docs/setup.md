@@ -3,8 +3,9 @@
 PiOS has three parts:
 
 - `pios-server`, a daemon on your machine that runs `pi` sessions as you.
-- A Cloudflare relay that the phone talks to. The daemon dials out to it, so
-  nothing on your machine has to be reachable from the internet.
+- A route the phone talks to: a Cloudflare relay or `tailscale serve`.
+  The relay is dialed out to, so nothing on your machine has to be reachable
+  from the internet; tailscale keeps everything on your tailnet.
 - The PWA, which the daemon serves through the relay and which you install to
   the home screen.
 
@@ -19,20 +20,43 @@ Linux with systemd is the supported host. macOS and Windows are not done yet.
 - `pi` on `PATH`, logged in to at least one provider. The daemon starts
   `pi --mode rpc` for each session and uses your existing pi config,
   credentials and sessions.
-- A Cloudflare account (the free plan is enough) for the relay.
+- For the relay route, a Cloudflare account (the free plan is enough). For the
+  tailscale route, Tailscale on the machine and phone with HTTPS certificates
+  enabled for the tailnet.
 
 ## Install the daemon
 
 ```
 pnpm install
-PIOS_RELAY_URL=https://pios-relay.<you>.workers.dev packages/server/packaging/install.sh
+packages/server/packaging/install.sh
 ```
+
+Run interactively, the script asks which route to use: relay or tailscale.
+For tailscale it fills in the machine's `*.ts.net` name and runs
+`tailscale serve --bg 4111`. To skip the prompt, set the URLs up front:
+
+```
+PIOS_RELAY_URL=https://pios-relay.<you>.workers.dev packages/server/packaging/install.sh
+PIOS_PUBLIC_URL=https://<host>.<tailnet>.ts.net packages/server/packaging/install.sh
+```
+
+### Choosing a route
+
+| | Cloudflare relay | Tailscale serve |
+|---|---|---|
+| Phone needs | any network | to be on your tailnet |
+| Setup | deploy Worker, `relay enroll` | `tailscale serve --bg 4111` |
+| Traffic passes through | Cloudflare | your tailnet only |
+
+A daemon uses one route. Setting both `PIOS_RELAY_URL` and `PIOS_PUBLIC_URL`
+is refused. Switching routes means reinstalling and pairing the phone again,
+since the app lives on a different origin.
 
 The script:
 
 - builds the PWA into `apps/web/dist`;
-- writes a `~/.local/bin/pios-server` shim with the current `node`, `pi` and
-  relay URL baked in, because `systemd --user` starts with a minimal `PATH`;
+- writes a `~/.local/bin/pios-server` shim with the current `node`, `pi`,
+  relay URL and public URL baked in, because `systemd --user` starts with a minimal `PATH`;
 - installs and starts `pios-server.service` as a user unit.
 
 Enable lingering so sessions keep running after you log out (this needs sudo):
@@ -49,7 +73,7 @@ pnpm build:web && systemctl --user restart pios-server
 
 ## Set up the relay
 
-Follow `packages/relay/README.md` once: deploy the Worker, set its enrollment
+Skip this for a tailscale-only install. Otherwise follow `packages/relay/README.md` once: deploy the Worker, set its enrollment
 secret, then enroll this machine with `pios-server relay enroll`. Only the
 machine holding the enrolled key can act as the daemon behind that relay.
 
@@ -85,8 +109,9 @@ as `~/.config/systemd/user/pios-server.service.d/override.conf`:
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `PIOS_RELAY_URL` | unset | The relay origin. Without it the app only works on this machine. |
-| `PIOS_BIND` | `127.0.0.1` | Listen address. The relay connector dials loopback, so leave it. |
+| `PIOS_RELAY_URL` | unset | The relay origin. Exclusive with `PIOS_PUBLIC_URL`. |
+| `PIOS_PUBLIC_URL` | unset | An https reverse proxy to the daemon, such as `tailscale serve`. Without this or the relay the app only works on this machine. |
+| `PIOS_BIND` | `127.0.0.1` | Listen address. The relay connector and `tailscale serve` both use loopback, so leave it. |
 | `PIOS_PORT` | `4111` | Listen port. |
 | `PIOS_DATA_DIR` | `~/.pios` | Device tokens (hashed), push keys, relay key, session index cache. |
 | `PIOS_SESSION_DIR` | `~/.pi/agent/sessions` | pi's session store. This is the session list. |
@@ -110,7 +135,7 @@ journalctl --user -u pios-server -f
 | Sessions never start; `cannot run "pi"` in the logs | `pi` was not on `PATH` when `install.sh` ran. Rerun it from a shell where `pi` works. |
 | App is back on the pairing screen | The device was revoked on the machine. Pair again. |
 | No notifications on iPhone | The app must be installed to the home screen, and notifications enabled from Settings inside it. |
-| An old variable such as `PIOS_PUBLIC_URL` in a drop-in | It is ignored. The relay replaced it; remove it. |
+| Tailscale link does not load | Check `tailscale serve status` shows `127.0.0.1:4111`, and that the phone is on the tailnet. |
 
 ## Working on the app
 

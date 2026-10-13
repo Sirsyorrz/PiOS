@@ -79,14 +79,14 @@ the phone may ask it to do.
 ## Quick start
 
 Requirements: Linux with systemd, Node 22.18+, pnpm, `pi` on `PATH` and logged
-in, and a Cloudflare account for the relay.
+in, and either a Cloudflare account for the relay or Tailscale.
 
 ```sh
 pnpm install
-# 1. Deploy the relay once: see packages/relay/README.md
-# 2. Install the daemon as a systemd user service
-PIOS_RELAY_URL=https://pios-relay.<you>.workers.dev packages/server/packaging/install.sh
-pios-server relay enroll
+# 1. Relay route only: deploy the relay once, see packages/relay/README.md
+# 2. Install the daemon as a systemd user service; it asks relay or tailscale
+packages/server/packaging/install.sh
+pios-server relay enroll     # relay route only
 # 3. Pair a phone: open the printed link in Safari, then Add to Home Screen
 pios-server pair
 ```
