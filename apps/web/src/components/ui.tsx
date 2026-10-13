@@ -1,4 +1,4 @@
-import type { FormEvent, MouseEventHandler, ReactNode } from "react";
+import { useRef, type FormEvent, type MouseEventHandler, type ReactNode } from "react";
 import { isolate } from "../format.ts";
 import { CloseIcon, SearchIcon } from "./icons.tsx";
 
@@ -81,20 +81,37 @@ export function PickerHeader({ title, onCancel, action }: {
   );
 }
 
-/** A text input with a leading search glyph. */
+/** A text input with a leading search glyph and a trailing clear button. */
 export function SearchField({ value, placeholder, onChange }: {
   value: string;
   placeholder: string;
   onChange: (value: string) => void;
 }) {
+  const input = useRef<HTMLInputElement>(null);
   return (
     <div className="field search">
       <SearchIcon />
       <input
+        ref={input}
         value={value}
         placeholder={placeholder}
         onChange={(event) => onChange(event.target.value)}
       />
+      {value ? (
+        <button
+          type="button"
+          className="ghost icon sm clear"
+          aria-label="clear search"
+          // Keeps focus (and the on-screen keyboard) on the field.
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={() => {
+            onChange("");
+            input.current?.focus();
+          }}
+        >
+          <CloseIcon />
+        </button>
+      ) : null}
     </div>
   );
 }

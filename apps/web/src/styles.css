@@ -414,6 +414,13 @@ button.link {
    glyph sits in; a plain field must not start typing a third of the way in. */
 .field.search > input {
   padding-left: 34px;
+  padding-right: 36px;
+}
+
+.field > button.clear {
+  position: absolute;
+  right: 4px;
+  color: var(--muted);
 }
 
 .screen {
