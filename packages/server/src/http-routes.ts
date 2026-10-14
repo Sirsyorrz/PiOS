@@ -11,6 +11,7 @@ import { gitAction, parseGitAction } from "./git-actions.ts";
 import { invalidateFileIndex, searchFiles, SKIP_DIRS } from "./file-index.ts";
 import { etagOf, MAX_EDIT_BYTES, readTextFile, writeTextFile } from "./file-edit.ts";
 import { containedPath } from "./paths.ts";
+import { IMAGE_CONTENT_TYPES, type ImageStore } from "./image-store.ts";
 import type { PushStore } from "./push.ts";
 import { SERVER_VERSION, type ServerConfig } from "./config.ts";
 import { claudeUsage } from "./usage.ts";
@@ -50,6 +51,7 @@ const API_PATHS = new Set([
   "/dirs",
   "/file",
   "/files",
+  "/image",
   "/upload",
   "/push/key",
   "/push/subscribe",
@@ -70,6 +72,7 @@ export interface RouteContext {
   /** Sessions on disk, so a session with no process still has a directory. */
   index: SessionIndex;
   push: PushStore;
+  images: ImageStore;
 }
 
 /**
@@ -157,6 +160,7 @@ export async function handleRequest(
     }
     if (req.method === "PUT" && url.pathname === "/file") return await saveFile(ctx, url, req, res);
     if (req.method === "GET" && url.pathname === "/files") return await findFiles(ctx, url, res);
+    if (req.method === "GET" && url.pathname === "/image") return serveImage(ctx, url, res);
     if (req.method === "POST" && url.pathname === "/upload") {
       return await upload(ctx, url, req, res);
     }
@@ -433,6 +437,26 @@ async function serveFile(ctx: RouteContext, url: URL, res: ServerResponse): Prom
     // The agent rewrites files under the same path constantly.
     "cache-control": "no-store",
     etag: etagOf(bytes),
+  });
+  res.end(bytes);
+}
+
+/**
+ * An image the transcript referred to by name.
+ *
+ * Named by content hash, so the bytes behind a name never change and the
+ * device may keep them for good. Only names the store itself mints resolve,
+ * which is the whole of the path containment here.
+ */
+function serveImage(ctx: RouteContext, url: URL, res: ServerResponse): void {
+  const name = url.searchParams.get("name") ?? "";
+  const path = ctx.images.path(name);
+  if (!path) return json(res, 404, { error: "not_found" });
+  const bytes = readFileSync(path);
+  res.writeHead(200, {
+    "content-type": IMAGE_CONTENT_TYPES[name.split(".").at(-1)!] ?? "application/octet-stream",
+    "content-length": bytes.length,
+    "cache-control": "private, max-age=31536000, immutable",
   });
   res.end(bytes);
 }

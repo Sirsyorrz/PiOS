@@ -4,6 +4,7 @@ import {
   messageText,
   messagePreview,
   previewText,
+  slimEvent,
   type AgentEvent,
   type BashResult,
   type SessionEntry,
@@ -251,6 +252,9 @@ export abstract class BaseSession {
 
   protected publish(event: HostEvent): BufferedEvent {
     if (event.type === "agent_event") this.timeTool(event.event);
+    // Slimmed once, here: the buffer holds a whole turn for replay, and every
+    // device that joins mid-turn is sent all of it.
+    if (event.type === "agent_event") event = { ...event, event: slimEvent(event.event) };
     const buffered = this.buffer.push(event);
     this.updatedAt = buffered.at;
     for (const listener of [...this.listeners]) {

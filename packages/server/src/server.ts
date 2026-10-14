@@ -7,6 +7,7 @@ import { AuthStore } from "./auth.ts";
 import { CommandLedger } from "./dedupe.ts";
 import { Connection } from "./connection.ts";
 import { handleRequest } from "./http-routes.ts";
+import { ImageStore } from "./image-store.ts";
 import { advertisedEndpoint, type Endpoint } from "./endpoints.ts";
 import { RelayConnector } from "./relay-connector.ts";
 import { RelayKey } from "./relay-key.ts";
@@ -38,6 +39,7 @@ export class PiosServer {
   readonly auth: AuthStore;
   readonly registry: SessionRegistry;
   readonly push: PushStore;
+  readonly images: ImageStore;
 
   private readonly http: Server;
   private readonly wss: WebSocketServer;
@@ -72,6 +74,7 @@ export class PiosServer {
       this.externalTurns.changed(files);
     });
     this.push = new PushStore(pushStorePath(this.config), this.config.pushSubject);
+    this.images = new ImageStore(join(this.config.dataDir, "images"));
     this.notifier = new SettleNotifier({
       send: (notification) => this.sendPush(notification),
       watchers: (sessionId) => this.watchers(sessionId),
@@ -105,6 +108,7 @@ export class PiosServer {
           registry: this.registry,
           index: this.index,
           push: this.push,
+          images: this.images,
         },
         req,
         res,
@@ -124,6 +128,7 @@ export class PiosServer {
         index: this.index,
         trust: this.trust,
         announceSessions: () => this.announceSessions(),
+        images: this.images,
       });
       this.connections.add(connection);
       socket.on("close", () => this.connections.delete(connection));

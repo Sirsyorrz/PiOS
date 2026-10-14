@@ -27,6 +27,9 @@ export function isDirectSrc(src: string): boolean {
   return /^(https?:|data:|blob:)/i.test(src);
 }
 
+/** Prefix of an image the daemon holds by name rather than by path. */
+export const IMAGE_REF = "pios-image:";
+
 const cache = new Map<string, string>();
 
 /**
@@ -44,7 +47,9 @@ export function useFileObjectUrl(path: string | null): {
   const access = useFileAccess();
   const key =
     access?.baseUrl && path
-      ? `${access.baseUrl}/file?${projectQuery(access)}&path=${encodeURIComponent(path)}`
+      ? path.startsWith(IMAGE_REF)
+        ? `${access.baseUrl}/image?name=${encodeURIComponent(path.slice(IMAGE_REF.length))}`
+        : `${access.baseUrl}/file?${projectQuery(access)}&path=${encodeURIComponent(path)}`
       : null;
   const [url, setUrl] = useState<string | null>(() => (key ? (cache.get(key) ?? null) : null));
   const [error, setError] = useState<string | null>(null);

@@ -8,6 +8,7 @@
  * Behaviour is pinned to what the Phase 0 traces actually showed.
  */
 import { appendFileSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { crc32, deflateSync } from "node:zlib";
 import { JsonlFramer, encodeJsonl } from "@pios/protocol/jsonl";
 import { runFakeBash } from "./fake-bash.ts";
 import { readStubSession, writeStubSession, type StubEntry } from "./fake-session-file.ts";
@@ -59,6 +60,35 @@ function addEntry(message: unknown): Entry {
   entries.push(entry);
   persist();
   return entry;
+}
+
+/** Uncompressible, so the base64 is as heavy as a real screenshot's. */
+function noisyPngBase64(width: number, height: number, seed: number): string {
+  const chunk = (type: string, data: Buffer) => {
+    const head = Buffer.alloc(8);
+    head.writeUInt32BE(data.length, 0);
+    head.write(type, 4, "ascii");
+    const crc = Buffer.alloc(4);
+    crc.writeUInt32BE(crc32(Buffer.concat([head.subarray(4), data])) >>> 0, 0);
+    return Buffer.concat([head, data, crc]);
+  };
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(width, 0);
+  ihdr.writeUInt32BE(height, 4);
+  ihdr.set([8, 2, 0, 0, 0], 8);
+  const raw = Buffer.alloc((width * 3 + 1) * height);
+  let state = seed * 2654435761;
+  for (let i = 0; i < raw.length; i++) {
+    if (i % (width * 3 + 1) === 0) continue;
+    state = (state * 1103515245 + 12345) >>> 0;
+    raw[i] = state >>> 24;
+  }
+  return Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    chunk("IHDR", ihdr),
+    chunk("IDAT", deflateSync(raw)),
+    chunk("IEND", Buffer.alloc(0)),
+  ]).toString("base64");
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -178,6 +208,30 @@ async function runTurn(text: string) {
       result: { content: [{ type: "text", text: "hello" }] },
       isError: false,
     });
+  }
+
+  // A turn that reads screenshots: each result carries a megabyte of image,
+  // the weight a replay to a client opening the session mid-turn has to carry.
+  if (text.includes("IMAGE_TOOLS")) {
+    for (let n = 0; n < 6; n++) {
+      const toolCallId = `${sessionId}-img-${Date.now()}-${n}`;
+      const call = { type: "toolCall", id: toolCallId, name: "read", arguments: { path: `/tmp/shot${n}.png` } };
+      const assistant = { role: "assistant", content: [call], stopReason: "toolUse" };
+      write({ type: "message_start", message: { role: "assistant", content: [] } });
+      write({ type: "message_end", message: assistant });
+      addEntry(assistant);
+      write({ type: "tool_execution_start", toolCallId, toolName: "read", args: call.arguments });
+      await sleep(150);
+      const content = [
+        { type: "text", text: "Read image file [image/png]" },
+        { type: "image", mimeType: "image/png", data: noisyPngBase64(800, 450, n + 1) },
+      ];
+      write({ type: "tool_execution_end", toolCallId, toolName: "read", result: { content }, isError: false });
+      const result = { role: "toolResult", toolCallId, toolName: "read", content, isError: false };
+      write({ type: "message_start", message: result });
+      write({ type: "message_end", message: result });
+      addEntry(result);
+    }
   }
 
   // pi closes a successful retry only once the next answer has landed.

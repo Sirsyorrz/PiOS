@@ -108,9 +108,13 @@ export const bash = (command: string, output: string, exitCode = 0): EntrySeed =
 export function buildEntries(prefix: string, seeds: EntrySeed[]): SessionEntry[] {
   const entries: SessionEntry[] = [];
   let parentId: string | null = null;
+  // pi stamps every message, and clients tell repeated turns apart by it:
+  // unstamped, two identical answers would read as one.
+  const start = Date.UTC(2026, 0, 1);
   seeds.forEach((seed, index) => {
     const id = `${prefix}-${index + 1}`;
-    entries.push({ id, parentId, type: seed.type ?? "message", message: seed.message });
+    const message = seed.message ? { timestamp: start + index * 1000, ...seed.message } : seed.message;
+    entries.push({ id, parentId, type: seed.type ?? "message", message });
     parentId = id;
   });
   return entries;

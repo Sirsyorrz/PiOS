@@ -9,3 +9,5 @@ export * from "./partial-json.ts";
 export * from "./wire.ts";
 export * from "./parse.ts";
 export * from "./http.ts";
+export * from "./slim.ts";
+export * from "./image-size.ts";

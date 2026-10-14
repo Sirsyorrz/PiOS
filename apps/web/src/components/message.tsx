@@ -10,7 +10,7 @@ import {
 import { memo, useState } from "react";
 import { useLongPress } from "../long-press.ts";
 import { useSettings } from "../settings.ts";
-import { TranscriptImage } from "./image-view.tsx";
+import { PartImage } from "./image-view.tsx";
 import { Markdown } from "./markdown.tsx";
 import { ToolCard } from "./tool-card.tsx";
 
@@ -83,7 +83,7 @@ function MessageBubbleImpl({ message, failedAttempts, tools, cwd, blocked, entry
     return (
       <div className={`bubble user${rewind ? " pressable" : ""}`} {...press}>
         {userImages(message).map((image, index) => (
-          <TranscriptImage key={index} alt="attachment" src={dataUrl(image)} />
+          <PartImage key={index} alt="attachment" image={image} />
         ))}
         {text}
       </div>
@@ -112,7 +112,7 @@ function MessageBubbleImpl({ message, failedAttempts, tools, cwd, blocked, entry
         if (part.type === "text") return <Markdown key={index} text={part.text} />;
         if (part.type === "thinking") return <Thinking key={index} text={part.thinking} />;
         if (part.type === "image") {
-          return <TranscriptImage key={index} alt="" src={dataUrl(part)} />;
+          return <PartImage key={index} alt="" image={part} />;
         }
         const tool = tools.get(part.id) ?? {
           toolCallId: part.id,
@@ -242,9 +242,6 @@ function userImages(message: AgentMessage): ImageContent[] {
   return content.filter((part): part is ImageContent => part.type === "image");
 }
 
-function dataUrl(image: { mimeType: string; data: string }): string {
-  return `data:${image.mimeType};base64,${image.data}`;
-}
 
 /**
  * Reasoning reads as prose, so it is shown, not filed away behind a control.

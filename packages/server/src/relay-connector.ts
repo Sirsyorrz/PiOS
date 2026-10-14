@@ -47,6 +47,15 @@ export interface RelayConnectorOptions {
 /** Response bytes allowed to queue on the relay socket before a body pauses. */
 const HIGH_WATER_BYTES = 4 * 1024 * 1024;
 const MAX_MESSAGE_BYTES = 16 * 1024 * 1024;
+/**
+ * Socket bytes allowed to queue for the relay before a phone stream is cut.
+ *
+ * Messages for the phone cannot be paused the way a body can: the daemon
+ * writes them whether or not the uplink keeps up. Unbounded, a slow uplink
+ * buffered gigabytes for phones that had long since given up and reconnected,
+ * and drained them for an hour while every live frame waited behind.
+ */
+const SOCKET_BACKLOG_BYTES = 16 * 1024 * 1024;
 /** Phone messages held while the local socket opens; a burst beyond is abuse. */
 const MAX_QUEUED_MESSAGES = 256;
 
@@ -407,6 +416,14 @@ export class RelayConnector {
     });
     ws.on("message", (data, isBinary) => {
       if (this.sockets.get(s) !== local) return;
+      // Cut rather than queued: the phone reconnects and resyncs from its
+      // cursor, which costs less than a backlog it will never read in time.
+      if ((this.socket?.bufferedAmount ?? 0) > SOCKET_BACKLOG_BYTES) {
+        this.sockets.delete(s);
+        ws.terminate();
+        this.send({ t: "ws-close", s, code: 1011, reason: "relay backed up" });
+        return;
+      }
       this.send({ t: "ws-msg", s, text: !isBinary }, toBuffer(data));
     });
     ws.on("close", (code, reason) => {

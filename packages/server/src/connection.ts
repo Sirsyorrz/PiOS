@@ -16,6 +16,7 @@ import {
 } from "@pios/protocol";
 import type { AuthStore, DeviceRecord } from "./auth.ts";
 import type { CommandLedger } from "./dedupe.ts";
+import type { ImageStore } from "./image-store.ts";
 import { SERVER_VERSION } from "./config.ts";
 import { listSessions, liveSummary, summaryFor } from "./sessions.ts";
 import type { TrustStore } from "./trust.ts";
@@ -37,6 +38,8 @@ export interface ConnectionDeps {
   trust: TrustStore;
   /** Tells every authenticated socket the session list changed. */
   announceSessions?: () => void;
+  /** Swaps inline images for names the client fetches when it needs them. */
+  images?: ImageStore;
 }
 
 /**
@@ -522,7 +525,8 @@ export class Connection {
   }
 
   private forward(session: PiSession, buffered: BufferedEvent): void {
-    this.send(forwardFrame(session, buffered.seq, buffered.event, buffered.at));
+    const event = this.deps.images?.externalize(buffered.event) ?? buffered.event;
+    this.send(forwardFrame(session, buffered.seq, event, buffered.at));
   }
 
   private unsubscribe(sessionId: string): void {
@@ -610,7 +614,9 @@ export class Connection {
     const file = live?.info.sessionFile ?? (await this.deps.index.find(sessionId))?.path;
     const transcript = file ? readTranscript(file) : null;
     if (transcript) {
-      return sliceEntries(transcript.entries, transcript.leafId, {
+      // Before slicing, so the frame budget counts what is actually sent.
+      const entries = this.deps.images?.externalize(transcript.entries) ?? transcript.entries;
+      return sliceEntries(entries, transcript.leafId, {
         ...query,
         maxBytes: ENTRIES_FRAME_BYTES,
       });
@@ -620,7 +626,8 @@ export class Connection {
     // format at all, which is what a stubbed host in the sandbox looks like.
     if (!live) return { entries: [], leafId: null, reset: false, offset: 0, total: 0 };
     const page = await live.getEntries(query.since);
-    return { ...page, offset: 0, total: page.entries.length };
+    const entries = this.deps.images?.externalize(page.entries) ?? page.entries;
+    return { ...page, entries, offset: 0, total: entries.length };
   }
 
   /** Device on this socket, once it has authenticated. */

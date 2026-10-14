@@ -1047,6 +1047,16 @@ button.scroll-bottom {
   cursor: zoom-in;
 }
 
+/* Size known from the header: the box is laid out at its final size before
+   the pixels exist, within the same limits the bare image would have. */
+.attachment.sized {
+  display: block;
+  width: min(100%, var(--w), calc(var(--max-h, 100000px) * var(--ratio)));
+  height: auto;
+  aspect-ratio: var(--ratio);
+  max-height: none;
+}
+
 /* Reserves the row an image will take, so the transcript does not jump when
    the bytes arrive from the daemon. */
 .image-loading {
@@ -1359,6 +1369,7 @@ button.scroll-bottom {
 }
 
 .tool-images {
+  --max-h: 320px;
   padding: 4px 0 2px 12px;
 }
 

@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { JsonlFramer } from "../src/jsonl.ts";
 import { parseRpcOutbound } from "../src/parse.ts";
 import { MessageAssembler, TranscriptAssembler } from "../src/assembler.ts";
+import { slimEvent } from "../src/slim.ts";
 import type { AgentEvent } from "../src/events.ts";
 import { turnFailure, type AgentMessage, type AssistantMessage } from "../src/messages.ts";
 import { GetEntriesDataSchema, isUnknownCursorError, type RpcResponse } from "../src/commands.ts";
@@ -43,6 +44,23 @@ function hasAssistantEnd(events: AgentEvent[]): boolean {
 }
 
 for (const name of traces) {
+  test(`${name}: a slimmed stream rebuilds the same transcript`, () => {
+    const { events } = readTrace(name);
+    const full = new TranscriptAssembler();
+    const slim = new TranscriptAssembler();
+    for (const event of events) {
+      full.apply(structuredClone(event));
+      slim.apply(slimEvent(structuredClone(event)));
+    }
+    assert.deepEqual(slim.snapshot(), full.snapshot());
+    // Every message is still on the wire exactly once, on its message_end.
+    const slimmed = events.map(slimEvent);
+    for (const event of slimmed) {
+      if (event.type === "agent_end") assert.deepEqual(event.messages ?? [], []);
+      if (event.type === "turn_end") assert.equal(event.toolResults, undefined);
+    }
+  });
+
   test(`${name}: every record parses`, () => {
     const { records } = readTrace(name);
     assert.ok(records.length > 0);
@@ -225,3 +243,33 @@ function assertMatches(assembler: MessageAssembler, final: AgentMessage, label: 
     });
   assert.deepEqual(assembledCalls, finalCalls, `${label}: tool calls`);
 }
+
+test("slimming drops the in-process host's whole-message copies from a delta", () => {
+  const partial = { role: "assistant", content: [{ type: "text", text: "hello" }] };
+  const event = {
+    type: "message_update",
+    message: partial,
+    assistantMessageEvent: { type: "text_delta", contentIndex: 0, delta: "lo", partial },
+  } as unknown as AgentEvent;
+  assert.deepEqual(slimEvent(event), {
+    type: "message_update",
+    assistantMessageEvent: { type: "text_delta", contentIndex: 0, delta: "lo" },
+  });
+});
+
+test("slimming leaves a tool result's own events whole", () => {
+  const image = { type: "image", mimeType: "image/png", data: "AAAA" };
+  const result = { role: "toolResult", toolCallId: "t1", toolName: "read", content: [image], isError: false };
+  const end = { type: "message_end", message: result } as unknown as AgentEvent;
+  const tool = {
+    type: "tool_execution_end",
+    toolCallId: "t1",
+    toolName: "read",
+    result: { content: [image] },
+    isError: false,
+  } as unknown as AgentEvent;
+  assert.equal(slimEvent(end), end);
+  assert.equal(slimEvent(tool), tool);
+  const start = slimEvent({ type: "message_start", message: result } as unknown as AgentEvent);
+  assert.deepEqual(start, { type: "message_start", message: { ...result, content: [] } });
+});

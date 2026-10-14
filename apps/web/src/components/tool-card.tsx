@@ -4,7 +4,7 @@ import { collapseHome } from "../format.ts";
 import { diffLines, editBlocks } from "../diff.ts";
 import { useSettings } from "../settings.ts";
 import { ChevronRightIcon, ToolIcon } from "./icons.tsx";
-import { TranscriptImage } from "./image-view.tsx";
+import { PartImage } from "./image-view.tsx";
 
 /**
  * One tool call, correlated on `toolCallId`.
@@ -74,11 +74,7 @@ export function ToolCard({ tool, cwd, blocked }: {
       {images.length > 0 ? (
         <div className="tool-images">
           {images.map((image, index) => (
-            <TranscriptImage
-              key={index}
-              alt={tool.toolName}
-              src={`data:${image.mimeType};base64,${image.data}`}
-            />
+            <PartImage key={index} alt={tool.toolName} image={image} />
           ))}
         </div>
       ) : null}

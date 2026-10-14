@@ -230,6 +230,37 @@ test("the phone socket reaches the daemon and hears back", async () => {
   ws.close();
 });
 
+test("a phone stream is cut, not queued, while the uplink is backed up", async () => {
+  // Private, and the one thing a slow uplink changes.
+  const uplink = (harness.server.relay as unknown as { socket: WebSocket }).socket;
+  Object.defineProperty(uplink, "bufferedAmount", { configurable: true, get: () => 64 * 1024 * 1024 });
+  try {
+    const ws = relayWs("/ws");
+    await opened(ws);
+    const heard: string[] = [];
+    ws.on("message", (data) => heard.push(String(data)));
+    const done = closed(ws);
+    ws.send(
+      JSON.stringify({
+        type: "hello",
+        v: WIRE_VERSION,
+        commandId: "c1",
+        deviceToken: harness.deviceToken,
+        clientVersion: "relay-test",
+      }),
+    );
+    const outcome = await Promise.race([
+      done.then(() => "closed"),
+      new Promise((resolve) => setTimeout(() => resolve("still open"), 5_000)),
+    ]);
+    if (outcome !== "closed") ws.terminate();
+    assert.equal(outcome, "closed");
+    assert.deepEqual(heard, []);
+  } finally {
+    delete (uplink as unknown as Record<string, unknown>).bufferedAmount;
+  }
+});
+
 test("the daemon's auth close code reaches the phone unchanged", async () => {
   const ws = relayWs("/ws");
   await opened(ws);

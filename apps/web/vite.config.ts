@@ -15,6 +15,7 @@ const API_PATHS = [
   "/dirs",
   "/file",
   "/files",
+  "/image",
   "/upload",
   "/git",
 ];

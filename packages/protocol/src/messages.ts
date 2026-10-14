@@ -38,8 +38,14 @@ export const ThinkingContentSchema = z.looseObject({
 
 export const ImageContentSchema = z.looseObject({
   type: z.literal("image"),
+  /** Empty when the daemon sent `ref` instead: the bytes are fetched apart. */
   data: z.string(),
   mimeType: z.string(),
+  /** Name to fetch the bytes by from the daemon's `/image` route. */
+  ref: z.string().optional(),
+  /** Pixel size, so the space is reserved before the bytes arrive. */
+  width: z.number().optional(),
+  height: z.number().optional(),
 });
 export type ImageContent = z.infer<typeof ImageContentSchema>;
 
