@@ -4,7 +4,7 @@ import type {
   SessionSummary,
   StreamingBehavior,
 } from "@pios/protocol";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useClient, useSessionView } from "../client-provider.tsx";
 import { useEdgeSwipe } from "../edge-swipe.ts";
 import { copyText } from "../clipboard.ts";
@@ -109,26 +109,16 @@ export function ChatView({
   const pane = useRef<HTMLElement>(null);
   const dock = useRef<HTMLDivElement>(null);
   const transcript = useStickToBottom(view);
+  // Stable, so a finished bubble is not redrawn for a closure it already had.
+  const rewind = useCallback(
+    (entryId: string) => client.rewind(sessionId, entryId),
+    [client, sessionId],
+  );
   // Typing collapses the chrome around the field, so the keyboard leaves as
   // much transcript on screen as possible.
   const [composing, setComposing] = useState(false);
   // Same destination as the back button, for the gesture that replaces it.
   const edgeSwipe = useEdgeSwipe(onBack);
-
-  // The dock floats over the transcript, so the transcript has to reserve
-  // exactly as much room as the dock currently takes. That reservation is
-  // padding, so it changes scrollHeight without resizing the scroller: the
-  // pane cannot observe it and has to be told.
-  useEffect(() => {
-    const box = dock.current;
-    if (!box) return;
-    const measure = new ResizeObserver(() => {
-      pane.current?.style.setProperty("--dock-height", `${box.offsetHeight}px`);
-      transcript.settle();
-    });
-    measure.observe(box);
-    return () => measure.disconnect();
-  }, [transcript.settle]);
 
   // A draft has no session behind it yet, so everything a session would answer
   // for comes from the draft: its directory, and what it takes to start it.
@@ -318,6 +308,22 @@ export function ChatView({
     setSubview(null);
   }, [sessionId]);
 
+  // The dock floats over the transcript, so the transcript has to reserve
+  // exactly as much room as the dock currently takes. That reservation is
+  // padding, so it changes scrollHeight without resizing the scroller: the
+  // pane cannot observe it and has to be told.
+  useEffect(() => {
+    const box = dock.current;
+    if (!box) return;
+    const measure = new ResizeObserver(() => {
+      pane.current?.style.setProperty("--dock-height", `${box.offsetHeight}px`);
+      transcript.settle();
+    });
+    measure.observe(box);
+    return () => measure.disconnect();
+    // The dock remounts when a subview closes, and has to be measured again.
+  }, [transcript.settle, subview]);
+
   if (subview === "git" && baseUrl) {
     return <GitView git={git} onClose={() => setSubview(null)} />;
   }
@@ -392,10 +398,8 @@ export function ChatView({
                 tools={view.tools}
                 cwd={session?.cwd}
                 blocked={view.dialogs.length > 0}
-                // Only a persisted turn has an entry id to rewind to.
-                onRewind={
-                  item.entryId ? () => client.rewind(sessionId, item.entryId!) : undefined
-                }
+                entryId={item.entryId}
+                onRewind={rewind}
               />
             );
           }

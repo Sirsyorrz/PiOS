@@ -7,14 +7,14 @@ import {
   type PartialMessage,
   type ToolExecution,
 } from "@pios/protocol";
-import { useState } from "react";
+import { memo, useState } from "react";
 import { useLongPress } from "../long-press.ts";
 import { useSettings } from "../settings.ts";
 import { TranscriptImage } from "./image-view.tsx";
 import { Markdown } from "./markdown.tsx";
 import { ToolCard } from "./tool-card.tsx";
 
-export function MessageBubble({ message, failedAttempts, tools, cwd, blocked, onRewind }: {
+type MessageBubbleProps = {
   message: AgentMessage;
   /** Earlier attempts at this turn that pi retried. */
   failedAttempts?: number;
@@ -22,15 +22,66 @@ export function MessageBubble({ message, failedAttempts, tools, cwd, blocked, on
   cwd?: string;
   /** A dialog is waiting on the user, so running timers must not advance. */
   blocked?: boolean;
+  /** Persisted turns only: there is nothing to rewind to before that. */
+  entryId?: string;
   /** Press and hold this turn to drop it and everything after it. */
-  onRewind?: () => void;
-}) {
+  onRewind?: (entryId: string) => void;
+};
+
+/**
+ * A finished turn never changes, so it re-renders only when one of its own
+ * tool calls does. The view hands out a fresh tool map on every delta, and
+ * without this every bubble above the stream would redraw with it.
+ */
+export const MessageBubble = memo(MessageBubbleImpl, (before, after) =>
+  before.message === after.message &&
+  before.failedAttempts === after.failedAttempts &&
+  before.cwd === after.cwd &&
+  before.blocked === after.blocked &&
+  before.entryId === after.entryId &&
+  before.onRewind === after.onRewind &&
+  sameTools(after.message, before.tools, after.tools),
+);
+
+function sameTools(
+  message: AgentMessage,
+  before: Map<string, ToolExecution>,
+  after: Map<string, ToolExecution>,
+): boolean {
+  if (message.role !== "assistant") return true;
+  return message.content.every(
+    (part) => part.type !== "toolCall" || sameTool(before.get(part.id), after.get(part.id)),
+  );
+}
+
+// Rebuilt from scratch on every view, so compared by what the card shows.
+function sameTool(a: ToolExecution | undefined, b: ToolExecution | undefined): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  return (
+    a.status === b.status &&
+    a.isError === b.isError &&
+    a.args === b.args &&
+    a.partialResult === b.partialResult &&
+    a.startedAt === b.startedAt &&
+    a.durationMs === b.durationMs &&
+    resultContent(a.result) === resultContent(b.result)
+  );
+}
+
+// A result rebuilt from history is a fresh wrapper around the same content.
+function resultContent(result: unknown): unknown {
+  return result && typeof result === "object" && "content" in result ? result.content : result;
+}
+
+function MessageBubbleImpl({ message, failedAttempts, tools, cwd, blocked, entryId, onRewind }: MessageBubbleProps) {
+  const rewind = onRewind && entryId ? () => onRewind(entryId) : undefined;
   // Hooks run for every role, so the gesture is bound before the role branch.
-  const press = useLongPress(message.role === "user" ? onRewind : undefined);
+  const press = useLongPress(message.role === "user" ? rewind : undefined);
   if (message.role === "user") {
     const text = messageText(message);
     return (
-      <div className={`bubble user${onRewind ? " pressable" : ""}`} {...press}>
+      <div className={`bubble user${rewind ? " pressable" : ""}`} {...press}>
         {userImages(message).map((image, index) => (
           <TranscriptImage key={index} alt="attachment" src={dataUrl(image)} />
         ))}

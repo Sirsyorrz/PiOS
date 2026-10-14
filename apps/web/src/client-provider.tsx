@@ -93,11 +93,23 @@ export function useSessionView(sessionId: string | null): SessionView | null {
   const outbox = useOutbox();
   const [version, bump] = useReducer((n: number) => n + 1, 0);
 
+  // At most one rebuild per frame. Opening a running session replays its
+  // whole turn as hundreds of deltas, and a render per delta keeps the main
+  // thread busy long enough that scrolling stalls.
   useEffect(() => {
     if (!sessionId) return;
-    return client.sessions.subscribe((changed) => {
-      if (changed === sessionId) bump();
+    let frame: number | null = null;
+    const off = client.sessions.subscribe((changed) => {
+      if (changed !== sessionId || frame !== null) return;
+      frame = requestAnimationFrame(() => {
+        frame = null;
+        bump();
+      });
     });
+    return () => {
+      off();
+      if (frame !== null) cancelAnimationFrame(frame);
+    };
   }, [client, sessionId]);
 
   useEffect(() => {

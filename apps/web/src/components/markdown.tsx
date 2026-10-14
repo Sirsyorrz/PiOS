@@ -1,4 +1,4 @@
-import { Fragment, type ReactNode, useEffect, useRef, useState } from "react";
+import { Fragment, memo, type ReactNode, useEffect, useRef, useState } from "react";
 import { copyText } from "../clipboard.ts";
 import { TranscriptImage } from "./image-view.tsx";
 import { CheckIcon, CopyIcon } from "./icons.tsx";
@@ -9,9 +9,9 @@ import { CheckIcon, CopyIcon } from "./icons.tsx";
  * escaping. Unterminated fences render as code, because text arrives midway
  * through a stream and half a block must still look like the block it is.
  */
-export function Markdown({ text }: { text: string }) {
+export const Markdown = memo(function Markdown({ text }: { text: string }) {
   return <>{renderBlocks(text)}</>;
-}
+});
 
 type Block =
   | { kind: "code"; lang: string; code: string }
