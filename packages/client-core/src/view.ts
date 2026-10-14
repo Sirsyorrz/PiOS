@@ -109,12 +109,12 @@ export function sessionView(
     });
   }
 
-  // The daemon is authoritative about the agent being busy. An aborted turn
-  // can end without `agent_settled`, and then the event stream alone would
-  // leave the transcript running for the rest of the session's life. Unknown
+  // The daemon is authoritative about the agent being busy, both ways. An
+  // aborted turn can end without `agent_settled`, and a client that joins a
+  // long turn may never see its `agent_start`: the buffer evicted it. Unknown
   // status (not reported yet) defers to the stream.
   const daemonStatus = store.status(sessionId);
-  const running = transcript.running && (daemonStatus === undefined || daemonStatus === "running");
+  const running = daemonStatus === undefined ? transcript.running : daemonStatus === "running";
 
   // A call left mid-flight by a restart has no result and never will. Left as
   // "running" it spins forever in a session the daemon reports as idle.

@@ -161,6 +161,31 @@ test("a stopped agent stops looking busy even without agent_settled", () => {
   assert.equal(view.interrupting, false);
 });
 
+test("joining a turn whose start was evicted still shows it running", () => {
+  const store = new SessionStore();
+  store.applyEntries(
+    "s1",
+    [
+      {
+        id: "e1",
+        type: "message",
+        message: {
+          role: "assistant",
+          content: [{ type: "toolCall", id: "t1", name: "bash", arguments: { command: "sleep 600" } }],
+        },
+      },
+    ],
+    "e1",
+    true,
+  );
+  // The replay gapped: no `agent_start`, only the daemon's word for it.
+  store.setDaemonStatus("s1", "running");
+
+  const view = sessionView(store, [], "s1");
+  assert.equal(view.running, true);
+  assert.equal(view.tools.get("t1")?.status, "running");
+});
+
 for (const status of ["cold", "crashed"]) {
   test(`a tool in flight when the daemon went down stays dead once it reports ${status}`, () => {
     const store = new SessionStore();
