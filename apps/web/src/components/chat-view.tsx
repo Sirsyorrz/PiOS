@@ -4,7 +4,7 @@ import type {
   SessionSummary,
   StreamingBehavior,
 } from "@pios/protocol";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useClient, useSessionView } from "../client-provider.tsx";
 import { useEdgeSwipe } from "../edge-swipe.ts";
 import { copyText } from "../clipboard.ts";
@@ -28,6 +28,7 @@ import {
   FileIcon,
   PauseIcon,
   PlusIcon,
+  TerminalIcon,
   WarningIcon,
 } from "./icons.tsx";
 import type { SessionState } from "../session-status.ts";
@@ -36,6 +37,11 @@ import { SessionInfo } from "./session-info.tsx";
 import { SessionStatsFooter } from "./session-stats.tsx";
 import { useSettings } from "../settings.ts";
 import type { Draft } from "../drafts.ts";
+
+// xterm.js is most of a megabyte; a chat that never opens a shell skips it.
+const TerminalView = lazy(() =>
+  import("./terminal-view.tsx").then((module) => ({ default: module.TerminalView })),
+);
 
 /**
  * The session's state as a glyph, or nothing at all when it is idle.
@@ -251,6 +257,11 @@ export function ChatView({
         },
         { name: "copy", description: "Copy the last answer", run: () => void copyLastAnswer() },
         {
+          name: "terminal",
+          description: "Open a shell in this directory",
+          run: () => setSubview("terminal"),
+        },
+        {
           name: "session",
           description: "Session file, messages, tokens and cost",
           run: () => setShowInfo(true),
@@ -302,7 +313,7 @@ export function ChatView({
   // The open file survives the app being backgrounded, so coming back lands
   // where the work was, and the header icon reopens it in one tap.
   const [openPath, setOpenPath] = useState<string | null>(() => recallOpenFile(sessionId));
-  const [subview, setSubview] = useState<"files" | "git" | null>(null);
+  const [subview, setSubview] = useState<"files" | "git" | "terminal" | null>(null);
   useEffect(() => {
     setOpenPath(recallOpenFile(sessionId));
     setSubview(null);
@@ -326,6 +337,15 @@ export function ChatView({
 
   if (subview === "git" && baseUrl) {
     return <GitView git={git} onClose={() => setSubview(null)} />;
+  }
+
+  if (subview === "terminal" && cwd) {
+    return (
+      <Suspense fallback={<section className="subview" />}>
+        {/* Keyed by session, so a draft keeps its shell once it becomes one. */}
+        <TerminalView terminalId={sessionId} cwd={cwd} onClose={() => setSubview(null)} />
+      </Suspense>
+    );
   }
 
   if (subview === "files" && baseUrl && cwd) {
@@ -369,6 +389,16 @@ export function ChatView({
         >
           <FileIcon />
         </button>
+        {cwd ? (
+          <button
+            type="button"
+            className="icon ghost"
+            onClick={() => setSubview("terminal")}
+            aria-label="open a terminal"
+          >
+            <TerminalIcon />
+          </button>
+        ) : null}
         {/* Starts from this session's cwd: a second agent on the same project
             is the common case, and it is one tap away. */}
         <button type="button" className="icon ghost" onClick={onNewSession} aria-label="new session">

@@ -19,12 +19,17 @@ import type { CommandLedger } from "./dedupe.ts";
 import type { ImageStore } from "./image-store.ts";
 import { SERVER_VERSION } from "./config.ts";
 import { listSessions, liveSummary, summaryFor } from "./sessions.ts";
+import type { Terminal, TerminalHost, TerminalListener } from "./terminals.ts";
 import type { TrustStore } from "./trust.ts";
 
 type FrameOf<T extends ClientFrame["type"]> = Extract<ClientFrame, { type: T }>;
 
 /** Well under what the relay hop accepts in one message. */
 const ENTRIES_FRAME_BYTES = 4 * 1024 * 1024;
+/** Replay is cut into frames this size, so it interleaves with everything else. */
+const TERMINAL_REPLAY_CHARS = 64 * 1024;
+/** Unsent bytes past which a shell stops being read for this socket. */
+const TERMINAL_BACKLOG_BYTES = 1024 * 1024;
 
 export interface ConnectionDeps {
   auth: AuthStore;
@@ -40,6 +45,8 @@ export interface ConnectionDeps {
   announceSessions?: () => void;
   /** Swaps inline images for names the client fetches when it needs them. */
   images?: ImageStore;
+  /** Interactive shells. Absent means this daemon offers none. */
+  terminals?: TerminalHost;
 }
 
 /**
@@ -58,6 +65,8 @@ export class Connection {
   private readonly pendingSubscriptions = new Set<string>();
   private helloTimer: NodeJS.Timeout | null = null;
   private activity: { sessionIds: Set<string>; foreground: boolean; at: number } | null = null;
+  /** Shells streaming to this socket, with what detaches each. */
+  private readonly terminals = new Map<string, { terminal: Terminal; listener: TerminalListener }>();
 
   constructor(socket: WebSocket, deps: ConnectionDeps) {
     this.socket = socket;
@@ -169,7 +178,92 @@ export class Connection {
         return this.answerDialog(frame);
       case "activity":
         return this.recordActivity(frame);
+      case "terminal_open":
+        return this.openTerminal(frame);
+      case "terminal_input":
+        return this.terminalFor(frame)?.write(frame.data);
+      case "terminal_resize":
+        return this.terminalFor(frame)?.resize(frame.cols, frame.rows);
+      case "terminal_detach":
+        this.detachTerminal(frame.terminalId);
+        return this.ack(frame.commandId);
+      case "terminal_close":
+        this.deps.terminals?.close(frame.terminalId);
+        return this.ack(frame.commandId);
     }
+  }
+
+  /**
+   * Attaches this socket to a shell, starting it if need be, and replays what
+   * the client does not hold. Nothing here is deduped: opening is idempotent
+   * by id, and a restart only ever replaces a shell that has exited.
+   */
+  private openTerminal(frame: FrameOf<"terminal_open">): void {
+    const host = this.deps.terminals;
+    if (!host) return this.fail(frame.commandId, "bad_request", "this daemon has no terminals");
+    let terminal: Terminal;
+    try {
+      terminal = host.open(frame.terminalId, {
+        cwd: frame.cwd,
+        cols: frame.cols,
+        rows: frame.rows,
+        restart: frame.restart,
+      });
+    } catch (error) {
+      return this.fail(frame.commandId, "bad_request", errorMessage(error));
+    }
+    this.detachTerminal(frame.terminalId);
+
+    const terminalId = frame.terminalId;
+    const listener: TerminalListener = {
+      output: (data, offset) =>
+        this.send({ v: WIRE_VERSION, type: "terminal_output", terminalId, offset, data }),
+      exit: (info) => this.send({ v: WIRE_VERSION, type: "terminal_exit", terminalId, ...info }),
+      congested: () => this.socket.bufferedAmount > TERMINAL_BACKLOG_BYTES,
+    };
+    const replay = terminal.attach(listener, frame.since);
+    this.terminals.set(terminalId, { terminal, listener });
+
+    this.send({
+      v: WIRE_VERSION,
+      type: "terminal_attached",
+      commandId: frame.commandId,
+      terminalId,
+      instance: terminal.instance,
+      offset: replay.offset,
+      reset: replay.reset,
+    });
+    for (let at = 0; at < replay.data.length; at += TERMINAL_REPLAY_CHARS) {
+      this.send({
+        v: WIRE_VERSION,
+        type: "terminal_output",
+        terminalId,
+        offset: replay.offset + at,
+        data: replay.data.slice(at, at + TERMINAL_REPLAY_CHARS),
+      });
+    }
+    const exit = terminal.exited;
+    if (exit) {
+      this.send({ v: WIRE_VERSION, type: "terminal_exit", terminalId, ...exit });
+      return;
+    }
+    // The size may be the one it already had, which signals nothing.
+    terminal.resize(frame.cols, frame.rows);
+    if (replay.reset && replay.offset > 0) terminal.redraw();
+  }
+
+  /** The shell an input or resize is for, or an error when it has none. */
+  private terminalFor(frame: { commandId: string; terminalId: string }): Terminal | undefined {
+    const terminal = this.deps.terminals?.get(frame.terminalId);
+    if (!terminal) this.fail(frame.commandId, "bad_request", `no terminal ${frame.terminalId}`);
+    return terminal;
+  }
+
+  private detachTerminal(terminalId: string): void {
+    const attached = this.terminals.get(terminalId);
+    if (!attached) return;
+    attached.terminal.detach(attached.listener);
+    this.terminals.delete(terminalId);
   }
 
   private async listSessions(frame: FrameOf<"list_sessions">): Promise<void> {
@@ -703,6 +797,7 @@ export class Connection {
     this.helloTimer = null;
     for (const off of this.subscriptions.values()) off();
     this.subscriptions.clear();
+    for (const terminalId of [...this.terminals.keys()]) this.detachTerminal(terminalId);
   }
 }
 

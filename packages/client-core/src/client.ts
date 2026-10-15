@@ -15,6 +15,7 @@ import type { BackoffOptions } from "./backoff.ts";
 import { Listeners } from "./listeners.ts";
 import { ThreadOutbox, outboxFrame, type OutboxEntry } from "./outbox.ts";
 import { SessionStore } from "./session-store.ts";
+import { TerminalChannel } from "./terminal.ts";
 import { systemScheduler, type Scheduler } from "./scheduler.ts";
 import {
   MemoryStorage,
@@ -96,6 +97,8 @@ export class PiosClient {
   readonly sessions: SessionStore;
   readonly outbox: ThreadOutbox;
   readonly appState: AppStatePolicy;
+  /** Interactive shells on the machine, over the same socket. */
+  readonly terminals: TerminalChannel;
 
   private readonly scheduler: Scheduler;
   private readonly storage: StorageAdapter;
@@ -159,6 +162,10 @@ export class PiosClient {
       send: (entry) => this.supervisor.send(outboxFrame(entry)),
     });
     this.appState = new AppStatePolicy(this.supervisor, { scheduler: this.scheduler });
+    this.terminals = new TerminalChannel(
+      (command, commandId) => this.send(command, commandId),
+      this.generateId,
+    );
 
     this.supervisor.subscribe((state) => this.onSupervisorState(state));
     this.supervisor.onFrame((frame) => this.onFrame(frame));
@@ -525,6 +532,7 @@ export class PiosClient {
     }
     // Not scoped to subscriptions: a draft asks for models before it exists.
     for (const [sessionId, wanted] of this.modelsWanted) this.sendListModels(sessionId, wanted);
+    this.terminals.reconnected();
     this.outbox.drain();
   }
 
@@ -599,6 +607,7 @@ export class PiosClient {
   }
 
   private onFrame(frame: ServerFrame): void {
+    if (this.terminals.onFrame(frame)) return;
     switch (frame.type) {
       case "ack":
         this.outbox.acknowledge(frame.commandId);
@@ -700,6 +709,7 @@ export class PiosClient {
   }
 
   private onError(frame: FrameOf<"error">): void {
+    if (frame.commandId && this.terminals.onError(frame.commandId, frame.message)) return;
     const queued = frame.commandId ? this.outbox.reject(frame.commandId, frame.message) : false;
     const isSync = !!frame.commandId && this.syncCommands.delete(frame.commandId);
     if (frame.code === "unauthorized") return;

@@ -18,6 +18,7 @@
     "@pios/pi-host": "workspace:*",
     "@pios/protocol": "workspace:*",
     "@pios/relay": "workspace:*",
+    "node-pty": "^1.1.0",
     "proper-lockfile": "^4.1.2",
     "web-push": "^3.6.7",
     "ws": "^8.18.0"

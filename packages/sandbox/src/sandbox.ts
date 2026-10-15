@@ -76,6 +76,13 @@ export async function startSandbox(options: SandboxOptions = {}): Promise<Sandbo
     sessionIdleMs: scenario.sessionIdleMs ?? 30 * 60_000,
     piVersion: "sandbox",
     webDir: options.webDir === undefined ? null : options.webDir,
+    // A real shell, but not the developer's: no rc files, and a home that is
+    // deleted with everything else.
+    terminals: {
+      shell: "/bin/bash",
+      args: ["--norc", "--noprofile"],
+      env: { HOME: dir, PS1: "\\W $ ", HISTFILE: join(dir, "bash_history") },
+    },
     sessionHost: subprocessHost({
       command: process.execPath,
       argsPrefix: [FAKE_PI],

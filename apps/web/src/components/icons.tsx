@@ -191,6 +191,15 @@ export function FileIcon(props: SVGProps<SVGSVGElement>) {
   );
 }
 
+export function TerminalIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Svg {...props}>
+      <rect x="3" y="4.5" width="18" height="15" rx="2" />
+      <path d="m7 9.5 3 2.5-3 2.5M12.5 15H17" />
+    </Svg>
+  );
+}
+
 export function UndoIcon(props: SVGProps<SVGSVGElement>) {
   return (
     <Svg {...props}>

@@ -218,3 +218,27 @@ test("an export names its file only when asked to, and its reply is a path", () 
   });
   assert.ok(reply.success);
 });
+
+test("a terminal open defaults to attaching, and sizes are bounded", () => {
+  const open = ClientFrameSchema.parse({
+    v: WIRE_VERSION,
+    type: "terminal_open",
+    commandId: "c1",
+    terminalId: "t1",
+    cwd: "/w",
+    cols: 80,
+    rows: 24,
+  });
+  assert.equal(open.type === "terminal_open" && open.restart, false);
+  const huge = { v: WIRE_VERSION, type: "terminal_resize", commandId: "c2", terminalId: "t1", cols: 0, rows: 24 };
+  assert.equal(ClientFrameSchema.safeParse(huge).success, false);
+
+  const output = ServerFrameSchema.parse({
+    v: WIRE_VERSION,
+    type: "terminal_output",
+    terminalId: "t1",
+    offset: 12,
+    data: "\u001b[32mok\u2028\r\n",
+  });
+  assert.equal(output.type === "terminal_output" && output.data, "\u001b[32mok\u2028\r\n");
+});

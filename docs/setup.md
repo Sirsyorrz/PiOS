@@ -14,6 +14,8 @@ Linux with systemd is the supported host. macOS and Windows are not done yet.
 
 - Node 22.18 or newer, and pnpm. The daemon runs its TypeScript sources
   directly, which needs Node's built-in type stripping.
+- A C++ toolchain (`make`, `g++`, `python3`) for `pnpm install` to build
+  `node-pty`, which the terminal runs on.
 - `pi` on `PATH`, logged in to at least one provider. The daemon starts
   `pi --mode rpc` for each session and uses your existing pi config,
   credentials and sessions.

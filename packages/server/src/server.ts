@@ -16,6 +16,7 @@ import { SettleNotifier, type Notification } from "./notifier.ts";
 import { ExternalTurnNotifier } from "./external-turns.ts";
 import { PushStore } from "./push.ts";
 import { SessionStoreWatcher } from "./store-watcher.ts";
+import { TerminalHost, type TerminalHostOptions } from "./terminals.ts";
 import { TrustStore } from "./trust.ts";
 import { ClaudeUsage } from "./usage.ts";
 import {
@@ -33,6 +34,8 @@ export interface PiosServerOptions extends Partial<ServerConfig> {
   piVersion?: string;
   /** Overridable so tests do not touch the real session directory. */
   index?: SessionIndex;
+  /** Overridable so tests and the sandbox get a predictable shell. */
+  terminals?: TerminalHostOptions;
 }
 
 export class PiosServer {
@@ -42,6 +45,7 @@ export class PiosServer {
   readonly push: PushStore;
   readonly images: ImageStore;
   readonly usage: ClaudeUsage;
+  readonly terminals: TerminalHost;
 
   private readonly http: Server;
   private readonly wss: WebSocketServer;
@@ -77,6 +81,7 @@ export class PiosServer {
     });
     this.push = new PushStore(pushStorePath(this.config), this.config.pushSubject);
     this.images = new ImageStore(join(this.config.dataDir, "images"));
+    this.terminals = new TerminalHost(options.terminals);
     this.usage = new ClaudeUsage({
       authPath: join(this.config.agentDir, "auth.json"),
       cachePath: this.config.usageCachePath,
@@ -136,6 +141,7 @@ export class PiosServer {
         trust: this.trust,
         announceSessions: () => this.announceSessions(),
         images: this.images,
+        terminals: this.terminals,
       });
       this.connections.add(connection);
       socket.on("close", () => this.connections.delete(connection));
@@ -213,6 +219,7 @@ export class PiosServer {
     this.watcher.stop();
     this.externalTurns.stop();
     this.notifier.releaseAll();
+    this.terminals.closeAll();
     await this.registry.disposeAll();
     for (const client of this.wss.clients) client.terminate();
     await new Promise<void>((resolve) => this.wss.close(() => resolve()));

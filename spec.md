@@ -288,7 +288,6 @@ input box.
 
 ### Later
 
-- Raw terminal tab (see section 9, deliberately deferred)
 - macOS / Windows daemon support
 - Branch browsing (`clone`, `get_fork_messages`, `get_tree`)
 
@@ -453,7 +452,8 @@ reachable once it has a route. Deliberately unrouted today, with the reason:
    `message_end.message` as authoritative. Buffer `toolcall_delta` for args.
 4. **Bash is not a terminal.** The RPC `bash` command adds output to
    conversation context and only reaches the LLM on the next prompt. The
-   terminal tab needs a separate shell channel.
+   terminal tab is a separate shell channel (`terminal_*` frames), never
+   routed through pi.
 
 ### One-shot bash
 
@@ -479,6 +479,31 @@ the distinction is load-bearing because the two differ in kind.
 - Same trust and containment rules as everything else. This runs arbitrary
   code as the user, and the auth boundary is the only boundary there is.
 
+### Terminal
+
+The interactive shell does not go through pi at all. The daemon owns PTYs
+(`node-pty`), keyed by a client-chosen id (the web app uses the session id),
+and streams them over the same authenticated socket as everything else, so
+there is still one retry owner and no second auth path.
+
+- **Daemon-owned, not socket-owned.** Leaving the screen, a dropped socket or
+  an app reload detaches; the shell keeps running until it exits or is
+  closed. Several devices can attach at once; the last resize wins.
+- **Offset cursor.** Output is kept as a bounded scrollback with a running
+  offset. `terminal_open` carries `since: {instance, offset}`, and the
+  daemon replays from there or, if that is not continuous with what it holds,
+  replies `reset` and replays everything it has. `instance` changes when the
+  shell is replaced, so an offset never addresses the wrong shell. A gap in
+  live output makes the client re-attach from its own offset.
+- **Input is never queued.** Keystrokes replayed after a reconnect would land
+  in whatever the shell is doing by then. Offline keys are dropped and the
+  screen says so.
+- **Exit is sticky.** Re-attaching to an exited shell shows how it ended;
+  only an explicit `restart` starts a new one.
+- **Backpressure.** A socket behind on output pauses the PTY, so a runaway
+  `yes` blocks on the PTY instead of filling daemon memory.
+- A cap on live shells, since each is a process the phone may forget about.
+
 ---
 
 ## 9. Client platform
@@ -490,11 +515,13 @@ the distinction is load-bearing because the two differ in kind.
   (`eas build --local`, `npx expo run:ios`, `xcrun simctl`), never the GUI.
 - With pairing instead of SSH bootstrap, v0 needs no native modules, so the
   dev-client path holds until APNs, Live Activity, or Secure Enclave keys land.
-- **Terminal tab: defer.** T3 abandoned xterm.js: web runs a WebAssembly build
-  of `libghostty-vt`, Android links the native library
+- **Terminal tab: xterm.js first.** T3 abandoned xterm.js: web runs a
+  WebAssembly build of `libghostty-vt`, Android links the native library
   ([`docs/architecture/terminal-renderers.md`][t3-term]). PTYs stay
-  server-owned; renderer choice never crosses the wire. If built early,
-  xterm.js in a WebView is the cheap version.
+  server-owned (`node-pty` in the daemon); renderer choice never crosses the
+  wire, which carries text output tagged with an offset into the shell's
+  output. The web app uses xterm.js, lazy-loaded; swapping it for
+  `libghostty-vt` later is a client-only change.
 - **Layout: one list, two presentations.** Wide viewports keep the session
   list docked beside the chat; narrow ones show it as an overlay over the
   chat. Crossing the breakpoint changes presentation only: the open session,
@@ -533,8 +560,9 @@ the distinction is load-bearing because the two differ in kind.
   through the daemon?
 - Q: Multi-session in one repo is allowed by pi's model, but what happens when
   two agents write the same file? Probably just document it.
-- Q: Terminal tab: daemon-mediated PTY (T3's model) is the answer if built.
-  Renderer is the open cost.
+- Q: Terminal tab renderer: xterm.js is the shipped cut. Whether it holds up
+  on iOS (selection, IME, long scrollback) decides if `libghostty-vt` is worth
+  the WebAssembly build.
 
 ---
 

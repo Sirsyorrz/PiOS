@@ -17,7 +17,7 @@ catches up when it comes back.
 </p>
 
 > **Status:** early. Built for Linux hosts and an iPhone; expect rough edges.
-> A native app and a terminal tab are not built yet.
+> A native app is not built yet.
 
 ## Features
 
@@ -37,6 +37,10 @@ catches up when it comes back.
 - **Files:** browse and search the project, and view or edit files.
 - **One-shot shell:** run a single command in the session directory and see
   the output stream in.
+- **Terminal:** an interactive shell on a PTY in the session directory, with
+  a key bar for Ctrl, Esc, Tab and the arrows. The shell lives on the
+  machine, so it survives leaving the screen, a dropped connection or a
+  reload, and every device sees the same one.
 - **Push notifications** when a turn settles, also for turns finished in the
   TUI. They are skipped while you are watching that session.
 - **Offline-safe sending:** prompts go through an outbox with idempotent

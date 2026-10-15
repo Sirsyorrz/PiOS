@@ -469,10 +469,10 @@ notification model.
 
 ## Phase 11 - Later
 
-- Raw terminal tab: daemon-owned PTY, separate shell channel. The one-shot
-  `bash` of Phase 6.7 cannot grow into this: no TTY, no interactivity, output
-  lands in conversation context. Renderer decision deferred; xterm.js in a
-  WebView is the cheap first cut.
+- Raw terminal tab - DONE. Shipped: daemon-owned PTY (`node-pty`),
+  `terminal_*` frames on the main socket with an offset cursor, xterm.js in
+  the web app. Open: whether xterm.js holds up on iOS or `libghostty-vt` is
+  needed.
 - Branch browsing (`clone`, `get_fork_messages`, `get_tree`). Rewind-to-a-turn
   ships on `fork`; browsing the whole tree needs an RPC command to move the
   leaf, which pi does not expose.
@@ -511,4 +511,4 @@ notification model.
 | pi process crash recovery | **Restart in place.** Same id, resumed from the session file, `session_recovered` with the new leaf; a crash loop stops after the budget. |
 | Offline transcript caching on device | **Cached.** `SessionStore` persists entries per session, schema-versioned. Cached data renders while offline but never decides freshness: that is always `leafId` from the daemon. |
 | Two agents writing one file | Document in Phase 3, no code |
-| Terminal renderer cost | Phase 11 |
+| Terminal renderer cost | **xterm.js first**, lazy-loaded (~85 kB gzip). Renderer never crosses the wire, so a swap is client-only. |

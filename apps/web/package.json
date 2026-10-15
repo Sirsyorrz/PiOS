@@ -28,6 +28,8 @@
     "@lezer/highlight": "^1.2.3",
     "@pios/client-core": "workspace:*",
     "@pios/protocol": "workspace:*",
+    "@xterm/addon-fit": "^0.11.0",
+    "@xterm/xterm": "^6.0.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },

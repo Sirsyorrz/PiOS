@@ -2154,14 +2154,38 @@ button.scroll-bottom {
 }
 
 /* The keys a phone keyboard does not have, on the line above it. */
-.file-keys {
+.file-keys,
+.term-keys {
   gap: 6px;
   padding-top: 4px;
   border-top: 1px solid var(--line);
 }
 
-.file-keys button {
+.file-keys button,
+.term-keys button {
   min-width: var(--control);
+}
+
+/* Sticky modifier: lit while it waits for the key it modifies. */
+.term-keys button[aria-pressed="true"] {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+/* xterm.js sizes itself to this box and scrolls its own buffer. */
+.terminal-screen {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.terminal-screen .xterm {
+  height: 100%;
+}
+
+/* xterm.css paints the leftover below the last row black. */
+.terminal-screen .xterm .xterm-viewport {
+  background-color: var(--bg);
 }
 
 .divider {

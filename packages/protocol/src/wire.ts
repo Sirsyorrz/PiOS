@@ -50,6 +50,20 @@ const SessionCreateSchema = z.object({
   model: z.string().optional(),
 });
 
+/** Client-chosen, so a reconnecting device can find its shell again. */
+const TerminalIdSchema = z.string().min(1).max(128);
+const TerminalCellsSchema = z.number().int().min(1).max(1000);
+
+/**
+ * A position in one shell's output. `instance` changes when the shell is
+ * replaced, which is what makes an offset from the old one meaningless.
+ */
+export const TerminalCursorSchema = z.object({
+  instance: z.string(),
+  offset: z.number().int().min(0),
+});
+export type TerminalCursor = z.infer<typeof TerminalCursorSchema>;
+
 export const ClientFrameSchema = z.discriminatedUnion("type", [
   // Must succeed before the supervisor reports `connected`.
   Envelope({ type: z.literal("hello"), deviceToken: z.string(), clientVersion: z.string() }),
@@ -216,6 +230,45 @@ export const ClientFrameSchema = z.discriminatedUnion("type", [
     confirmed: z.boolean().optional(),
     cancelled: z.boolean().optional(),
   }),
+  /**
+   * Attaches to a shell on a daemon-owned PTY, starting one if the id has
+   * none. Unrelated to `run_bash`: this is an interactive terminal, and
+   * nothing it prints reaches the agent.
+   *
+   * The shell outlives the socket, so a reconnect sends this again with
+   * `since` and receives only what it missed.
+   */
+  Envelope({
+    type: z.literal("terminal_open"),
+    terminalId: TerminalIdSchema,
+    cwd: z.string(),
+    cols: TerminalCellsSchema,
+    rows: TerminalCellsSchema,
+    /** Where the client's copy of the output ends. Absent replays everything. */
+    since: TerminalCursorSchema.optional(),
+    /**
+     * Replaces an exited shell with a fresh one. Never implied: a reconnect
+     * that silently restarted a finished shell would lose its exit status.
+     */
+    restart: z.boolean().default(false),
+  }),
+  /** Keystrokes and pastes. Not acked: a reply per key doubles the traffic. */
+  Envelope({
+    type: z.literal("terminal_input"),
+    terminalId: TerminalIdSchema,
+    data: z.string().max(256 * 1024),
+  }),
+  /** The last device to resize wins, as with a shared tmux window. */
+  Envelope({
+    type: z.literal("terminal_resize"),
+    terminalId: TerminalIdSchema,
+    cols: TerminalCellsSchema,
+    rows: TerminalCellsSchema,
+  }),
+  /** Stops streaming to this socket. The shell keeps running. */
+  Envelope({ type: z.literal("terminal_detach"), terminalId: TerminalIdSchema }),
+  /** Hangs up the shell, for every device attached to it. */
+  Envelope({ type: z.literal("terminal_close"), terminalId: TerminalIdSchema }),
   /** Activity lease: what the client wants kept warm, not a liveness ping. */
   Envelope({
     type: z.literal("activity"),
@@ -465,6 +518,35 @@ export const ServerFrameSchema = z.discriminatedUnion("type", [
     running: z.boolean(),
     /** Present once the command has finished. */
     result: BashResultSchema.optional(),
+  }),
+  /**
+   * Reply to `terminal_open`, ahead of any output. `reset` means the client's
+   * copy is not continuous with what follows and the screen must be cleared.
+   */
+  ServerEnvelope({
+    type: z.literal("terminal_attached"),
+    terminalId: z.string(),
+    instance: z.string(),
+    /** Output offset the replay starts at. */
+    offset: z.number(),
+    reset: z.boolean(),
+  }),
+  /**
+   * Shell output, as text. `offset` is where `data` starts in the shell's
+   * output, so a client can tell a duplicate from a gap.
+   */
+  ServerEnvelope({
+    type: z.literal("terminal_output"),
+    terminalId: z.string(),
+    offset: z.number(),
+    data: z.string(),
+  }),
+  /** The shell is gone. Sent once live, and again on every later attach. */
+  ServerEnvelope({
+    type: z.literal("terminal_exit"),
+    terminalId: z.string(),
+    exitCode: z.number(),
+    signal: z.number().optional(),
   }),
   /** Reply to `rewind`: where the branch now lives, and what to re-compose. */
   ServerEnvelope({
