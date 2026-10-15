@@ -19,6 +19,11 @@ export interface ServerConfig {
   /** pi's own config directory, which holds the project-trust decisions. */
   agentDir: string;
   /**
+   * Plan usage cache, shared with the pi status bar extension so that
+   * together they stay under the usage endpoint's rate limit.
+   */
+  usageCachePath: string;
+  /**
    * How sessions run: `subprocess` spawns `pi --mode rpc` per session,
    * `in-process` drives an `AgentSession` inside the daemon.
    */
@@ -85,6 +90,8 @@ export function defaultConfig(overrides: Partial<ServerConfig> = {}): ServerConf
       process.env.PIOS_SESSION_DIR ??
       join(homedir(), ".pi", "agent", "sessions"),
     agentDir: overrides.agentDir ?? process.env.PI_AGENT_DIR ?? join(homedir(), ".pi", "agent"),
+    usageCachePath:
+      overrides.usageCachePath ?? join(homedir(), ".claude", ".pi-usage-cache.json"),
     sessionHostMode: overrides.sessionHostMode ?? sessionHostMode(process.env.PIOS_HOST),
     sessionIdleMs: overrides.sessionIdleMs ?? 30 * 60_000,
     maxUploadBytes: overrides.maxUploadBytes ?? 25 * 1024 * 1024,

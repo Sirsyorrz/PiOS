@@ -37,6 +37,7 @@ export async function startHarness(
     sessionDir: join(dir, "sessions"),
     // Never the developer's own: trust decisions are read and written here.
     agentDir: join(dir, "agent"),
+    usageCachePath: join(dir, "usage-cache.json"),
     helloTimeoutMs: 300,
     sessionHost: subprocessHost({
       command: process.execPath,

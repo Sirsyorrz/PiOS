@@ -72,6 +72,7 @@ export async function startSandbox(options: SandboxOptions = {}): Promise<Sandbo
     sessionDir: sessionRoot,
     // Never the developer's own: trust decisions are read and written here.
     agentDir: join(dir, "agent"),
+    usageCachePath: join(dir, "usage-cache.json"),
     sessionIdleMs: scenario.sessionIdleMs ?? 30 * 60_000,
     piVersion: "sandbox",
     webDir: options.webDir === undefined ? null : options.webDir,

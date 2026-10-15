@@ -14,7 +14,7 @@ import { containedPath } from "./paths.ts";
 import { IMAGE_CONTENT_TYPES, type ImageStore } from "./image-store.ts";
 import type { PushStore } from "./push.ts";
 import { SERVER_VERSION, type ServerConfig } from "./config.ts";
-import { claudeUsage } from "./usage.ts";
+import type { ClaudeUsage } from "./usage.ts";
 
 const CONTENT_TYPES: Record<string, string> = {
   ".png": "image/png",
@@ -73,6 +73,7 @@ export interface RouteContext {
   index: SessionIndex;
   push: PushStore;
   images: ImageStore;
+  usage: ClaudeUsage;
 }
 
 /**
@@ -150,7 +151,7 @@ export async function handleRequest(
       return json(res, 200, { removed: ctx.push.unsubscribe(endpoint) });
     }
     if (req.method === "GET" && url.pathname === "/usage") {
-      const usage = await claudeUsage();
+      const usage = await ctx.usage.get();
       return json(res, 200, { usage });
     }
     if (req.method === "GET" && url.pathname === "/dirs") return await listDirs(ctx, url, res);

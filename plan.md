@@ -409,9 +409,9 @@ changes, history, branches and stashes as tabs, every patch full width, stash
 patches read with `stash show --include-untracked`.
 
 1. Prune dead code and duplicated view logic surfaced by Phases 6-7.
-2. Absorb `cc-usage`: read the plan-usage source directly in
-   `packages/server/src/usage.ts` rather than shelling out to a CLI the user
-   has to install separately.
+2. Done: `cc-usage` absorbed. `usage.ts` calls `/api/oauth/usage` with pi's
+   Anthropic login, refreshes under pi's `auth.json` lock, and shares the pi
+   status bar's cache file and 429 backoff.
 3. Test debt: the browser smoke run exists (`packages/sandbox/test/
    browser.smoke.ts`) and is where chat view behaviour gets pinned; no jsdom
    layer. Fixture-replay coverage for any new events stays the rule.

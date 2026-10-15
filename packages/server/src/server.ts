@@ -17,6 +17,7 @@ import { ExternalTurnNotifier } from "./external-turns.ts";
 import { PushStore } from "./push.ts";
 import { SessionStoreWatcher } from "./store-watcher.ts";
 import { TrustStore } from "./trust.ts";
+import { ClaudeUsage } from "./usage.ts";
 import {
   authStorePath,
   defaultConfig,
@@ -40,6 +41,7 @@ export class PiosServer {
   readonly registry: SessionRegistry;
   readonly push: PushStore;
   readonly images: ImageStore;
+  readonly usage: ClaudeUsage;
 
   private readonly http: Server;
   private readonly wss: WebSocketServer;
@@ -75,6 +77,10 @@ export class PiosServer {
     });
     this.push = new PushStore(pushStorePath(this.config), this.config.pushSubject);
     this.images = new ImageStore(join(this.config.dataDir, "images"));
+    this.usage = new ClaudeUsage({
+      authPath: join(this.config.agentDir, "auth.json"),
+      cachePath: this.config.usageCachePath,
+    });
     this.notifier = new SettleNotifier({
       send: (notification) => this.sendPush(notification),
       watchers: (sessionId) => this.watchers(sessionId),
@@ -109,6 +115,7 @@ export class PiosServer {
           index: this.index,
           push: this.push,
           images: this.images,
+          usage: this.usage,
         },
         req,
         res,

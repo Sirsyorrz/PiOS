@@ -1,4 +1,3 @@
-- absorb cc-usage into packages/server/src/usage.ts instead of shelling out
 - terminal (needs a real PTY; one-shot bash does not grow into it)
 - toggle text wrap in file editor
 - fix floating composer with no keyboard after reopening the app
