@@ -8,6 +8,13 @@ import { collapseHome, isolate } from "../format.ts";
 import { useSettings } from "../settings.ts";
 import { ConfirmBar } from "./git/parts.tsx";
 import { ChevronLeftIcon, TrashIcon } from "./icons.tsx";
+import { attachTouchScroll } from "./terminal-touch.ts";
+
+/** "once" is spent by the next key; "locked" holds until tapped off. */
+type CtrlState = "off" | "once" | "locked";
+
+/** A second tap on ctrl within this window locks it, as with shift on iOS. */
+const DOUBLE_TAP_MS = 400;
 
 /** Matches the app's own surface, so the screen does not read as an embed. */
 const THEME = {
@@ -53,15 +60,28 @@ export function TerminalView({ terminalId, cwd, onClose }: {
   const initialFontSize = useRef(terminalFontSize);
   const handle = useRef<TerminalHandle | null>(null);
   // Sticky, as on a hardware keyboard: armed by the key bar, spent by the next key.
-  const [ctrl, setCtrlState] = useState(false);
-  const ctrlRef = useRef(false);
+  const [ctrl, setCtrlState] = useState<CtrlState>("off");
+  const ctrlRef = useRef<CtrlState>("off");
+  const ctrlArmedAt = useRef(0);
   const [exit, setExit] = useState<TerminalExitInfo | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [confirmKill, setConfirmKill] = useState(false);
 
-  function setCtrl(next: boolean) {
+  function setCtrl(next: CtrlState) {
     ctrlRef.current = next;
     setCtrlState(next);
+  }
+
+  function tapCtrl(now: number) {
+    const current = ctrlRef.current;
+    if (current === "off") {
+      ctrlArmedAt.current = now;
+      setCtrl("once");
+    } else if (current === "once" && now - ctrlArmedAt.current < DOUBLE_TAP_MS) {
+      setCtrl("locked");
+    } else {
+      setCtrl("off");
+    }
   }
 
   useEffect(() => {
@@ -98,8 +118,8 @@ export function TerminalView({ terminalId, cwd, onClose }: {
     handle.current = opened;
 
     const send = (data: string) => {
-      if (!ctrlRef.current) return opened.write(data);
-      setCtrl(false);
+      if (ctrlRef.current === "off") return opened.write(data);
+      if (ctrlRef.current === "once") setCtrl("off");
       opened.write(withCtrl(data));
     };
     const typed = xterm.onData(send);
@@ -110,9 +130,11 @@ export function TerminalView({ terminalId, cwd, onClose }: {
       if (host.clientWidth > 0 && host.clientHeight > 0) fit.fit();
     });
     observer.observe(host);
+    const detachTouch = attachTouchScroll(xterm, host);
     xterm.focus();
 
     return () => {
+      detachTouch();
       observer.disconnect();
       typed.dispose();
       binary.dispose();
@@ -191,13 +213,13 @@ export function TerminalView({ terminalId, cwd, onClose }: {
         <div className="term-keys row">
           <button
             type="button"
-            className={ctrl ? "active" : undefined}
-            aria-pressed={ctrl}
-            aria-label="control"
+            className={ctrl === "off" ? undefined : ctrl === "locked" ? "active locked" : "active"}
+            aria-pressed={ctrl !== "off"}
+            aria-label={ctrl === "locked" ? "control, locked" : "control"}
             // Keeps focus, and so the keyboard, on the terminal.
             onMouseDown={(event) => event.preventDefault()}
-            onClick={() => {
-              setCtrl(!ctrl);
+            onClick={(event) => {
+              tapCtrl(event.timeStamp);
               term.current?.focus();
             }}
           >

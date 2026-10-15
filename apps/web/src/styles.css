@@ -2211,11 +2211,21 @@ button.scroll-bottom {
   color: var(--on-accent);
 }
 
-/* xterm.js sizes itself to this box and scrolls its own buffer. */
+/* Locked modifier: underlined so it reads apart from a one-shot. */
+.term-keys button.locked {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-thickness: 2px;
+}
+
+/* xterm.js sizes itself to this box; drags are scrolled in script, so the
+   browser must not pan or bounce the page underneath. */
 .terminal-screen {
   flex: 1;
   min-height: 0;
   overflow: hidden;
+  touch-action: none;
+  overscroll-behavior: contain;
 }
 
 .terminal-screen .xterm {
