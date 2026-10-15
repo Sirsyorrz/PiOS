@@ -698,6 +698,12 @@ button.link {
   max-height: 60px;
 }
 
+/* The header clips for its fold, which would also clip an open menu. The
+   menu shuts before the header folds, so the two never overlap. */
+.chat-header:has(.menu-popover) {
+  overflow: visible;
+}
+
 .chat.composing .chat-header {
   max-height: 0;
   min-height: 0;
@@ -1844,6 +1850,35 @@ button.scroll-bottom {
   bottom: calc(100% + 6px);
   z-index: 2;
   max-height: min(40vh, 260px);
+  padding: 4px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  box-shadow: 0 12px 32px rgb(0 0 0 / 0.35);
+}
+
+.menu {
+  position: relative;
+  flex: none;
+}
+
+.menu > button[aria-expanded="true"] {
+  background: var(--hover);
+  color: var(--text);
+}
+
+/* Same surface as the command menu: both are lists that float over the
+   transcript and go away once a choice is made. */
+.menu-popover {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 20;
+  width: max-content;
+  min-width: 200px;
+  max-width: min(280px, calc(100vw - 32px));
+  display: flex;
+  flex-direction: column;
   padding: 4px;
   background: var(--panel);
   border: 1px solid var(--line);

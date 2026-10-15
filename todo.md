@@ -1,1 +1,0 @@
-- top right dropdown menu in sessions, rather than 3 buttons

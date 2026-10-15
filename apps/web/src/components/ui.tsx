@@ -1,6 +1,6 @@
-import { useRef, type FormEvent, type MouseEventHandler, type ReactNode } from "react";
+import { useEffect, useRef, useState, type FormEvent, type MouseEventHandler, type ReactNode } from "react";
 import { isolate } from "../format.ts";
-import { CloseIcon, SearchIcon } from "./icons.tsx";
+import { CloseIcon, MoreIcon, SearchIcon } from "./icons.tsx";
 
 function withBase(base: string, className?: string): string {
   return className ? `${base} ${className}` : base;
@@ -78,6 +78,77 @@ export function PickerHeader({ title, onCancel, action }: {
       <h2 className="line">{title}</h2>
       <span className="row">{action}</span>
     </header>
+  );
+}
+
+export interface MenuItem {
+  label: string;
+  /** A muted second line, for the state the action would act on. */
+  detail?: ReactNode;
+  icon: ReactNode;
+  onSelect: () => void;
+}
+
+/**
+ * One overflow button standing in for a row of icon buttons, opening a list
+ * under it. Closes on a choice, a tap elsewhere, or Escape, so it never
+ * outlives the moment it was opened for.
+ */
+export function Menu({ label, items, disabled }: {
+  label: string;
+  items: MenuItem[];
+  /** Forces it shut, for when its anchor is about to fold away. */
+  disabled?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const root = useRef<HTMLDivElement>(null);
+  const shown = open && !disabled;
+
+  useEffect(() => {
+    if (!shown) return;
+    const away = (event: PointerEvent) => {
+      if (!root.current?.contains(event.target as Node)) setOpen(false);
+    };
+    const key = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("pointerdown", away);
+    document.addEventListener("keydown", key);
+    return () => {
+      document.removeEventListener("pointerdown", away);
+      document.removeEventListener("keydown", key);
+    };
+  }, [shown]);
+
+  return (
+    <div className="menu" ref={root}>
+      <button
+        type="button"
+        className="icon ghost"
+        aria-label={label}
+        aria-expanded={shown}
+        onClick={() => setOpen(!open)}
+      >
+        <MoreIcon />
+      </button>
+      {shown ? (
+        <div className="menu-popover">
+          {items.map((item) => (
+            <ListRowButton
+              key={item.label}
+              icon={item.icon}
+              onClick={() => {
+                setOpen(false);
+                item.onSelect();
+              }}
+            >
+              <span className="line">{item.label}</span>
+              {item.detail ? <span className="muted line tail">{item.detail}</span> : null}
+            </ListRowButton>
+          ))}
+        </div>
+      ) : null}
+    </div>
   );
 }
 

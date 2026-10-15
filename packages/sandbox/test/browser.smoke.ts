@@ -112,7 +112,8 @@ describe("the web app against the sandbox", () => {
   });
 
   it("keeps an open editor through a streaming turn", async () => {
-    assert.ok(await browser.tap('button[aria-label="browse files"]'));
+    assert.ok(await browser.tap('button[aria-label="session menu"]'));
+    assert.ok(await browser.tap(".menu-popover .list-row"));
     await until(() => browser.tapText("README.md"), "the file tree");
     await until(() => browser.tapText("Edit"), "the editor");
     await browser.eval(`(document.querySelector(".cm-editor").dataset.smoke = "1", true)`);

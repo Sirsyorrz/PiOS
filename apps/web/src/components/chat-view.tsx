@@ -17,7 +17,7 @@ import { Composer } from "./composer.tsx";
 import type { NativeCommand } from "./native-commands.ts";
 import { sessionState } from "../session-status.ts";
 import { DialogSheet, type DialogAnswer } from "./dialog-sheet.tsx";
-import { Divider } from "./ui.tsx";
+import { Divider, Menu, type MenuItem } from "./ui.tsx";
 import { GitChip, GitView } from "./git-view.tsx";
 import { useGitStatus } from "../git.ts";
 import { FileView } from "./file-view.tsx";
@@ -335,6 +335,22 @@ export function ChatView({
     // The dock remounts when a subview closes, and has to be measured again.
   }, [transcript.settle, subview]);
 
+  const menuItems: MenuItem[] = [
+    {
+      label: "Files",
+      // The file it reopens, so the tap is not a guess.
+      detail: openPath ? isolate(openPath) : undefined,
+      icon: <FileIcon />,
+      onSelect: () => setSubview("files"),
+    },
+    ...(cwd
+      ? [{ label: "Terminal", icon: <TerminalIcon />, onSelect: () => setSubview("terminal") }]
+      : []),
+    // Starts from this session's cwd: a second agent on the same project is
+    // the common case.
+    { label: "New session", icon: <PlusIcon />, onSelect: onNewSession },
+  ];
+
   if (subview === "git" && baseUrl) {
     return <GitView git={git} onClose={() => setSubview(null)} />;
   }
@@ -381,29 +397,7 @@ export function ChatView({
         </span>
         <StatusMark state={rowState} />
         <GitChip git={git} onOpen={() => setSubview("git")} />
-        <button
-          type="button"
-          className="icon ghost"
-          onClick={() => setSubview("files")}
-          aria-label={openPath ? `open ${openPath}` : "browse files"}
-        >
-          <FileIcon />
-        </button>
-        {cwd ? (
-          <button
-            type="button"
-            className="icon ghost"
-            onClick={() => setSubview("terminal")}
-            aria-label="open a terminal"
-          >
-            <TerminalIcon />
-          </button>
-        ) : null}
-        {/* Starts from this session's cwd: a second agent on the same project
-            is the common case, and it is one tap away. */}
-        <button type="button" className="icon ghost" onClick={onNewSession} aria-label="new session">
-          <PlusIcon />
-        </button>
+        <Menu label="session menu" items={menuItems} disabled={composing} />
       </header>
 
       <div className="transcript scroll-y" ref={transcript.ref} onScroll={transcript.onScroll}>
