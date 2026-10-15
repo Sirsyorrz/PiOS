@@ -2121,14 +2121,19 @@ button.scroll-bottom {
   cursor: pointer;
 }
 
+.file-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
 .dirty-dot {
-  display: inline-block;
+  flex: none;
   width: 7px;
   height: 7px;
-  margin-left: 6px;
   border-radius: 50%;
   background: var(--warn);
-  vertical-align: middle;
 }
 
 /* Block, not flex: `.list-row` grows to fill a flex column, and a short
@@ -2142,7 +2147,6 @@ button.scroll-bottom {
   flex: 1;
   min-height: 0;
   overflow: hidden;
-  font-size: 13px;
 }
 
 .file-conflict {

@@ -17,7 +17,13 @@ export interface Settings {
   /** What a prompt typed mid-turn does: steer now, or queue as a follow-up. */
   steeringMode: StreamingBehavior;
   directorySort: DirectorySort;
+  /** Pixels; also decides how many columns the shell gets. */
+  terminalFontSize: number;
+  editorFontSize: number;
 }
+
+/** The sizes offered: below 10 is unreadable on a phone, above 20 fits too little. */
+export const FONT_SIZES = [10, 11, 12, 13, 14, 15, 16, 18, 20] as const;
 
 const DEFAULT_SETTINGS: Settings = {
   showThinking: true,
@@ -25,6 +31,8 @@ const DEFAULT_SETTINGS: Settings = {
   showSessionStats: false,
   steeringMode: "steer",
   directorySort: "recent",
+  terminalFontSize: 13,
+  editorFontSize: 13,
 };
 
 /**
@@ -54,6 +62,8 @@ export function loadSettings(): Settings {
       record.directorySort === "recent" || record.directorySort === "alphabetical"
         ? record.directorySort
         : DEFAULT_SETTINGS.directorySort,
+    terminalFontSize: fontSize(record.terminalFontSize, DEFAULT_SETTINGS.terminalFontSize),
+    editorFontSize: fontSize(record.editorFontSize, DEFAULT_SETTINGS.editorFontSize),
   };
 }
 
@@ -63,6 +73,10 @@ export function saveSettings(settings: Settings): void {
 
 function bool(value: unknown, fallback: boolean): boolean {
   return typeof value === "boolean" ? value : fallback;
+}
+
+function fontSize(value: unknown, fallback: number): number {
+  return (FONT_SIZES as readonly unknown[]).includes(value) ? (value as number) : fallback;
 }
 
 const SettingsContext = createContext<Settings>(DEFAULT_SETTINGS);

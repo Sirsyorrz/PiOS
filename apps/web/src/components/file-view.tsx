@@ -278,8 +278,10 @@ function FileEditor({ access, path, onBrowse, onClose }: {
         >
           <ChevronLeftIcon />
         </button>
-        <h2 className="line tail" onClick={() => leave(onBrowse)}>
-          {isolate(path)}
+        {/* The dot sits outside the clipped path: inside, the reversed
+            direction would put it ahead of the name. */}
+        <h2 className="file-title" onClick={() => leave(onBrowse)}>
+          <span className="line tail">{isolate(path)}</span>
           {dirty ? <span className="dirty-dot" aria-label="unsaved changes" /> : null}
         </h2>
         <button

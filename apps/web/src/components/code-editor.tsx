@@ -5,6 +5,7 @@ import { Compartment, EditorState, type Extension } from "@codemirror/state";
 import { tags } from "@lezer/highlight";
 import { EditorView, highlightActiveLine, keymap, lineNumbers } from "@codemirror/view";
 import { useEffect, useRef } from "react";
+import { useSettings } from "../settings.ts";
 
 /**
  * The CodeMirror half of the file view, imported lazily.
@@ -104,7 +105,13 @@ export function CodeEditor({ text, path, readOnly, wrap, handle, onChange }: {
     });
   }, [text]);
 
-  return <div className="code-editor" ref={host} />;
+  // A CSS size, not an editor option: CodeMirror measures what it renders.
+  const { editorFontSize } = useSettings();
+  useEffect(() => {
+    view.current?.requestMeasure();
+  }, [editorFontSize]);
+
+  return <div className="code-editor" ref={host} style={{ fontSize: editorFontSize }} />;
 }
 
 const theme = EditorView.theme(

@@ -1,4 +1,3 @@
 - top right dropdown menu in sessions, rather than 3 buttons
 - terminal settings, font size mainly
 - font size in file editor
-- orange dot in file editor is spaced poorly

@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { httpBase, type Machine } from "../machine.ts";
 import { disablePush, enablePush, pushState, type PushState } from "../push.ts";
-import type { Settings } from "../settings.ts";
+import { FONT_SIZES, type Settings } from "../settings.ts";
 import type { UsageReport } from "@pios/protocol";
 import { fetchUsage, formatSpend, resetsIn } from "../usage.ts";
 import { ModalCard, PickerHeader } from "./ui.tsx";
@@ -70,6 +70,21 @@ export function SettingsView({ settings, machine, onChange, onForget, onClose }:
             ["alphabetical", "Alphabetical"],
           ]}
           onChange={(directorySort) => patch({ directorySort })}
+        />
+      </div>
+
+      <div className="settings-group">
+        <h3>Files and terminal</h3>
+        <Size
+          label="Editor font size"
+          value={settings.editorFontSize}
+          onChange={(editorFontSize) => patch({ editorFontSize })}
+        />
+        <Size
+          label="Terminal font size"
+          hint="Smaller fits more columns."
+          value={settings.terminalFontSize}
+          onChange={(terminalFontSize) => patch({ terminalFontSize })}
         />
       </div>
 
@@ -280,6 +295,23 @@ function Choice<T extends string>({ label, hint, value, options, onChange }: {
           ))}
         </select>
       }
+    />
+  );
+}
+
+function Size({ label, hint, value, onChange }: {
+  label: string;
+  hint?: string;
+  value: number;
+  onChange: (value: number) => void;
+}) {
+  return (
+    <Choice
+      label={label}
+      hint={hint}
+      value={String(value)}
+      options={FONT_SIZES.map((size) => [String(size), `${size} px`])}
+      onChange={(next) => onChange(Number(next))}
     />
   );
 }

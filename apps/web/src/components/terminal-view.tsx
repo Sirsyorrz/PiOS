@@ -5,6 +5,7 @@ import "@xterm/xterm/css/xterm.css";
 import type { TerminalExitInfo, TerminalHandle } from "@pios/client-core";
 import { useClient, useSupervisorState } from "../client-provider.tsx";
 import { collapseHome, isolate } from "../format.ts";
+import { useSettings } from "../settings.ts";
 import { ConfirmBar } from "./git/parts.tsx";
 import { ChevronLeftIcon, TrashIcon } from "./icons.tsx";
 
@@ -46,6 +47,10 @@ export function TerminalView({ terminalId, cwd, onClose }: {
   const { transport } = useSupervisorState();
   const screen = useRef<HTMLDivElement>(null);
   const term = useRef<Terminal | null>(null);
+  const fitter = useRef<FitAddon | null>(null);
+  const { terminalFontSize } = useSettings();
+  // Read once at creation; later changes go through the effect below.
+  const initialFontSize = useRef(terminalFontSize);
   const handle = useRef<TerminalHandle | null>(null);
   // Sticky, as on a hardware keyboard: armed by the key bar, spent by the next key.
   const [ctrl, setCtrlState] = useState(false);
@@ -64,7 +69,7 @@ export function TerminalView({ terminalId, cwd, onClose }: {
     if (!host) return;
     const xterm = new Terminal({
       fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
-      fontSize: 13,
+      fontSize: initialFontSize.current,
       scrollback: 5000,
       cursorBlink: true,
       theme: THEME,
@@ -74,6 +79,7 @@ export function TerminalView({ terminalId, cwd, onClose }: {
     xterm.open(host);
     fit.fit();
     term.current = xterm;
+    fitter.current = fit;
 
     const opened = client.terminals.open(
       terminalId,
@@ -114,9 +120,18 @@ export function TerminalView({ terminalId, cwd, onClose }: {
       opened.detach();
       handle.current = null;
       term.current = null;
+      fitter.current = null;
       xterm.dispose();
     };
   }, [client, terminalId, cwd]);
+
+  // Changing the size in place refits, so the shell learns its new geometry.
+  useEffect(() => {
+    const xterm = term.current;
+    if (!xterm || xterm.options.fontSize === terminalFontSize) return;
+    xterm.options.fontSize = terminalFontSize;
+    fitter.current?.fit();
+  }, [terminalFontSize]);
 
   function key(send: (app: boolean) => string) {
     const xterm = term.current;
