@@ -1,11 +1,4 @@
 - absorb cc-usage into packages/server/src/usage.ts instead of shelling out
 - terminal (needs a real PTY; one-shot bash does not grow into it)
-- @ fuzzy picker must be daemon-side: RPC mode no-ops addAutocompleteProvider
-  and setEditorComponent, so pi-fzfp cannot serve the client. Upstream idea:
-  an RPC command that runs registered providers and returns AutocompleteItems
-- relay: the phase 7.8 exit check on a real phone over cellular
-
-Verify on the phone (fixed, but only reproducible on iOS):
-- floating composer with no keyboard after reopening the app
-- resuming a cold session: model shown, and a first prompt that is visible
-  while it streams
+- toggle text wrap in file editor
+- fix floating composer with no keyboard after reopening the app
