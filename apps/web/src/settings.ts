@@ -22,8 +22,7 @@ export interface Settings {
   editorFontSize: number;
 }
 
-/** The sizes offered: below 10 is unreadable on a phone, above 20 fits too little. */
-export const FONT_SIZES = [10, 11, 12, 13, 14, 15, 16, 18, 20] as const;
+export const FONT_SIZES = [6, 8, 10, 12, 14, 16, 18] as const;
 
 const DEFAULT_SETTINGS: Settings = {
   showThinking: true,
@@ -31,8 +30,8 @@ const DEFAULT_SETTINGS: Settings = {
   showSessionStats: false,
   steeringMode: "steer",
   directorySort: "recent",
-  terminalFontSize: 13,
-  editorFontSize: 13,
+  terminalFontSize: 12,
+  editorFontSize: 12,
 };
 
 /**

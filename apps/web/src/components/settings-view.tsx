@@ -82,7 +82,6 @@ export function SettingsView({ settings, machine, onChange, onForget, onClose }:
         />
         <Size
           label="Terminal font size"
-          hint="Smaller fits more columns."
           value={settings.terminalFontSize}
           onChange={(terminalFontSize) => patch({ terminalFontSize })}
         />
@@ -299,16 +298,14 @@ function Choice<T extends string>({ label, hint, value, options, onChange }: {
   );
 }
 
-function Size({ label, hint, value, onChange }: {
+function Size({ label, value, onChange }: {
   label: string;
-  hint?: string;
   value: number;
   onChange: (value: number) => void;
 }) {
   return (
     <Choice
       label={label}
-      hint={hint}
       value={String(value)}
       options={FONT_SIZES.map((size) => [String(size), `${size} px`])}
       onChange={(next) => onChange(Number(next))}
