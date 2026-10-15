@@ -4,11 +4,31 @@
 
 const MIN_KEYBOARD = 120;
 
+/** Whether the focused element is one that raises the software keyboard. */
+function editing(): boolean {
+  const active = document.activeElement;
+  if (!(active instanceof HTMLElement)) return false;
+  if (active.isContentEditable || active instanceof HTMLTextAreaElement) return true;
+  if (!(active instanceof HTMLInputElement)) return false;
+  return !["button", "checkbox", "radio", "range", "color", "file", "submit", "reset", "image"].includes(active.type);
+}
+
 export function trackViewport(): void {
   const root = document.documentElement;
   const vv = window.visualViewport;
 
   const apply = () => {
+    // With nothing to type into there is no keyboard, whatever the viewport
+    // says. On a return from the background iOS can keep reporting the height
+    // it had with the keyboard up, and fire nothing to correct it, which
+    // leaves the composer floating mid-screen. So the CSS full height is used
+    // and the stale numbers are never consulted.
+    if (!editing()) {
+      root.style.removeProperty("--app-height");
+      root.style.removeProperty("--app-offset");
+      root.dataset.keyboard = "0";
+      return;
+    }
     const height = vv ? vv.height : window.innerHeight;
     const offset = vv ? vv.offsetTop : 0;
     // Anything the visual viewport lost to an overlay is assumed to be the
@@ -34,23 +54,19 @@ export function trackViewport(): void {
     box.scrollLeft = 0;
   };
 
-  // iOS settles the viewport a few frames after it says anything, and on a
-  // return from the background it may say nothing at all: the app comes back
-  // sized for a keyboard that is gone, with the composer floating mid-screen.
-  // So a change that could move the keyboard is measured again after it lands.
+  // iOS settles the viewport a few frames after it says anything, so a change
+  // that could move the keyboard is measured again after it lands. Not
+  // synchronously: during a focus hop between two fields nothing is focused,
+  // and measuring then would drop the app to full height for a frame.
   const settle = () => {
-    apply();
-    for (const delay of [50, 150, 400, 800]) setTimeout(apply, delay);
+    for (const delay of [0, 50, 150, 400, 800]) setTimeout(apply, delay);
   };
 
   // A field focused when the app is backgrounded comes back focused with no
   // keyboard, so it is released on the way out rather than left to that.
   const onVisibility = () => {
     if (document.visibilityState === "hidden") {
-      const active = document.activeElement;
-      if (active instanceof HTMLElement && active.matches("input, textarea, [contenteditable]")) {
-        active.blur();
-      }
+      if (editing()) (document.activeElement as HTMLElement).blur();
       return;
     }
     settle();
@@ -60,6 +76,7 @@ export function trackViewport(): void {
   document.addEventListener("visibilitychange", onVisibility);
   window.addEventListener("pageshow", settle);
   window.addEventListener("focus", settle);
+  document.addEventListener("focusin", settle);
   document.addEventListener("focusout", settle);
   // Capture, because a scroll event does not bubble.
   document.addEventListener("scroll", unscroll, true);

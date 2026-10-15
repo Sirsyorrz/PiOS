@@ -1,5 +1,6 @@
 import type { TextFile } from "@pios/protocol";
 import { projectQuery, type FileAccess } from "./files.ts";
+import { browserStorage } from "./storage.ts";
 
 /** What the daemon says about a file the editor is about to show. */
 export interface TreeEntry {
@@ -101,6 +102,17 @@ export function recallOpenFile(sessionId: string): string | null {
   } catch {
     return null;
   }
+}
+
+const WRAP_KEY = "pios.editor.wrap.v1";
+
+/** Soft wrap by default: a phone is too narrow to scroll sideways through code. */
+export function loadWrapLines(): boolean {
+  return browserStorage.get(WRAP_KEY) !== "0";
+}
+
+export function saveWrapLines(wrap: boolean): void {
+  browserStorage.set(WRAP_KEY, wrap ? "1" : "0");
 }
 
 /**

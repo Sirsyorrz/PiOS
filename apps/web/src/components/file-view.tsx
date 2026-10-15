@@ -6,7 +6,9 @@ import {
   loadDraft,
   loadTextFile,
   loadTree,
+  loadWrapLines,
   saveDraft,
+  saveWrapLines,
   saveTextFile,
   searchFiles,
   type TreeListing,
@@ -20,6 +22,7 @@ import {
   FolderIcon,
   RedoIcon,
   UndoIcon,
+  WrapIcon,
 } from "./icons.tsx";
 import { ListRowButton, SearchField } from "./ui.tsx";
 
@@ -176,6 +179,7 @@ function FileEditor({ access, path, onBrowse, onClose }: {
   const [conflict, setConflict] = useState<Conflict | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [wrap, setWrap] = useState(loadWrapLines);
   const handle = useRef<EditorHandle | null>(null);
   const at = useRef(access);
   at.current = access;
@@ -257,6 +261,11 @@ function FileEditor({ access, path, onBrowse, onClose }: {
     go();
   }
 
+  function toggleWrap() {
+    saveWrapLines(!wrap);
+    setWrap(!wrap);
+  }
+
   const readOnly = !editing || !file?.editable;
   return (
     <section className="subview file-view">
@@ -273,6 +282,15 @@ function FileEditor({ access, path, onBrowse, onClose }: {
           {isolate(path)}
           {dirty ? <span className="dirty-dot" aria-label="unsaved changes" /> : null}
         </h2>
+        <button
+          type="button"
+          className="ghost icon"
+          aria-label="wrap lines"
+          aria-pressed={wrap}
+          onClick={toggleWrap}
+        >
+          <WrapIcon />
+        </button>
         {file?.editable ? (
           editing ? (
             <button
@@ -315,6 +333,7 @@ function FileEditor({ access, path, onBrowse, onClose }: {
             text={text}
             path={path}
             readOnly={readOnly}
+            wrap={wrap}
             handle={handle}
             onChange={edited}
           />

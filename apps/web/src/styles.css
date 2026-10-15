@@ -204,6 +204,12 @@ button:disabled {
   flex: 1;
 }
 
+/* A switch drawn as an icon: lit while on, muted like any ghost when off. */
+.ghost[aria-pressed="true"] {
+  background: var(--hover);
+  color: var(--accent);
+}
+
 /* Square, so a one-glyph button is not narrower than a worded one. */
 button.icon {
   width: var(--control);

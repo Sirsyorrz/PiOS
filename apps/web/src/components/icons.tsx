@@ -209,6 +209,17 @@ export function RedoIcon(props: SVGProps<SVGSVGElement>) {
   );
 }
 
+/** A line running on and folding back under itself. */
+export function WrapIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Svg {...props}>
+      <path d="M4 6h16M4 18h5" />
+      <path d="M4 12h13a3 3 0 0 1 0 6h-4" />
+      <path d="m15 16-2 2 2 2" />
+    </Svg>
+  );
+}
+
 export function SearchIcon(props: SVGProps<SVGSVGElement>) {
   return (
     <Svg {...props}>

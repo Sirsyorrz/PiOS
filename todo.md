@@ -1,3 +1,4 @@
 - terminal (needs a real PTY; one-shot bash does not grow into it)
-- toggle text wrap in file editor
-- fix floating composer with no keyboard after reopening the app
+
+Verify on the phone (fixed, but only reproducible on iOS):
+- floating composer with no keyboard after reopening the app

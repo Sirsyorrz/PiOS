@@ -20,8 +20,9 @@ export interface EditorHandle {
   outdent(): void;
 }
 
-export function CodeEditor({ text, path, readOnly, handle, onChange }: {
+export function CodeEditor({ text, path, readOnly, wrap, handle, onChange }: {
   text: string;
+  wrap: boolean;
   /** Only its extension is used, to pick a language. */
   path: string;
   readOnly: boolean;
@@ -32,6 +33,8 @@ export function CodeEditor({ text, path, readOnly, handle, onChange }: {
   const host = useRef<HTMLDivElement>(null);
   const view = useRef<EditorView | null>(null);
   const language = useRef(new Compartment());
+  // Its own compartment so toggling it keeps the history and the cursor.
+  const wrapping = useRef(new Compartment());
   // Kept in a ref so changing the callback never rebuilds the editor, which
   // would drop the undo history and the cursor with it.
   const emit = useRef(onChange);
@@ -48,7 +51,7 @@ export function CodeEditor({ text, path, readOnly, handle, onChange }: {
         history(),
         // Nothing is being edited in read-only mode, so nothing is active.
         ...(readOnly ? [] : [highlightActiveLine()]),
-        EditorView.lineWrapping,
+        wrapping.current.of(wrap ? EditorView.lineWrapping : []),
         indentUnit.of("  "),
         syntaxHighlighting(darkHighlight),
         theme,
@@ -85,6 +88,12 @@ export function CodeEditor({ text, path, readOnly, handle, onChange }: {
     };
     // `text` is the initial document only; later edits come from the editor.
   }, [path, readOnly]);
+
+  useEffect(() => {
+    view.current?.dispatch({
+      effects: wrapping.current.reconfigure(wrap ? EditorView.lineWrapping : []),
+    });
+  }, [wrap]);
 
   // A reload after a conflict replaces the document wholesale.
   useEffect(() => {
