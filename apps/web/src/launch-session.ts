@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
 import type { Machine } from "./machine.ts";
 import { browserStorage } from "./storage.ts";
 
@@ -45,50 +45,12 @@ export function useLaunchSession(machine: Machine): LaunchSession {
     return linked ?? browserStorage.get(activeSessionKey(machine.id));
   });
 
-  const remember = useCallback(
-    (next: string | null) => {
-      const key = activeSessionKey(machine.id);
-      if (next) browserStorage.set(key, next);
-      else browserStorage.remove(key);
-      setActiveIdState(next);
-    },
-    [machine.id],
-  );
-
-  // An open session is one history entry above the list, so the system back
-  // gesture closes it instead of leaving the app. A launch straight into a
-  // session gets the same entry, or its first back would exit.
-  useEffect(() => {
-    if (activeId && !isSessionEntry()) window.history.pushState(SESSION_ENTRY, "");
-    const onPop = () => {
-      if (!isSessionEntry()) remember(null);
-    };
-    window.addEventListener("popstate", onPop);
-    return () => window.removeEventListener("popstate", onPop);
-    // Only the launch state decides whether the entry is needed up front.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [remember]);
-
-  const setActiveId = useCallback(
-    (next: string | null) => {
-      if (next === null) {
-        // Popping the entry is what closes the session, so the browser's
-        // history and the screen cannot disagree.
-        if (isSessionEntry()) window.history.back();
-        else remember(null);
-        return;
-      }
-      if (!isSessionEntry()) window.history.pushState(SESSION_ENTRY, "");
-      remember(next);
-    },
-    [remember],
-  );
+  function setActiveId(next: string | null) {
+    const key = activeSessionKey(machine.id);
+    if (next) browserStorage.set(key, next);
+    else browserStorage.remove(key);
+    setActiveIdState(next);
+  }
 
   return { activeId, setActiveId };
-}
-
-const SESSION_ENTRY = { pios: "session" };
-
-function isSessionEntry(): boolean {
-  return (window.history.state as { pios?: string } | null)?.pios === "session";
 }
