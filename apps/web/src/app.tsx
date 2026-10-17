@@ -25,6 +25,7 @@ import { loadDrafts, saveDrafts, type Draft } from "./drafts.ts";
 import { useUnreadMarks } from "./seen.ts";
 import { useAttentionReport } from "./attention.ts";
 import { useLaunchSession } from "./launch-session.ts";
+import { useDrawer } from "./drawer.ts";
 import { useKeepPushRegistered } from "./push.ts";
 
 export function App() {
@@ -90,6 +91,9 @@ function Workspace({ machine, settings, onSettingsChange, onForget }: {
   // choose where to start.
   const [pickerStart, setPickerStart] = useState<string | null>(null);
   const [drafts, setDrafts] = useState<Draft[]>(() => loadDrafts(machine.id));
+  // Narrow viewports show the list over the chat rather than instead of it,
+  // so the open session keeps its scroll position and its composer draft.
+  const [drawerOpen, setDrawerOpen] = useDrawer(Boolean(activeId));
   const [search, setSearch] = useState("");
   const [showSettings, setShowSettings] = useState(false);
   // Session commands are not queued, so a dropped one has to be said out loud.
@@ -182,15 +186,6 @@ function Workspace({ machine, settings, onSettingsChange, onForget }: {
   }, [state.transport, machine]);
 
   useAttentionReport(client, activeId, state.transport);
-
-  // Revealing a focused composer scrolls the page and the app box, and
-  // nothing scrolls them back once the composer is gone: the next screen would
-  // open with its top bar off the edge.
-  useEffect(() => {
-    window.scrollTo(0, 0);
-    const root = document.getElementById("root");
-    if (root) root.scrollTop = 0;
-  }, [activeId]);
   useKeepPushRegistered(base, machine.deviceToken);
 
   // A rejected session command has no other place to appear: it is not queued
@@ -231,6 +226,7 @@ function Workspace({ machine, settings, onSettingsChange, onForget }: {
           };
           updateDrafts([draft, ...drafts]);
           setActiveId(draft.id);
+          setDrawerOpen(false);
           setPickerStart(null);
         }}
       />
@@ -238,7 +234,7 @@ function Workspace({ machine, settings, onSettingsChange, onForget }: {
   }
 
   return (
-    <div className={`workspace ${activeId ? "chatting" : ""}`}>
+    <div className={`workspace ${activeId ? "chatting" : ""} ${drawerOpen ? "drawer" : ""}`}>
       <aside className="sidebar">
         {/* Machine and link state are one subject, so they are one control;
             it opens the same screen the gear does. */}
@@ -278,6 +274,7 @@ function Workspace({ machine, settings, onSettingsChange, onForget }: {
           onQuery={setSearch}
           onSelect={(id) => {
             setActiveId(id);
+            setDrawerOpen(false);
           }}
           onCreate={() => setPickerStart("")}
           onLoadMore={() =>
@@ -285,6 +282,16 @@ function Workspace({ machine, settings, onSettingsChange, onForget }: {
           }
         />
       </aside>
+
+      {/* Dismisses the drawer without acting on whatever is behind it. */}
+      {drawerOpen ? (
+        <button
+          type="button"
+          className="scrim"
+          aria-label="close the session list"
+          onClick={() => setDrawerOpen(false)}
+        />
+      ) : null}
 
       {activeId ? (
         <ChatView
@@ -294,12 +301,7 @@ function Workspace({ machine, settings, onSettingsChange, onForget }: {
           state={state}
           baseUrl={base}
           deviceToken={machine.deviceToken}
-          onBack={() => {
-            // Dropped before the composer unmounts, or the keyboard and the
-            // scroll it caused outlive the chat.
-            (document.activeElement as HTMLElement | null)?.blur();
-            setActiveId(null);
-          }}
+          onBack={() => setDrawerOpen(true)}
           onNewSession={() => setPickerStart(session?.cwd ?? "")}
           nativeCommands={screenCommands()}
           onTrust={trustActive}

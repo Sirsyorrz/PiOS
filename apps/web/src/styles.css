@@ -726,21 +726,57 @@ button.link {
   display: none;
 }
 
-/* Narrow, the list and the chat take turns at the whole screen: the open
-   session is a history entry above the list, so back returns to it. */
+/* One list, two presentations: docked beside the chat when there is room,
+   and over it when there is not. The chat stays mounted either way, so
+   opening the list is not a navigation event and loses nothing. */
 @media (max-width: 720px) {
   .workspace {
     grid-template-columns: 1fr;
-    grid-template-rows: 100%;
   }
 
-  .workspace.chatting .sidebar,
-  .workspace .empty {
-    display: none;
+  .workspace.chatting .sidebar {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 30;
+    width: min(86%, 360px);
+    background: var(--bg);
+    transform: translateX(-100%);
+    transition: transform 180ms ease;
+  }
+
+  .workspace.chatting.drawer .sidebar {
+    transform: none;
+    box-shadow: 0 0 40px rgb(0 0 0 / 55%);
+  }
+
+  /* Full-bleed, and a button so a tap outside the drawer dismisses it
+     without reaching whatever it is covering. */
+  .scrim {
+    position: fixed;
+    inset: 0;
+    z-index: 20;
+    border: 0;
+    padding: 0;
+    background: rgb(0 0 0 / 45%);
   }
 
   .back {
     display: inline-flex;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .workspace.chatting .sidebar {
+    transition: none;
+  }
+}
+
+/* Wide enough for the docked column: there is nothing to overlay. */
+@media (min-width: 721px) {
+  .scrim {
+    display: none;
   }
 }
 
