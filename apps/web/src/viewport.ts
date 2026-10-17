@@ -28,6 +28,9 @@ export function trackViewport(): void {
     // leaves the composer floating mid-screen. So the CSS full height is used
     // and the stale numbers are never consulted.
     if (!editing()) {
+      // Otherwise the next focus reads as the keyboard going away before it
+      // has risen, and blurs the field it just focused.
+      wasKeyboard = false;
       root.style.removeProperty("--app-height");
       root.style.removeProperty("--app-offset");
       root.dataset.keyboard = "0";
