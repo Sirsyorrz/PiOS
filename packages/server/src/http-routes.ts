@@ -8,7 +8,7 @@ import { WIRE_VERSION } from "@pios/protocol";
 import { AuthStore, bearerToken } from "./auth.ts";
 import { gitBranches, gitDiff, gitLog, gitStashes, gitStatus, GitError } from "./git.ts";
 import { gitAction, parseGitAction } from "./git-actions.ts";
-import { invalidateFileIndex, searchFiles, SKIP_DIRS } from "./file-index.ts";
+import { invalidateFileIndex, searchFiles } from "./file-index.ts";
 import { etagOf, MAX_EDIT_BYTES, readTextFile, writeTextFile } from "./file-edit.ts";
 import { containedPath } from "./paths.ts";
 import { IMAGE_CONTENT_TYPES, type ImageStore } from "./image-store.ts";
@@ -519,10 +519,14 @@ async function projectPath(ctx: RouteContext, url: URL): Promise<string | null> 
   return root ? containedPath(root, requested) : null;
 }
 
-/** Directories first, then files, both alphabetical: a file tree, not a picker. */
+/**
+ * Directories first, then files, both alphabetical: a file tree, not a picker.
+ * Nothing is hidden: build output and dependencies are exactly what someone
+ * opens the tree to inspect, and listing one level at a time keeps it cheap.
+ */
 function treeListing(root: string, path: string, dirents: Dirent[]) {
   const entries = dirents
-    .filter((d) => (d.isDirectory() || d.isFile()) && !SKIP_DIRS.has(d.name))
+    .filter((d) => d.isDirectory() || d.isFile())
     .map((d) => ({ name: d.name, path: join(path, d.name), dir: d.isDirectory() }))
     .sort((a, b) => Number(b.dir) - Number(a.dir) || a.name.localeCompare(b.name));
 
