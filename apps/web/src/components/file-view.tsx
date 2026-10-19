@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import type { TextFile } from "@pios/protocol";
-import type { FileAccess } from "../files.ts";
+import { fetchFile, saveToDevice, type FileAccess } from "../files.ts";
 import {
   dropDraft,
   loadDraft,
@@ -15,7 +16,7 @@ import {
   searchFiles,
   type TreeListing,
 } from "../file-edit.ts";
-import { isolate } from "../format.ts";
+import { basename, byteSize, isolate, messageOf } from "../format.ts";
 import type { EditorHandle } from "./code-editor.tsx";
 import {
   ChevronLeftIcon,
@@ -26,7 +27,7 @@ import {
   UndoIcon,
   WrapIcon,
 } from "./icons.tsx";
-import { ListRowButton, SearchField } from "./ui.tsx";
+import { ListRowButton, ModalCard, PickerHeader, SearchField } from "./ui.tsx";
 
 /**
  * Identity of an access, for effect dependencies.
@@ -94,6 +95,7 @@ function FilePicker({ access, onPick, onClose }: {
   const [dir, setDir] = useState<string | undefined>(undefined);
   const [error, setError] = useState<string | null>(null);
   const [hideDotfiles, setHideDotfiles] = useState(loadHideDotfiles);
+  const [saving, setSaving] = useState<string | null>(null);
   const at = useRef(access);
   at.current = access;
   const key = accessKey(access);
@@ -164,6 +166,7 @@ function FilePicker({ access, onPick, onClose }: {
                   key={entry.path}
                   icon={entry.dir ? <FolderIcon /> : <FileIcon />}
                   onClick={() => (entry.dir ? setDir(entry.path) : onPick(entry.path))}
+                  onLongPress={entry.dir ? undefined : () => setSaving(entry.path)}
                 >
                   {isolate(entry.name)}
                 </ListRowButton>
@@ -171,13 +174,82 @@ function FilePicker({ access, onPick, onClose }: {
           </>
         ) : (
           matches.map((match) => (
-            <ListRowButton key={match} icon={<FileIcon />} onClick={() => onPick(match)}>
+            <ListRowButton
+              key={match}
+              icon={<FileIcon />}
+              onClick={() => onPick(match)}
+              onLongPress={() => setSaving(match)}
+            >
               {isolate(match)}
             </ListRowButton>
           ))
         )}
       </div>
+
+      {saving ? (
+        <SaveSheet access={access} path={saving} onClose={() => setSaving(null)} />
+      ) : null}
     </section>
+  );
+}
+
+/**
+ * Copying a file from the machine to this device.
+ *
+ * The bytes are fetched as soon as the sheet opens and handed over on a tap:
+ * the share sheet only opens from a tap, and one that waited on the network
+ * first no longer counts as one.
+ */
+function SaveSheet({ access, path, onClose }: {
+  access: FileAccess;
+  path: string;
+  onClose: () => void;
+}) {
+  const [file, setFile] = useState<File | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const at = useRef(access);
+  at.current = access;
+  const key = accessKey(access);
+
+  useEffect(() => {
+    let live = true;
+    void fetchFile(at.current, path)
+      .then((fetched) => live && setFile(fetched))
+      .catch((cause: unknown) => live && setError(`Could not read it: ${messageOf(cause)}`));
+    return () => {
+      live = false;
+    };
+  }, [key, path]);
+
+  function save(ready: File) {
+    saveToDevice(ready)
+      .then(onClose)
+      .catch((cause: unknown) => setError(`Could not save it: ${messageOf(cause)}`));
+  }
+
+  return createPortal(
+    <ModalCard className="picker save-file" overlay>
+      <PickerHeader title="Save to device" onCancel={onClose} />
+      <div className="save-file-name">
+        <p className="line tail">{isolate(basename(path))}</p>
+        {error ? null : <p className="muted">{file ? byteSize(file.size) : "Fetching…"}</p>}
+      </div>
+      {error ? <p className="banner error">{error}</p> : null}
+      <div className="row">
+        <button type="button" onClick={onClose}>
+          Cancel
+        </button>
+        <button
+          type="button"
+          className="primary"
+          disabled={!file}
+          onClick={() => file && save(file)}
+        >
+          Save
+        </button>
+      </div>
+    </ModalCard>,
+    document.body,
   );
 }
 
