@@ -9,7 +9,7 @@ import { AuthStore, bearerToken } from "./auth.ts";
 import { gitBranches, gitDiff, gitLog, gitStashes, gitStatus, GitError } from "./git.ts";
 import { gitAction, parseGitAction } from "./git-actions.ts";
 import { invalidateFileIndex, searchFiles } from "./file-index.ts";
-import { etagOf, MAX_EDIT_BYTES, readTextFile, writeTextFile } from "./file-edit.ts";
+import { MAX_EDIT_BYTES, readTextFile, writeTextFile } from "./file-edit.ts";
 import { containedPath } from "./paths.ts";
 import { IMAGE_CONTENT_TYPES, type ImageStore } from "./image-store.ts";
 import type { PushStore } from "./push.ts";
@@ -431,15 +431,17 @@ async function serveFile(ctx: RouteContext, url: URL, res: ServerResponse): Prom
   }
   if (!stat.isFile()) return json(res, 404, { error: "not_found" });
 
-  const bytes = readFileSync(path);
+  // Streamed: this is also the download route, and a download can be larger
+  // than the daemon should hold in memory.
   res.writeHead(200, {
     "content-type": CONTENT_TYPES[extname(path).toLowerCase()] ?? "application/octet-stream",
     "content-length": stat.size,
     // The agent rewrites files under the same path constantly.
     "cache-control": "no-store",
-    etag: etagOf(bytes),
   });
-  res.end(bytes);
+  const stream = createReadStream(path);
+  stream.on("error", () => res.destroy());
+  stream.pipe(res);
 }
 
 /**
