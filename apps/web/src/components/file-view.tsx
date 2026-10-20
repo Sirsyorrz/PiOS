@@ -4,10 +4,12 @@ import type { FileAccess } from "../files.ts";
 import {
   dropDraft,
   loadDraft,
+  loadHideDotfiles,
   loadTextFile,
   loadTree,
   loadWrapLines,
   saveDraft,
+  saveHideDotfiles,
   saveWrapLines,
   saveTextFile,
   searchFiles,
@@ -91,9 +93,15 @@ function FilePicker({ access, onPick, onClose }: {
   const [listing, setListing] = useState<TreeListing | null>(null);
   const [dir, setDir] = useState<string | undefined>(undefined);
   const [error, setError] = useState<string | null>(null);
+  const [hideDotfiles, setHideDotfiles] = useState(loadHideDotfiles);
   const at = useRef(access);
   at.current = access;
   const key = accessKey(access);
+
+  function toggleDotfiles(hide: boolean) {
+    saveHideDotfiles(hide);
+    setHideDotfiles(hide);
+  }
 
   useEffect(() => {
     if (!query.trim()) return;
@@ -128,6 +136,14 @@ function FilePicker({ access, onPick, onClose }: {
           <ChevronLeftIcon />
         </button>
         <h2 className="line tail">{here ? isolate(here) : "Files"}</h2>
+        <label className="check">
+          <input
+            type="checkbox"
+            checked={hideDotfiles}
+            onChange={(event) => toggleDotfiles(event.target.checked)}
+          />
+          Hide hidden
+        </label>
       </header>
 
       <SearchField value={query} placeholder="Search files" onChange={setQuery} />
@@ -141,15 +157,17 @@ function FilePicker({ access, onPick, onClose }: {
                 ..
               </ListRowButton>
             ) : null}
-            {listing?.entries.map((entry) => (
-              <ListRowButton
-                key={entry.path}
-                icon={entry.dir ? <FolderIcon /> : <FileIcon />}
-                onClick={() => (entry.dir ? setDir(entry.path) : onPick(entry.path))}
-              >
-                {isolate(entry.name)}
-              </ListRowButton>
-            ))}
+            {listing?.entries
+              .filter((entry) => !(hideDotfiles && entry.name.startsWith(".")))
+              .map((entry) => (
+                <ListRowButton
+                  key={entry.path}
+                  icon={entry.dir ? <FolderIcon /> : <FileIcon />}
+                  onClick={() => (entry.dir ? setDir(entry.path) : onPick(entry.path))}
+                >
+                  {isolate(entry.name)}
+                </ListRowButton>
+              ))}
           </>
         ) : (
           matches.map((match) => (

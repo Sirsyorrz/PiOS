@@ -1639,7 +1639,7 @@ button.scroll-bottom {
   font-size: 14px;
 }
 
-.git-check {
+.check {
   display: flex;
   flex-direction: row;
   flex: 0 0 auto;
@@ -1651,7 +1651,7 @@ button.scroll-bottom {
 }
 
 /* The shared control height would turn a tick box into a 44px slab. */
-.git-check > input[type="checkbox"] {
+.check > input[type="checkbox"] {
   flex: 0 0 auto;
   width: 18px;
   height: 18px;
