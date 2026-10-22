@@ -2019,6 +2019,28 @@ button.scroll-bottom {
   cursor: pointer;
 }
 
+.attachments.files {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.file-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  padding: 4px 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  font-size: 0.85em;
+}
+
+.file-chip.failed {
+  border-color: var(--error);
+  color: var(--error);
+}
+
 .attach input {
   display: none;
 }
