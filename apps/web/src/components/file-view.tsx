@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { TextFile } from "@pios/protocol";
-import { fetchFile, saveToDevice, type FileAccess } from "../files.ts";
+import { fetchFile, saveToDevice, uploadFile, type FileAccess } from "../files.ts";
 import {
   dropDraft,
   loadDraft,
@@ -25,6 +25,7 @@ import {
   FolderIcon,
   RedoIcon,
   UndoIcon,
+  UploadIcon,
   WrapIcon,
 } from "./icons.tsx";
 import { ListRowButton, ModalCard, PickerHeader, SearchField } from "./ui.tsx";
@@ -96,9 +97,30 @@ function FilePicker({ access, onPick, onClose }: {
   const [error, setError] = useState<string | null>(null);
   const [hideDotfiles, setHideDotfiles] = useState(loadHideDotfiles);
   const [saving, setSaving] = useState<string | null>(null);
+  const [uploadNote, setUploadNote] = useState<string | null>(null);
+  const [reloads, setReloads] = useState(0);
   const at = useRef(access);
   at.current = access;
   const key = accessKey(access);
+
+  async function upload(picked: FileList | null) {
+    const target = listing?.path;
+    const chosen = Array.from(picked ?? []);
+    if (!target || chosen.length === 0) return;
+    setError(null);
+    const landed: string[] = [];
+    for (const [index, file] of chosen.entries()) {
+      setUploadNote(`Uploading ${index + 1} of ${chosen.length}\u2026`);
+      try {
+        landed.push(basename((await uploadFile(at.current, file, target)).path));
+      } catch (cause) {
+        setError(`${file.name} was not uploaded: ${messageOf(cause)}`);
+      }
+    }
+    // A renamed file is only noticed if it is named.
+    setUploadNote(landed.length > 0 ? `Uploaded ${landed.join(", ")}` : null);
+    setReloads((n) => n + 1);
+  }
 
   function toggleDotfiles(hide: boolean) {
     saveHideDotfiles(hide);
@@ -126,7 +148,7 @@ function FilePicker({ access, onPick, onClose }: {
     return () => {
       live = false;
     };
-  }, [key, dir]);
+  }, [key, dir, reloads]);
 
   const browsing = !query.trim();
   // At the top it is the project; below it, the path inside the project.
@@ -146,10 +168,24 @@ function FilePicker({ access, onPick, onClose }: {
           />
           Hide hidden
         </label>
+        {browsing && listing ? (
+          <label className="attach ghost icon" title="Upload to this folder" aria-label="upload to this folder">
+            <input
+              type="file"
+              multiple
+              onChange={(event) => {
+                void upload(event.target.files);
+                event.target.value = "";
+              }}
+            />
+            <UploadIcon />
+          </label>
+        ) : null}
       </header>
 
       <SearchField value={query} placeholder="Search files" onChange={setQuery} />
       {error ? <p className="banner error">{error}</p> : null}
+      {uploadNote ? <p className="banner">{uploadNote}</p> : null}
 
       <div className="scroll-y file-list">
         {browsing ? (

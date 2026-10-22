@@ -106,6 +106,35 @@ export async function fetchFile(access: FileAccess, path: string): Promise<File>
   return new File([await response.arrayBuffer()], path.split("/").at(-1) || "download", { type });
 }
 
+export interface Uploaded {
+  path: string;
+  /** Relative to the project, which is how the agent should be told about it. */
+  relativePath: string;
+  bytes: number;
+}
+
+/**
+ * Copies a file from this device into the project.
+ *
+ * Without `dir` it lands in the project's attachment folder. The daemon never
+ * overwrites, so the name it answers with may differ from the one sent.
+ */
+export async function uploadFile(access: FileAccess, file: File, dir?: string): Promise<Uploaded> {
+  if (!access.baseUrl) throw new Error("not connected");
+  const at = dir ? `&dir=${encodeURIComponent(dir)}` : "";
+  const url = `${access.baseUrl}/upload?${projectQuery(access)}&name=${encodeURIComponent(file.name)}${at}`;
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { authorization: `Bearer ${access.deviceToken}` },
+    body: file,
+  }).catch(() => {
+    throw new Error("connection lost");
+  });
+  if (response.status === 413) throw new Error("too large");
+  if (!response.ok) throw new Error(response.status === 404 ? "folder not found" : "unavailable");
+  return (await response.json()) as Uploaded;
+}
+
 /**
  * Hands a file to the platform: the share sheet on a phone, a download
  * elsewhere.

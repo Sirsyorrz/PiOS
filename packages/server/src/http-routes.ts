@@ -1,8 +1,8 @@
 import { createReadStream, readFileSync, statSync, type Dirent } from "node:fs";
-import { mkdir, readdir, stat, writeFile } from "node:fs/promises";
+import { readdir, stat } from "node:fs/promises";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { homedir } from "node:os";
-import { basename, dirname, extname, join, sep } from "node:path";
+import { basename, dirname, extname, join, relative, sep } from "node:path";
 import { sessionDirName, type SessionIndex, type SessionRegistry } from "@pios/pi-host";
 import { WIRE_VERSION } from "@pios/protocol";
 import { AuthStore, bearerToken } from "./auth.ts";
@@ -11,6 +11,7 @@ import { gitAction, parseGitAction } from "./git-actions.ts";
 import { invalidateFileIndex, searchFiles } from "./file-index.ts";
 import { MAX_EDIT_BYTES, readTextFile, writeTextFile } from "./file-edit.ts";
 import { containedPath } from "./paths.ts";
+import { prepareUploadDir, receiveUpload } from "./uploads.ts";
 import { IMAGE_CONTENT_TYPES, type ImageStore } from "./image-store.ts";
 import type { PushStore } from "./push.ts";
 import { SERVER_VERSION, type ServerConfig } from "./config.ts";
@@ -551,23 +552,50 @@ async function upload(
   req: IncomingMessage,
   res: ServerResponse,
 ): Promise<void> {
-  const name = url.searchParams.get("name") ?? "upload.bin";
   if (!namesProject(url)) return json(res, 400, { error: "bad_request" });
 
   const root = await projectRoot(ctx, url);
   if (!root) return json(res, 404, { error: "unknown_session" });
 
-  const dir = join(root, ".pios-uploads");
-  const safeName = name.replace(/[^\w.-]/g, "_").slice(0, 96);
-  const target = containedPath(dir, safeName);
-  if (!target) return json(res, 400, { error: "bad_request" });
+  // Without a `dir` it is a chat attachment, kept out of the way of the
+  // project's own files. With one, the folder must already exist: an upload
+  // is not a way to create directory trees.
+  const requestedDir = url.searchParams.get("dir");
+  let dir = requestedDir ? containedPath(root, requestedDir) : null;
+  if (requestedDir) {
+    const info = dir ? await stat(dir).catch(() => null) : null;
+    if (!info?.isDirectory()) return json(res, 404, { error: "not_found" });
+  }
 
-  const body = await readBody(req, ctx.config.maxUploadBytes);
-  if (!body) return json(res, 413, { error: "too_large" });
+  // Refused before a byte is read: the phone learns now, not after sending
+  // the whole thing over a mobile link.
+  const declared = Number(req.headers["content-length"] ?? 0);
+  if (declared > ctx.config.maxUploadBytes) return refuseBody(res, 413, { error: "too_large" });
 
-  await mkdir(dir, { recursive: true });
-  await writeFile(target, body);
-  json(res, 200, { path: target, bytes: body.length });
+  dir ??= await prepareUploadDir(root);
+  const outcome = await receiveUpload(req, dir, url.searchParams.get("name"), ctx.config.maxUploadBytes);
+  if (!outcome.ok) {
+    if (outcome.error === "aborted") return;
+    return refuseBody(res, outcome.error === "too_large" ? 413 : 409, { error: outcome.error });
+  }
+  invalidateFileIndex(root);
+  json(res, 200, {
+    path: outcome.path,
+    relativePath: relative(root, outcome.path),
+    bytes: outcome.bytes,
+  });
+}
+
+/**
+ * Answers without reading the rest of the body.
+ *
+ * Closing the connection is what stops the client sending; destroying the
+ * socket instead would lose the answer and leave the phone with a bare
+ * network error.
+ */
+function refuseBody(res: ServerResponse, status: number, body: unknown): void {
+  res.setHeader("connection", "close");
+  json(res, status, body);
 }
 
 /**
