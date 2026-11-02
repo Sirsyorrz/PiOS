@@ -5,12 +5,12 @@ import { fetchFile, saveToDevice, type FileAccess } from "../files.ts";
 import {
   dropDraft,
   loadDraft,
-  loadHideDotfiles,
+  loadShowDotfiles,
   loadTextFile,
   loadTree,
   loadWrapLines,
   saveDraft,
-  saveHideDotfiles,
+  saveShowDotfiles,
   saveWrapLines,
   saveTextFile,
   searchFiles,
@@ -94,15 +94,15 @@ function FilePicker({ access, onPick, onClose }: {
   const [listing, setListing] = useState<TreeListing | null>(null);
   const [dir, setDir] = useState<string | undefined>(undefined);
   const [error, setError] = useState<string | null>(null);
-  const [hideDotfiles, setHideDotfiles] = useState(loadHideDotfiles);
+  const [showDotfiles, setShowDotfiles] = useState(loadShowDotfiles);
   const [saving, setSaving] = useState<string | null>(null);
   const at = useRef(access);
   at.current = access;
   const key = accessKey(access);
 
-  function toggleDotfiles(hide: boolean) {
-    saveHideDotfiles(hide);
-    setHideDotfiles(hide);
+  function toggleDotfiles(show: boolean) {
+    saveShowDotfiles(show);
+    setShowDotfiles(show);
   }
 
   useEffect(() => {
@@ -141,10 +141,10 @@ function FilePicker({ access, onPick, onClose }: {
         <label className="check">
           <input
             type="checkbox"
-            checked={hideDotfiles}
+            checked={showDotfiles}
             onChange={(event) => toggleDotfiles(event.target.checked)}
           />
-          Hide hidden
+          Show hidden
         </label>
       </header>
 
@@ -160,7 +160,7 @@ function FilePicker({ access, onPick, onClose }: {
               </ListRowButton>
             ) : null}
             {listing?.entries
-              .filter((entry) => !(hideDotfiles && entry.name.startsWith(".")))
+              .filter((entry) => showDotfiles || !entry.name.startsWith("."))
               .map((entry) => (
                 <ListRowButton
                   key={entry.path}

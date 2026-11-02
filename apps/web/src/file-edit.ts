@@ -115,14 +115,14 @@ export function saveWrapLines(wrap: boolean): void {
   browserStorage.set(WRAP_KEY, wrap ? "1" : "0");
 }
 
-const HIDE_DOTFILES_KEY = "pios.files.hideDotfiles.v1";
+const SHOW_DOTFILES_KEY = "pios.files.showDotfiles.v1";
 
-export function loadHideDotfiles(): boolean {
-  return browserStorage.get(HIDE_DOTFILES_KEY) === "1";
+export function loadShowDotfiles(): boolean {
+  return browserStorage.get(SHOW_DOTFILES_KEY) !== "0";
 }
 
-export function saveHideDotfiles(hide: boolean): void {
-  browserStorage.set(HIDE_DOTFILES_KEY, hide ? "1" : "0");
+export function saveShowDotfiles(show: boolean): void {
+  browserStorage.set(SHOW_DOTFILES_KEY, show ? "1" : "0");
 }
 
 /**
